@@ -8,3 +8,6 @@ Thumbs.db
 .idea/
 .vscode/
 node_modules/
+
+# npm pack output
+*.tgz
