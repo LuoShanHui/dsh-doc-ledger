@@ -531,7 +531,9 @@ window.__ModuleLoader__.load({
         // Roving tabindex: the card keeps ONE tabbable row (see SessionCard), so Tab enters
         // the list once instead of stopping on all ~900 rows of an expanded panel.
         tabIndex: props.active === true ? 0 : -1,
-        "data-row-index": props.index,
+        // Rows of a collapsed section are not part of the roving order (index -1): without the
+        // attribute they cannot be mistaken for a DOM position by focusRow().
+        "data-row-index": props.index >= 0 ? props.index : undefined,
         role: "button",
         "aria-label": file.name + (missing ? "（文件已不存在）" : "") + "，回车打开预览，Shift+回车快速查看，Shift+F10 打开菜单",
         onFocus: function () {
@@ -683,12 +685,18 @@ window.__ModuleLoader__.load({
         if (next !== from) focusRow(next);
       };
       var edgeRow = function (which) {
-        focusRow(which === "first" ? 0 : Math.max(0, rowCountRef.current - 1));
+        var box = cardRef.current;
+        if (box === null || box === undefined) return;
+        var total = box.querySelectorAll("[data-row-index]").length;
+        focusRow(which === "first" ? 0 : Math.max(0, total - 1));
       };
       // A filter that shrinks the list can leave the active index past the end; put it back
       // to the first row after the render that shrank it.
       react.useEffect(function () {
-        if (activeRow !== null && activeRow >= rowCountRef.current) setActiveRow(null);
+        var box = cardRef.current;
+        if (box === null || box === undefined || activeRow === null) return;
+        var total = box.querySelectorAll("[data-row-index]").length;
+        if (activeRow >= total) setActiveRow(null);
       });
       var isCreated = function (file) {
         if (file.created === "confirmed" || file.created === "inferred") return true;
@@ -727,18 +735,22 @@ window.__ModuleLoader__.load({
         });
       };
 
-      var rowsOf = function (prefix, list) {
+      var rowsOf = function (prefix, list, open, rendered) {
+        // Only rows the reader can actually reach take part in the roving order: the section
+        // must be expanded AND this view must render it (the merged view computes the split
+        // arrays too, and counting those would offset every index past the end of the DOM).
+        var reachable = open !== false && rendered !== false;
         var sort = prefix === "u" ? props.usedSort : (prefix === "ms" ? props.modifiedSort : props.createdSort);
         var sorted = sortFiles(list, sort);
         var limit = limits[prefix] || ROW_PAGE;
         var rows = sorted.slice(0, limit).map(function (file) {
-          var index = rowCursor;
-          rowCursor += 1;
+          var index = reachable === true ? rowCursor : -1;
+          if (reachable === true) rowCursor += 1;
           return react.createElement(FileRow, {
             key: prefix + ":" + file.path,
             file: file,
             index: index,
-            active: index === (activeRow === null ? 0 : activeRow),
+            active: reachable === true && index === (activeRow === null ? 0 : activeRow),
             query: props.query,
             onOpen: props.onOpen,
             onQuick: props.onQuick,
@@ -762,10 +774,10 @@ window.__ModuleLoader__.load({
         }
         return rows;
       };
-      var usedRows = showBody ? rowsOf("u", used) : null;
-      var createdRows = showBody ? rowsOf("c", created) : null;
-      var createdSplitRows = showBody ? rowsOf("cs", createdSplit) : null;
-      var modifiedSplitRows = showBody ? rowsOf("ms", modifiedSplit) : null;
+      var usedRows = showBody ? rowsOf("u", used, props.usedOpen, true) : null;
+      var createdRows = showBody ? rowsOf("c", created, props.createdOpen, split === false) : null;
+      var createdSplitRows = showBody ? rowsOf("cs", createdSplit, props.createdOpen, split === true) : null;
+      var modifiedSplitRows = showBody ? rowsOf("ms", modifiedSplit, props.modifiedOpen, split === true) : null;
 
       var splitChip = h("button", {
         type: "button",
