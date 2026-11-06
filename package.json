@@ -1,0 +1,56 @@
+{
+  "name": "dsh-doc-ledger",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Per-session document ledger: which documents a session used, created or modified — with time ordering, type grouping, search, preview and a cross-session summary.",
+  "license": "MIT",
+  "main": "index.js",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "document",
+    "ledger",
+    "sidebar",
+    "session"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node tools/ledger-scan-check.mjs && node tools/preview-decode-check.mjs",
+    "check": "node --check index.js && node --check client.js && node --check lib/ledger.js && node --check lib/preview-text.js",
+    "report": "node tools/report.mjs"
+  },
+  "exports": {
+    ".": {
+      "default": "./index.js"
+    },
+    "./client": {
+      "default": "./client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "tools",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    },
+    "compatibility": {
+      "dsh": ">=0.2.0-rc.1 <0.3.0-0"
+    }
+  }
+}
