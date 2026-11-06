@@ -1,0 +1,10 @@
+# Actions 的版本固定在一个大版本号上，靠 dependabot 跟进小版本，
+# 免得因为 action 被弃用而某天 CI 突然红。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies

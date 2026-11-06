@@ -1,0 +1,72 @@
+name: Bug report
+description: 插件行为不对、报错、或者面板打不开
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先确认：插件只在 **Windows** + DSH `>=0.2.0-rc.1 <0.3.0-0` 上验证过。
+        贴日志前请去掉真实项目路径。
+  - type: input
+    id: plugin-version
+    attributes:
+      label: 插件版本
+      description: 仓库 `package.json` 的 version，或 Release 页面的 tag
+      placeholder: 0.2.0
+    validations:
+      required: true
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DSH 版本
+      description: 设置 → 关于，或 `package.json` 里 `@deepseek-ai/*` 的版本
+      placeholder: 0.2.1-rc.3
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: 平台
+      options:
+        - Windows 10
+        - Windows 11
+        - 其他（插件目前只支持 Windows）
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象
+      description: 做了什么、期望什么、实际发生了什么
+      placeholder: |
+        1. 打开「全部会话」
+        2. 右键某个会话卡片标题
+        3. 期望出现菜单，实际……
+    validations:
+      required: true
+  - type: textarea
+    id: timings
+    attributes:
+      label: /doc-ledger/api/all?scope=all&timing=1 的返回
+      description: 面板卡顿、数据不对、接口 4xx/5xx 时非常有用；粘贴 `data.timings` 即可
+      render: json
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: 日志或截图
+      description: 截图可直接拖进来；控制台报错请贴文本
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 已确认
+      options:
+        - label: 已刷新过一次页面（客户端 bundle 需要重新注入）
+          required: true
+        - label: 已确认不是其它插件/主题导致的渲染问题
+          required: false
