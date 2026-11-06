@@ -9,6 +9,8 @@
 
 - `tools/route-check.mjs`：宿主路由与安全回归（14 项，真 HTTP server 打到真实 handler），
   并入 `npm test` 与 CI。
+- `tools/harness/`：可提交的 UI 验证工具（真 `client.js` + 假 cordis ctx + 合成台账），
+  `npm run harness` 起本地页，fixture 覆盖多词搜索 / 已删除 / 子代理会话 / roving tabindex。
 - `tools/cache-check.mjs`：缓存决策回归（8 项：精确 stamp / TTL 回退 / 闭包限制），
   `ledgerReusable()` 从 `replay()` 里提出来导出，便于脱离宿主测试。
 - 「全部折叠」时清空已挂载卡片集合，下次展开只挂视口附近，减少一次性重建的行数。

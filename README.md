@@ -582,10 +582,14 @@ lib/preview-text.js  预览解码：BOM / UTF-8 / 按行 GB18030 回退（纯函
 tools/report.mjs     静态报告生成器（复用同一引擎）
 tools/ledger-scan-check.mjs    引擎回归：7 个 PTC 写文件场景
 tools/preview-decode-check.mjs 解码回归：10 个编码场景
+tools/harness/                  UI 验证工具：真 client.js + 假 ctx + 合成台账（npm run harness）
 tools/route-check.mjs          宿主路由与安全回归：14 项（同源 403、台账白名单、POST-only、400/404/405）
 tools/cache-check.mjs          缓存决策回归：8 项（精确 stamp、TTL 回退、live 重放下限）
 ```
 
 `npm test` 依次跑四支回归脚本（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 = **39 项断言**，无外部依赖），CI 里三套 Node 各跑一遍。
+
+面板本身的 UI 变更用 `npm run harness` 在浏览器里看：它会用真实的 `client.js` + 假 cordis 上下文 + 合成台账起一个本地页，
+fixture 里故意放了「多词搜索只该命中一个文件」「已删除文件」「子代理会话」这些场景，用法见 `tools/harness/README.md`。
 
 引擎不依赖任何 `@deepseek-ai/*` 包，host 与 client 都只用 Node 内置模块和 `ctx` 服务；客户端 bundle 是手写的，不需要打包器。

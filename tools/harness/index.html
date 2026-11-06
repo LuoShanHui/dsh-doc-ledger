@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <title>doc-ledger harness</title>
+  <style>
+    html, body { margin: 0; background: #0e1014; }
+    body { padding: 20px; font-family: "Segoe UI", system-ui, sans-serif; }
+    #root { width: 520px; height: 760px; overflow: hidden; background: #ffffff; color: #1f2329; border-radius: 10px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<!--
+  Fake cordis context. Everything here mimics what the real client runtime provides:
+  slots for the tab body, a locale namespace, the two optional host services
+  (sidebarRight for the document preview, uiWorkspace for session jumps) and a
+  shortcut registry. Calls into the services are recorded on window.__calls so a
+  scripted check can assert them.
+-->
+<script src="/react.js"></script>
+<script src="/react-dom.js"></script>
+<script>
+  window.__calls = [];
+  window.__slots = {};
+  window.__ModuleLoader__ = {
+    load: function (def) {
+      window.__bundle = def.factory(function (id) { return id === "react" ? window.React : {}; });
+    }
+  };
+</script>
+<script src="/client.js"></script>
+<script>
+(function () {
+  var ctx = {
+    locale: {
+      bind: function () { return function (key) { return key; }; },
+      register: function () { return function () {}; }
+    },
+    effect: function (fn) { try { fn(); } catch (error) { console.error("effect", error); } },
+    slots: {
+      inject: function (name, fn) { try { fn(); } catch (error) { console.error("inject", error); } return function () {}; },
+      register: function (def, component) {
+        if (def && def.name === "sidebar.right.pane.tab") window.__slots.Frame = component;
+        return function () {};
+      }
+    },
+    sidebarRightTabs: { register: function () { return function () {}; }, get: function () { return undefined; } },
+    sidebarRight: {
+      mounted: {},
+      openTab: function () {},
+      openResource: function (address) { window.__calls.push({ kind: "openResource", address: address }); }
+    },
+    uiWorkspace: {
+      openSession: function (sessionId) { window.__calls.push({ kind: "openSession", sessionId: sessionId }); }
+    },
+    shortcuts: { register: function () { return function () {}; } },
+    inject: function (deps, callback) { callback(ctx); }
+  };
+  try { window.localStorage.clear(); } catch (error) { /* private mode */ }
+  window.__bundle.apply(ctx);
+  var Frame = window.__slots.Frame;
+  if (!Frame) { document.getElementById("root").textContent = "Frame was not registered"; return; }
+  var session = new URLSearchParams(location.search).get("session") || "session-a";
+  ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(Frame, { sessionId: session }));
+})();
+</script>
+</body>
+</html>
