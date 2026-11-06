@@ -1,0 +1,13 @@
+# Line endings: store LF, check out LF on every platform. Without this a Windows
+# clone with core.autocrlf=true rewrites every text file to CRLF and any later edit
+# shows up as a whole-file diff. Binary assets are excluded from the conversion.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.tgz binary
