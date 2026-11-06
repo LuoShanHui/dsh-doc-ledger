@@ -25,5 +25,6 @@
 <https://github.com/LuoShanHui/dsh-doc-ledger/security/advisories/new>
 （若仓库设置里尚未启用 Security Advisories，请先在 Settings → Code security 打开。）
 
-报告里请带上：DSH 版本、插件版本、Windows 版本，以及能复现的最小步骤。
+报告走的是仓库里的自定义表单 [`.github/VULNERABILITY_REPORT.yml`](../.github/VULNERABILITY_REPORT.yml)：
+表单会要求填插件版本、DSH 版本、Windows 版本、复现步骤（≥100 字）和影响面，直接进私密公告。
 预计 7 天内答复。
