@@ -11,10 +11,13 @@
   并入 `npm test` 与 CI。
 - `tools/cache-check.mjs`：缓存决策回归（8 项：精确 stamp / TTL 回退 / 闭包限制），
   `ledgerReusable()` 从 `replay()` 里提出来导出，便于脱离宿主测试。
+- 「全部折叠」时清空已挂载卡片集合，下次展开只挂视口附近，减少一次性重建的行数。
 - **live 会话重放下限**（`LIVE_REPLAY_FLOOR_MS = 15 s`）：静默轮询在 15 秒内直接复用上一次折叠结果，
   `force=1`（刷新按钮）与 `timing=1` 仍然全量重放。
 - **搜索支持多词 AND**：空格分隔的每个词都必须命中，各词独立高亮、重叠区间合并；无结果文案同时列出所有词。
 - **子代理血缘跳转**：会话 payload 新增 `parentSessionId`，卡片菜单多出「跳到父会话 / 跳到子会话：<标题>」。
+- **行列表用 roving tabindex**：每张卡只有一行可 Tab 到，卡内 ↑/↓/Home/End 移动（40 卡展开从 400+ 停靠点降到 40）。
+- 快速查看弹窗底部路径可点击复制。
 - `.github/ISSUE_TEMPLATE/bug.yml`：问题模板要求填 DSH 版本、平台与 `timings`。
 - `SECURITY.md`、`.editorconfig`、`.github/dependabot.yml`（自动升级 Actions 版本）。
 - `docs/plugin-registry-entry.json` + `docs/market-submission.md`：插件市场索引的提交素材与步骤。

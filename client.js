@@ -528,9 +528,15 @@ window.__ModuleLoader__.load({
       var missing = file.exists === false;
       return react.createElement("div", {
         style: missing ? Object.assign({}, S.row, S.rowMissing) : S.row,
-        tabIndex: 0,
+        // Roving tabindex: the card keeps ONE tabbable row (see SessionCard), so Tab enters
+        // the list once instead of stopping on all ~900 rows of an expanded panel.
+        tabIndex: props.active === true ? 0 : -1,
+        "data-row-index": props.index,
         role: "button",
         "aria-label": file.name + (missing ? "（文件已不存在）" : "") + "，回车打开预览，Shift+回车快速查看，Shift+F10 打开菜单",
+        onFocus: function () {
+          if (typeof props.onFocusIndex === "function") props.onFocusIndex(props.index);
+        },
         onClick: open,
         onKeyDown: function (event) {
           if (event.key === "Enter" || event.key === " ") {
@@ -538,6 +544,12 @@ window.__ModuleLoader__.load({
             // Shift+Enter is the quick look: the modal is the fallback, not the default.
             if (event.shiftKey && typeof props.onQuick === "function") { props.onQuick(file); return; }
             open();
+          } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (typeof props.onMove === "function") props.onMove(props.index, event.key === "ArrowDown" ? 1 : -1);
+          } else if (event.key === "Home" || event.key === "End") {
+            event.preventDefault();
+            if (typeof props.onEdge === "function") props.onEdge(event.key === "Home" ? "first" : "last");
           } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
             event.preventDefault();
             var rect = event.currentTarget.getBoundingClientRect();
@@ -560,7 +572,8 @@ window.__ModuleLoader__.load({
         react.createElement("span", { style: S.times }, "建 " + fmtTime(file.createdAt) + " · 改 " + fmtTime(file.updatedAt))
       );
     }, function (prev, next) {
-      return prev.file === next.file && prev.query === next.query;
+      return prev.file === next.file && prev.query === next.query
+        && prev.active === next.active && prev.index === next.index;
     });
 
     /** A visible keyboard focus ring, since inline styles cannot use :focus-visible. */
@@ -641,6 +654,42 @@ window.__ModuleLoader__.load({
       var limitState = react.useState({});
       var limits = limitState[0];
       var setLimits = limitState[1];
+      // Roving tabindex for the rows of THIS card: exactly one row is Tab-reachable, and
+      // ArrowUp/Down/Home/End move between rows. Without it, an expanded "all sessions" view
+      // puts ~900 tab stops between the search box and the next control.
+      var cardRef = react.useRef(null);
+      var rowState = react.useState(null);
+      var activeRow = rowState[0];
+      var setActiveRow = rowState[1];
+      var rowCursor = 0;
+      var rowCountRef = react.useRef(0);
+      var focusRow = function (index) {
+        var box = cardRef.current;
+        if (box === null || box === undefined) return;
+        var nodes = box.querySelectorAll("[data-row-index]");
+        for (var i = 0; i < nodes.length; i += 1) {
+          if (String(i) === String(index)) {
+            setActiveRow(index);
+            nodes[i].focus();
+            return;
+          }
+        }
+      };
+      var moveRow = function (from, delta) {
+        var box = cardRef.current;
+        if (box === null || box === undefined) return;
+        var total = box.querySelectorAll("[data-row-index]").length;
+        var next = Math.min(total - 1, Math.max(0, from + delta));
+        if (next !== from) focusRow(next);
+      };
+      var edgeRow = function (which) {
+        focusRow(which === "first" ? 0 : Math.max(0, rowCountRef.current - 1));
+      };
+      // A filter that shrinks the list can leave the active index past the end; put it back
+      // to the first row after the render that shrank it.
+      react.useEffect(function () {
+        if (activeRow !== null && activeRow >= rowCountRef.current) setActiveRow(null);
+      });
       var isCreated = function (file) {
         if (file.created === "confirmed" || file.created === "inferred") return true;
         if (file.created === null) return false;
@@ -683,7 +732,21 @@ window.__ModuleLoader__.load({
         var sorted = sortFiles(list, sort);
         var limit = limits[prefix] || ROW_PAGE;
         var rows = sorted.slice(0, limit).map(function (file) {
-          return react.createElement(FileRow, { key: prefix + ":" + file.path, file: file, query: props.query, onOpen: props.onOpen, onQuick: props.onQuick, onMenu: props.onMenu });
+          var index = rowCursor;
+          rowCursor += 1;
+          return react.createElement(FileRow, {
+            key: prefix + ":" + file.path,
+            file: file,
+            index: index,
+            active: index === (activeRow === null ? 0 : activeRow),
+            query: props.query,
+            onOpen: props.onOpen,
+            onQuick: props.onQuick,
+            onMenu: props.onMenu,
+            onFocusIndex: setActiveRow,
+            onMove: moveRow,
+            onEdge: edgeRow
+          });
         });
         if (sorted.length > limit) {
           rows.push(h("div", {
@@ -714,7 +777,9 @@ window.__ModuleLoader__.load({
         onClick: function (event) { event.stopPropagation(); props.onToggleSplit(); }
       }, split ? "合并" : "拆开");
 
+      rowCountRef.current = rowCursor;
       return react.createElement("div", {
+        ref: cardRef,
         style: S.card,
         "data-card": props.sessionId,
         // Focus (keyboard or click) mounts the card, so Tab never lands on a blank body.
@@ -1750,7 +1815,11 @@ window.__ModuleLoader__.load({
             previewNotice,
             h("pre", { ref: preRef, style: S.pre, tabIndex: 0 },
               preview.status === "loading" ? "加载中…" : (preview.text || "")),
-            h("div", { style: S.modalFoot, title: preview.path }, preview.path + "　·　Esc 关闭")
+            h("div", {
+              style: Object.assign({}, S.modalFoot, { cursor: "pointer" }),
+              title: preview.path + "（点击复制完整路径）",
+              onClick: function () { copyText(preview.path, "已复制路径"); }
+            }, preview.path + "　·　Esc 关闭")
           )
         );
       };
@@ -1973,6 +2042,12 @@ window.__ModuleLoader__.load({
           var collapsed = Object.assign({}, cardOpen);
           sessions.forEach(function (session) { collapsed[session.sessionId] = false; });
           setCardOpen(collapsed);
+          // A collapsed card builds no rows, so forgetting which cards were mounted is
+          // invisible — and it stops the next "expand all" from rebuilding every row that
+          // was mounted while the cards were still 42 px tall (the prefetch band is sized
+          // for collapsed heights, so that was most of the list).
+          mountedRef.current.clear();
+          setMountTick(function (tick) { return tick + 1; });
           return;
         }
         var pending = [];
