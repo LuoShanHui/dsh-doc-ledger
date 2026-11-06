@@ -247,20 +247,42 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** Wrap the query matches of one label so a search explains itself. */
+    /**
+     * Wrap every search-term match so a multi-word query explains itself. Ranges are
+     * merged before rendering, so overlapping terms (`ord` + `order`) mark one span
+     * instead of nesting a <mark> inside another.
+     */
     function highlight(text, query) {
       var value = String(text === null || text === undefined ? "" : text);
-      if (!query) return value;
+      var terms = termsOf(query);
+      if (terms.length === 0) return value;
       var lower = value.toLowerCase();
-      var at = lower.indexOf(query);
-      if (at === -1) return value;
+      var ranges = [];
+      for (var t = 0; t < terms.length; t += 1) {
+        var term = terms[t];
+        var at = lower.indexOf(term);
+        while (at !== -1) {
+          ranges.push([at, at + term.length]);
+          at = lower.indexOf(term, at + term.length);
+        }
+      }
+      if (ranges.length === 0) return value;
+      ranges.sort(function (left, right) { return left[0] - right[0]; });
+      var merged = [];
+      for (var r = 0; r < ranges.length; r += 1) {
+        var last = merged[merged.length - 1];
+        if (last !== undefined && ranges[r][0] <= last[1]) {
+          last[1] = Math.max(last[1], ranges[r][1]);
+        } else {
+          merged.push(ranges[r]);
+        }
+      }
       var parts = [];
       var cursor = 0;
-      while (at !== -1) {
-        if (at > cursor) parts.push(value.slice(cursor, at));
-        parts.push(react.createElement("mark", { key: "h" + parts.length, style: S.mark }, value.slice(at, at + query.length)));
-        cursor = at + query.length;
-        at = lower.indexOf(query, cursor);
+      for (var m = 0; m < merged.length; m += 1) {
+        if (merged[m][0] > cursor) parts.push(value.slice(cursor, merged[m][0]));
+        parts.push(react.createElement("mark", { key: "h" + parts.length, style: S.mark }, value.slice(merged[m][0], merged[m][1])));
+        cursor = merged[m][1];
       }
       if (cursor < value.length) parts.push(value.slice(cursor));
       return parts;
@@ -373,10 +395,21 @@ window.__ModuleLoader__.load({
       return list;
     }
 
+    /** Lowercased search terms; a space separates independent terms (all of them must match). */
+    function termsOf(query) {
+      var text = String(query === null || query === undefined ? "" : query).trim().toLowerCase();
+      if (text === "") return [];
+      return text.split(/\s+/).filter(function (term) { return term !== ""; });
+    }
+
     function matches(file, query) {
-      if (query === "") return true;
+      var terms = termsOf(query);
+      if (terms.length === 0) return true;
       var haystack = (String(file.name) + " " + String(file.rel) + " " + String(file.path) + " " + String(file.category) + " " + String(file.sessionTitle || "")).toLowerCase();
-      return haystack.indexOf(query) !== -1;
+      for (var index = 0; index < terms.length; index += 1) {
+        if (haystack.indexOf(terms[index]) === -1) return false;
+      }
+      return true;
     }
 
     function mergeSessions(sessions) {
@@ -472,7 +505,7 @@ window.__ModuleLoader__.load({
       return h("input", {
         ref: props.inputRef,
         style: S.input,
-        placeholder: "搜索路径 / 类型 / 会话  (Ctrl+K)",
+        placeholder: "搜索文件 / 路径 / 类型 / 会话，空格分隔多个词  (Ctrl+K)",
         "aria-label": "搜索文档路径、类型或会话",
         value: draft,
         onChange: function (event) {
@@ -1379,6 +1412,22 @@ window.__ModuleLoader__.load({
        * way to tell two look-alike cards apart, and the jump entry appears only when this
        * DSH build exposes `uiWorkspace.openSession`.
        */
+      var sessionById = function (id) {
+        if (typeof id !== "string" || id === "") return null;
+        for (var index = 0; index < sessions.length; index += 1) {
+          if (sessions[index].sessionId === id) return sessions[index];
+        }
+        return null;
+      };
+      var childSessionsOf = function (id) {
+        var out = [];
+        for (var index = 0; index < sessions.length; index += 1) {
+          var candidate = sessions[index];
+          if (candidate.sessionId !== id && candidate.parentSessionId === id) out.push(candidate);
+        }
+        return out;
+      };
+
       var buildSessionItems = function (session) {
         var items = [
           { label: "复制会话名称", action: { kind: "copySessionName", session: session } },
@@ -1387,6 +1436,21 @@ window.__ModuleLoader__.load({
         if (canJumpToSession()) {
           items.push({ sep: true });
           items.push({ label: "跳转到这个会话", action: { kind: "jumpSession", session: session } });
+          // Subagent lineage: the parent id rides on the session payload, the children are
+          // whatever else is loaded and names this session as its parent.
+          var parent = sessionById(session.parentSessionId);
+          if (typeof session.parentSessionId === "string" && session.parentSessionId !== "") {
+            items.push({
+              label: parent !== null ? "跳到父会话：" + (parent.title || parent.sessionId) : "跳到父会话",
+              action: { kind: "jumpSession", session: parent !== null ? parent : { sessionId: session.parentSessionId, title: session.parentSessionId } }
+            });
+          }
+          childSessionsOf(session.sessionId).slice(0, 5).forEach(function (child) {
+            items.push({
+              label: "跳到子会话：" + (child.title || child.sessionId),
+              action: { kind: "jumpSession", session: child }
+            });
+          });
         }
         return items;
       };
@@ -2014,7 +2078,7 @@ window.__ModuleLoader__.load({
         cards = hasVisibleRow(merged) ? [h(SessionCard, flatProps)] : [];
       }
 
-      var emptyText = missingCurrent ? "本会话还没有文档记录" : (query === "" ? "没有文档记录" : "没有匹配「" + query + "」的文档");
+      var emptyText = missingCurrent ? "本会话还没有文档记录" : (query === "" ? "没有文档记录" : "没有同时匹配「" + query.trim().split(/\s+/).join("」「") + "」的文档");
       var placeholder = activeState.status === "error"
         ? "读取失败：" + activeState.message
         : "加载中…";

@@ -616,6 +616,8 @@ export function apply(ctx, config = {}) {
         cwd: ledger.cwd || record.cwd,
         agentPreset: ledger.agentPreset ?? record.agentPreset,
         live: record.live,
+        // Parent id, when this session is a subagent: the panel offers "跳到父会话" from it.
+        parentSessionId: typeof record.header?.parentSession === "string" ? record.header.parentSession : null,
         counts: ledger.counts,
         files: ledger.files.map((file) => slimFile(file, existsOf(file.path))),
       });
