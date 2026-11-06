@@ -1,6 +1,28 @@
 # dsh-doc-ledger
 
-按会话查看「用了哪些文档、创建/修改了哪些文档」的 DSH 插件：使用时间历史、创建/更新时间、类型分组、搜索，以及跨会话汇总视图。
+[![ci](https://github.com/LuoShanHui/dsh-doc-ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/LuoShanHui/dsh-doc-ledger/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**每个会话一份文档台账**：这个会话用过哪些文档、创建 / 修改了哪些，带时间排序、类型分组、搜索、跨会话汇总，以及两种预览入口。
+
+A DSH sidebar plugin that keeps a per-session document ledger — which documents a session read, created or modified — with time ordering, type grouping, search, two preview modes and a cross-session view. Windows only, Chinese UI.
+
+![overview](docs/overview.png)
+
+## 30 秒上手
+
+```jsonc
+// ~/.dsh/profiles/<profile>/package.json
+"dependencies": {
+  "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.2.0"
+}
+```
+
+1. 加上面这行依赖（`#v0.2.0` 固定版本；想跟最新开发版就写 `github:LuoShanHui/dsh-doc-ledger`）；
+2. 用运行时自带的 pnpm 安装，复用已有 store（完整命令见下文「安装（插件形态）」）；
+3. 在 `cordis.patch.yml` 末尾 insert 一行 `doc-ledger`（同样在那一节），刷新页面 → 右侧栏出现「文档台账」。
+
+要求：DSH `>=0.2.0-rc.1 <0.3.0-0`、Windows。装不上或想改代码时看「安装（插件形态）」里的本地目录方式，行为边界看「已知限制」。
 
 > 实验性：依赖宿主内部 API（`sessionQuery`、`webServer` 前缀路由、bundle patch 注入），
 > 只在 DSH `>=0.2.0-rc.1 <0.3.0-0` 上验证过；宿主改接口时这个插件需要跟着改。
@@ -322,14 +344,20 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
 `pnpm-workspace.yaml`），DeepSeek Harness 启动时会跑 install，**把没写进 `package.json` 依赖的目录直接清掉**。
 所以不要把包直接 `cp` 进 `node_modules/`：下次启动它会消失。
 
-1. 把本仓库放到一个固定位置，例如 `<path>/dsh-doc-ledger`；
-2. 在 `~/.dsh/profiles/<profile>/package.json` 的 `dependencies` 里加：
+1. 在 `~/.dsh/profiles/<profile>/package.json` 的 `dependencies` 里加一行 GitHub 托管依赖
+   （pnpm 会直接拉仓库，**不需要先 clone**；`#v0.2.0` 固定版本，省掉 tag 就跟开发版）：
+
+   ```json
+   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.2.0"
+   ```
+
+   想改代码或内网环境，就改成指向本地目录：
 
    ```json
    "dsh-doc-ledger": "file:<path>/dsh-doc-ledger"
    ```
 
-3. 用运行时自带的 pnpm 安装（`<runtime>` 换成你的运行时目录；**复用已有的 store**，
+2. 用运行时自带的 pnpm 安装（`<runtime>` 换成你的运行时目录；**复用已有的 store**，
    否则 pnpm 会提示要清空整个 `node_modules`）：
 
    ```powershell
@@ -338,7 +366,7 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
      --config.confirmModulesPurge=false
    ```
 
-4. 在 `~/.dsh/profiles/<profile>/cordis.patch.yml` 末尾加：
+3. 在 `~/.dsh/profiles/<profile>/cordis.patch.yml` 末尾加：
 
    ```yaml
    # dsh-doc-ledger: per-session document ledger sidebar tab
@@ -350,7 +378,7 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
            debug: false
    ```
 
-安装完再改 `cordis.patch.yml`（哪怕只加一行注释）就会触发热重载，不用重启客户端。
+4. 刷新页面（客户端 bundle 需要重新注入），右侧 Sidebar 出现「文档台账」。
 
 验证：
 
