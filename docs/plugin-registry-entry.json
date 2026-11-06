@@ -1,0 +1,41 @@
+{
+  "name": "dsh-doc-ledger",
+  "title": {
+    "en": "Doc Ledger",
+    "zh": "文档台账"
+  },
+  "description": {
+    "en": "Per-session document ledger in the DSH sidebar: which documents a session read, created or modified, with time ordering, type grouping, search, two preview modes and a cross-session view.",
+    "zh": "在 DSH 右侧栏按会话查看文档台账：用过哪些文档、创建/修改了哪些，带时间排序、类型分组、搜索、两种预览与跨会话汇总。"
+  },
+  "icon": "icons/dsh-doc-ledger.svg",
+  "author": "LuoShanHui",
+  "homepage": "https://github.com/LuoShanHui/dsh-doc-ledger#readme",
+  "repository": {
+    "url": "https://github.com/LuoShanHui/dsh-doc-ledger"
+  },
+  "metadata": {
+    "category": "documents",
+    "keywords": [
+      "documents",
+      "ledger",
+      "session",
+      "sidebar",
+      "preview",
+      "windows"
+    ],
+    "labels": [],
+    "sortKeys": {}
+  },
+  "versions": [
+    {
+      "version": "0.2.0",
+      "publishTimestamp": 1793953989,
+      "source": {
+        "type": "git",
+        "url": "https://github.com/LuoShanHui/dsh-doc-ledger",
+        "commit": "ff122d8418e79d3b695c3f5628872be485f247fd"
+      }
+    }
+  ]
+}
