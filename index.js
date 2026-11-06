@@ -33,6 +33,16 @@ const execFileAsync = promisify(execFile);
 const MAX_PREVIEW_BYTES = 200 * 1024;
 const BINARY_SNIFF = /[\u0000-\u0008\u000E-\u001F]/;
 const LIVE_TTL_MS = 5000;
+/**
+ * Minimum interval between two full replays of the *same live* session.
+ *
+ * A working session appends to its log on every streamed token, so the `size:mtime`
+ * fingerprint changes on every poll and the exact-stamp cache never hits: each 8 s poll
+ * re-read and re-folded the whole log (measured 1 067 ms on a long session). Silent polls
+ * inside this window are served from the previous fold; `force=1` and `timing=1` bypass it,
+ * and the panel's 刷新 button sends `force=1`.
+ */
+const LIVE_REPLAY_FLOOR_MS = 15 * 1000;
 const COLD_TTL_MS = 300000;
 /** Reuse one whole snapshot for this long; 刷新 sends force=1 to bypass it. */
 const SNAPSHOT_TTL_MS = 3000;
@@ -82,6 +92,29 @@ function slimFile(file, exists) {
   };
 }
 
+/**
+ * Whether a cached ledger may be reused instead of folding the log again, ignoring the
+ * exact-stamp case (which `replay` handles itself, because it also refreshes recency).
+ *
+ * Two reasons to reuse:
+ * - no stamp available (the session directory layout is not the expected one): fall back to
+ *   the adaptive TTL;
+ * - a live session inside the replay floor: the log is growing while the agent streams, and a
+ *   silent poll should cost a cache read rather than a full replay.
+ *
+ * Exported so `tools/cache-check.mjs` can pin these decisions without a live host.
+ */
+export function ledgerReusable(hit, options = {}) {
+  if (hit === undefined || hit === null) return false;
+  const live = options.live === true;
+  const stamp = options.stamp ?? null;
+  const floor = Number.isFinite(options.floor) ? options.floor : 0;
+  const now = Number.isFinite(options.now) ? options.now : Date.now();
+  const age = now - (hit.at ?? 0);
+  if (stamp === null && hit.live === live && hit.ttl !== undefined && age < hit.ttl) return true;
+  if (floor > 0 && live === true && age < floor) return true;
+  return false;
+}
 export function apply(ctx, config = {}) {
   const maxSessions = Number(config.maxSessions ?? 40);
   const base = typeof config.basePath === "string" ? config.basePath.replace(/\/$/, "") : "/doc-ledger";
@@ -256,10 +289,12 @@ export function apply(ctx, config = {}) {
     return exists;
   }
 
+
   async function replay(query, record, options = {}) {
     const sessionId = record.id;
     const live = record.live;
     const stamp = options.stamp ?? null;
+    const floor = Number.isFinite(options.floor) ? options.floor : 0;
     const hit = cache.get(sessionId);
     // Exact invalidation: the cached ledger is reused while the log bytes are the same,
     // no matter how old the entry is. Closed sessions therefore never replay twice.
@@ -267,9 +302,7 @@ export function apply(ctx, config = {}) {
       hit.at = Date.now();
       return hit.ledger;
     }
-    if (hit !== undefined && stamp === null && hit.live === live && hit.ttl !== undefined && Date.now() - hit.at < hit.ttl) {
-      return hit.ledger;
-    }
+    if (ledgerReusable(hit, { live, stamp, floor })) return hit.ledger;
     const ledger = buildLedger(readEvents(await query.readSession(sessionId)), { header: record.header });
     const fingerprint = ledgerFingerprint(ledger);
     const unchanged = hit !== undefined && hit.fingerprint === fingerprint.key;
@@ -564,7 +597,7 @@ export function apply(ctx, config = {}) {
     const logs = sessionLogIndex();
     const ledgers = await mapPool(wanted, REPLAY_CONCURRENCY, async (record) => {
       try {
-        return await replay(query, record, { fresh: record.id === preferredId, stamp: logs?.get(record.id) ?? null });
+        return await replay(query, record, { fresh: record.id === preferredId, stamp: logs?.get(record.id) ?? null, floor: options.floor ?? 0 });
       } catch {
         return null;
       }
@@ -1264,7 +1297,9 @@ export function apply(ctx, config = {}) {
         if (hit !== undefined && Date.now() - hit.at < SNAPSHOT_TTL_MS) data = hit.payload;
       }
       if (data === null) {
-        data = await snapshot(session, { scope, timing, limit });
+        // Only a silent poll gets the floor; 刷新 (force=1) and diagnostics (timing=1) replay.
+        const floor = force || timing ? 0 : LIVE_REPLAY_FLOOR_MS;
+        data = await snapshot(session, { scope, timing, limit, floor });
         if (!timing) snapshotCache.set(key, { at: Date.now(), payload: data });
       }
       sendJson(res, 200, { ok: true, data });

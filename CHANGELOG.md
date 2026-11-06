@@ -9,6 +9,10 @@
 
 - `tools/route-check.mjs`：宿主路由与安全回归（14 项，真 HTTP server 打到真实 handler），
   并入 `npm test` 与 CI。
+- `tools/cache-check.mjs`：缓存决策回归（8 项：精确 stamp / TTL 回退 / 闭包限制），
+  `ledgerReusable()` 从 `replay()` 里提出来导出，便于脱离宿主测试。
+- **live 会话重放下限**（`LIVE_REPLAY_FLOOR_MS = 15 s`）：静默轮询在 15 秒内直接复用上一次折叠结果，
+  `force=1`（刷新按钮）与 `timing=1` 仍然全量重放。
 - `.github/ISSUE_TEMPLATE/bug.yml`：问题模板要求填 DSH 版本、平台与 `timings`。
 - `SECURITY.md`、`.editorconfig`、`.github/dependabot.yml`（自动升级 Actions 版本）。
 - `docs/plugin-registry-entry.json` + `docs/market-submission.md`：插件市场索引的提交素材与步骤。
