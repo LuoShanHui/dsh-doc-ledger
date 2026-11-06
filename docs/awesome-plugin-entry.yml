@@ -1,0 +1,17 @@
+# 提交到 awesome-dsh-plugin 的条目。
+#
+# 用法：把这个文件复制成对方仓库的 data/plugins/LuoShanHui__dsh-doc-ledger.yml，
+# 然后提交一个只加这一个文件的 PR。不要手工编辑那边的 README（是脚本生成的）。
+#
+# 提 PR 之前确认：
+#   - 仓库创建满 1 天（CI 自动检查）        <- 2026-11-07 16:20（北京时间）之后
+#   - package.json 里有 dsh.bundle               <- 有
+#   - 仓库带 dsh-plugin topic                    <- 有
+#   - icon 必须是 GitHub 托管的位图（SVG 会被拒）  <- docs/icon-512.png
+url: https://github.com/LuoShanHui/dsh-doc-ledger
+name: LuoShanHui/dsh-doc-ledger
+category: docs
+description:
+  en: "Per-session document ledger in the DSH sidebar: which documents a session read, created or modified, with time ordering, type grouping, search, two preview modes and a cross-session view."
+  zh: "在 DSH 右侧栏按会话查看文档台账：用过哪些文档、创建/修改了哪些，带时间排序、类型分组、搜索与两种预览。"
+icon: https://raw.githubusercontent.com/LuoShanHui/dsh-doc-ledger/main/docs/icon-512.png

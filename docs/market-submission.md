@@ -1,39 +1,49 @@
-# 提交到插件市场索引
+# 提交到插件市场
 
-DSH 的 `plugin_market` 会读若干公开索引。它们的 schema 不完全一样，分两类：
+## 主路径：`awesome-dsh-plugin`（社区列表，商店数据源）
 
-| 索引 | 条目数 | version.source | 本插件能否直接进 |
-|---|---|---|---|
-| `vlln/plugin-registry`（raw.githubusercontent.com/vlln/plugin-registry） | 少（`plugins[]`） | `{ "type": "git", "url", "commit" }` | ✅ 不用发 npm |
-| `dsh-plugin-catalog`（cdn.jsdelivr.net/npm/dsh-plugin-catalog） | 4700+ | `{ "type": "npm" }` | ❌ 先 `npm publish` |
-| `dsh.store` / `Open Plugin Market` / `Bruce's Plugin Picks` | — | 未核实，多半也要求 npm | 视索引而定 |
+`https://github.com/awesome-dsh-plugin/awesome-dsh-plugin` 是社区维护的收录列表，多个市场（含
+`dsh-plugin-catalog`、`awesome-dsh-plugin.com`、`dsh-market` 详情页）都从它取数。
+提交方式是**一个 YAML 文件一个 PR**，不改 README（README 由脚本生成）：
 
-## 方案 A：`vlln/plugin-registry`（推荐先做，不需要 npm）
+1. fork `awesome-dsh-plugin/awesome-dsh-plugin`；
+2. 新增 `data/plugins/LuoShanHui__dsh-doc-ledger.yml`，内容直接用
+   [`docs/awesome-plugin-entry.yml`](awesome-plugin-entry.yml)；
+3. 提 PR（一个 PR 最多 3 条）。
 
-1. fork `https://github.com/vlln/plugin-registry`；
-2. 把 `docs/icon.svg` 拷成 `icons/dsh-doc-ledger.svg`；
-3. 在 `index.json` 的 `plugins[]` 末尾追加 `docs/plugin-registry-entry.json` 的内容
-   （已经按它的字段写好了：`name/title/description/icon/author/homepage/repository/metadata/versions`）；
-4. `versions[0].source.commit` 是 `ff122d8418e79d3b695c3f5628872be485f247fd`（= `v0.2.0` 那个提交），
-   发新版本时改成新 tag 的提交；
-5. 提 PR。合并后，在 DSH 的插件市场里就能搜到，安装走 `github:LuoShanHui/dsh-doc-ledger#v0.2.0`。
+它 CI 会依次查：
 
-## 方案 B：npm 系索引（`dsh-plugin-catalog` 4700+ 条）
-
-前置动作（一次性）：
-
-1. `package.json`：`"private": true` → **删掉或改成 `false`**；
-2. `"files"` 里**加上 `"docs"`** —— 否则 npm 包不含截图，README 里七张图会全裂
-   （现在 `npm pack --dry-run` 只打包 14 个文件，不含 `docs`）；
-3. `npm login`（账号需开 2FA）→ `npm publish --access public`；
-4. 按该索引的模板提 PR/issue 加入口，`versions[].source.type` 用 `"npm"`。
-
-要不要发 npm 是产品决定：发了能被 4700+ 条目录搜到，但从此要维护 npm 版本号与 tag 一致。
-
-## 已备好的素材
-
-| 文件 | 用途 |
+| 检查 | 本仓库状态 |
 |---|---|
-| `docs/plugin-registry-entry.json` | 可直接粘贴的索引条目（git source，指向 v0.2.0） |
-| `docs/icon.svg` | 索引要求的图标（64×64，浅/深色都可读） |
-| `SECURITY.md` | 报告漏洞的私密通道说明，市场审核也看这个 |
+| `dsh.bundle` manifest（只声明 `dsh.client` 会被拒） | ✅ `dsh.bundle.patch: ./cordis.patch.yml` |
+| 仓库创建满 **1 天** | ⏳ 仓库创建于 2026-11-06 16:20（北京），**11-07 16:20 之后**才能提 |
+| `awesome-lint` + README 能重新生成 | ✅ 双语描述、分类合法 |
+| `icon` 必须是 **GitHub 托管的位图**（SVG 拒收） | ✅ `docs/icon-512.png` |
+| 仓库有 `dsh-plugin` topic | ✅ 已有 |
+| 描述属实、不带营销词 | ✅ 只写了功能 |
+
+合并后网站自动重建，不用再动别的。想换截图不用来提 PR：本仓库根目录的
+`screenshots.json` 声明了展示用的 7 张图，市场下次构建自动读。
+
+## 可选：发布到 npm
+
+列表收录**不依赖** npm；不发也能装（`github:` spec 已实测 4.3 s 装好）。发 npm 的收益：
+市场能显示下载量、安装跳过源码构建的授权步骤。
+
+一次性动作：
+
+1. `package.json`：删掉 `"private": true`（或改 `false`）；
+2. `"files"` 里**加 `"docs"`** —— 否则 npm 包里没有截图，README 七张图全裂
+   （现在 `npm pack --dry-run` 是 14 个文件，不含 `docs`）；
+3. `npm login`（账号需开 2FA）→ `npm publish --access public`；
+4. 校验：`npm view dsh-doc-ledger version` 应回 `0.2.0`。
+
+包名 `dsh-doc-ledger` 目前**未被占用**（2026-11-06 查 registry 返回 404）。
+`repository` 字段已经指向本仓库，发布后市场会自动把包和仓库关联。
+
+## 不是投稿入口的两个地方
+
+| 看起来像 | 实际 |
+|---|---|
+| `vlln/plugin-registry` | 是 **vlln 自己的插件清单**（`plugins/*.json` + 脚本生成 `index.json`），不是公共目录，给别人的插件提 PR 没有意义 |
+| `dsh-plugin-catalog`（4704 条） | 从上面的 awesome 列表 / npm 生成，全量 `source.type: npm`；它本身不收 YAML |
