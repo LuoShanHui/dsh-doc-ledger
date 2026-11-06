@@ -575,8 +575,9 @@ lib/preview-text.js  预览解码：BOM / UTF-8 / 按行 GB18030 回退（纯函
 tools/report.mjs     静态报告生成器（复用同一引擎）
 tools/ledger-scan-check.mjs    引擎回归：7 个 PTC 写文件场景
 tools/preview-decode-check.mjs 解码回归：10 个编码场景
+tools/route-check.mjs          宿主路由与安全回归：14 项（同源 403、台账白名单、POST-only、400/404/405）
 ```
 
-`npm test` 跑这两个回归脚本（`node tools/ledger-scan-check.mjs && node tools/preview-decode-check.mjs`）。
+`npm test` 依次跑三支回归脚本（引擎 7 + 解码 10 + 路由/安全 14 = **31 项断言**，无外部依赖），CI 里三套 Node 各跑一遍。
 
 引擎不依赖任何 `@deepseek-ai/*` 包，host 与 client 都只用 Node 内置模块和 `ctx` 服务；客户端 bundle 是手写的，不需要打包器。
