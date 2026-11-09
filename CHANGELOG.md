@@ -5,7 +5,10 @@
 
 ## [Unreleased]
 
-_（暂无）_
+### Changed
+
+- 准备 npm 分发：去掉 `private`、`files` 增补 `CHANGELOG.md` / `SECURITY.md` / `docs/overview.png` / `docs/i18n.md`，
+  加 `publishConfig.access = public`（代码与 0.3.0 一致，只影响打包内容）。
 
 ## [0.3.0] - 2026-11-09
 

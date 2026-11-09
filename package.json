@@ -1,7 +1,6 @@
 {
   "name": "dsh-doc-ledger",
   "version": "0.3.0",
-  "private": true,
   "type": "module",
   "description": "Per-session document ledger: which documents a session used, created or modified — with time ordering, type grouping, search, preview and a cross-session summary.",
   "license": "MIT",
@@ -50,8 +49,15 @@
     "tools",
     "cordis.patch.yml",
     "README.md",
-    "LICENSE"
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "LICENSE",
+    "docs/overview.png",
+    "docs/i18n.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
