@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- **已发布到 npm**：`dsh-doc-ledger@0.3.0`（<https://www.npmjs.com/package/dsh-doc-ledger>），
+  装法与 GitHub tag 等价，少一次 clone；README 补了 npm 徽章与 `"dsh-doc-ledger": "0.3.0"` 写法。
+
 ### Changed
 
 - 准备 npm 分发：去掉 `private`、`files` 增补 `CHANGELOG.md` / `SECURITY.md` / `docs/overview.png` / `docs/i18n.md`，

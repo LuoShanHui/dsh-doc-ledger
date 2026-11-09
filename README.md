@@ -1,6 +1,7 @@
 # dsh-doc-ledger
 
 [![ci](https://github.com/LuoShanHui/dsh-doc-ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/LuoShanHui/dsh-doc-ledger/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/dsh-doc-ledger.svg)](https://www.npmjs.com/package/dsh-doc-ledger)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **每个会话一份文档台账**：这个会话用过哪些文档、创建 / 修改了哪些，带时间排序、类型分组、搜索、跨会话汇总，以及两种预览入口。
@@ -18,7 +19,8 @@ A DSH sidebar plugin that keeps a per-session document ledger — which document
 }
 ```
 
-1. 加上面这行依赖（`#v0.3.0` 固定版本；想跟最新开发版就写 `github:LuoShanHui/dsh-doc-ledger`）；
+1. 加上面这行依赖（`#v0.3.0` 固定版本；想跟最新开发版就写 `github:LuoShanHui/dsh-doc-ledger`）。
+   也发布了 npm 包，可以换成 `"dsh-doc-ledger": "0.3.0"`；
 2. 用运行时自带的 pnpm 安装，复用已有 store（完整命令见下文「安装（插件形态）」）；
 3. 在 `cordis.patch.yml` 末尾 insert 一行 `doc-ledger`（同样在那一节），刷新页面 → 右侧栏出现「文档台账」。
 
@@ -360,6 +362,13 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
 
    ```json
    "dsh-doc-ledger": "file:<path>/dsh-doc-ledger"
+   ```
+
+   也可以走 npm（`https://www.npmjs.com/package/dsh-doc-ledger`，与 GitHub tag 同一份代码，
+   少了 clone 仓库这一步；内网或镜像源上可能还没同步）：
+
+   ```json
+   "dsh-doc-ledger": "0.3.0"
    ```
 
 2. 用运行时自带的 pnpm 安装（`<runtime>` 换成你的运行时目录；**复用已有的 store**，
