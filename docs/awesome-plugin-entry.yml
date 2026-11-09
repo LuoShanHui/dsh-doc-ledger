@@ -1,13 +1,10 @@
-# 提交到 awesome-dsh-plugin 的条目。
+# 提交到 awesome-dsh-plugin 时用的条目。
 #
-# 用法：把这个文件复制成对方仓库的 data/plugins/LuoShanHui__dsh-doc-ledger.yml，
-# 然后提交一个只加这一个文件的 PR。不要手工编辑那边的 README（是脚本生成的）。
+# 用法：复制成对方仓库的 data/plugins/LuoShanHui__dsh-doc-ledger.yml，提一个只加这一个文件的 PR。
+# 注意：**不要写 versions 字段** —— 那个列表用脚本探测 git/npm 自动生成，手写会被校验拒绝。
 #
-# 提 PR 之前确认：
-#   - 仓库创建满 1 天（CI 自动检查）        <- 2026-11-07 16:20（北京时间）之后
-#   - package.json 里有 dsh.bundle               <- 有
-#   - 仓库带 dsh-plugin topic                    <- 有
-#   - icon 必须是 GitHub 托管的位图（SVG 会被拒）  <- docs/icon-512.png
+# 提 PR 前确认：仓库满 1 天、package.json 有 dsh.bundle、仓库带 dsh-plugin topic、
+# icon 是 GitHub 托管位图（SVG 会被拒）。
 url: https://github.com/LuoShanHui/dsh-doc-ledger
 name: LuoShanHui/dsh-doc-ledger
 category: docs

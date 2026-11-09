@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+_（暂无）_
+
+## [0.3.0] - 2026-11-09
+
 ### Added
 
 - `tools/route-check.mjs`：宿主路由与安全回归（14 项，真 HTTP server 打到真实 handler），
@@ -30,6 +34,15 @@
 - `package.json` 补 `author` / `repository` / `homepage` / `bugs`；`check` 覆盖全部 9 个源文件。
 - `LICENSE` 版权人改为 LuoShanHui。
 - 新增 `.gitattributes`：`* text=auto eol=lf`，二进制不入行尾转换。
+
+### Fixed
+
+- 窄窗口（<640 px）下快速查看弹窗的分裂按钮只保留程序图标，文件名不再被挤成三四个字。
+- roving tabindex 只统计真正渲染出来的行：此前第一段折叠时整张卡没有可 Tab 的行，方向键也会跳错行。
+
+### Dependencies
+
+- `actions/checkout` 4 → 7、`actions/setup-node` 4 → 7（dependabot）。
 
 ## [0.2.0] - 2026-11-06
 

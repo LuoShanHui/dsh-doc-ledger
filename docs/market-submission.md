@@ -36,7 +36,7 @@
 2. `"files"` 里**加 `"docs"`** —— 否则 npm 包里没有截图，README 七张图全裂
    （现在 `npm pack --dry-run` 是 14 个文件，不含 `docs`）；
 3. `npm login`（账号需开 2FA）→ `npm publish --access public`；
-4. 校验：`npm view dsh-doc-ledger version` 应回 `0.2.0`。
+4. 校验：`npm view dsh-doc-ledger version` 应回 `0.3.0`。
 
 包名 `dsh-doc-ledger` 目前**未被占用**（2026-11-06 查 registry 返回 404）。
 `repository` 字段已经指向本仓库，发布后市场会自动把包和仓库关联。
