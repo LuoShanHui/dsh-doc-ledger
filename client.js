@@ -1070,6 +1070,21 @@ window.__ModuleLoader__.load({
       var autoRef = react.useRef(autoRefresh);
       autoRef.current = autoRefresh;
 
+      // The quick-look dialog is `min(900px, 100%)` wide: in a narrow window the head's
+      // buttons squeeze the file name down to a few characters, so below ~640 px the split
+      // button drops its label and keeps only the program icon (its title stays).
+      var narrowState = react.useState(function () {
+        return typeof window !== "undefined" && window.innerWidth < 640;
+      });
+      var narrow = narrowState[0];
+      var setNarrow = narrowState[1];
+      react.useEffect(function () {
+        if (typeof window === "undefined") return undefined;
+        var onResize = function () { setNarrow(window.innerWidth < 640); };
+        window.addEventListener("resize", onResize);
+        return function () { window.removeEventListener("resize", onResize); };
+      }, []);
+
       // Active type chips: an empty object means "no type filter".
       var typeSelState = react.useState(function () {
         var saved = loadPref("typeFilter", []);
@@ -1752,10 +1767,11 @@ window.__ModuleLoader__.load({
                   h("button", {
                     style: S.splitMain,
                     title: "用 " + defaultLabel + " 打开",
+                    "aria-label": "用 " + defaultLabel + " 打开",
                     onClick: function () { act({ kind: "open", file: preview, app: "" }); }
                   },
                     defaultApp !== null ? h(AppIcon, { label: defaultApp.label, exe: defaultApp.exe }) : null,
-                    h("span", null, "用 " + defaultLabel + " 打开")
+                    narrow === true ? null : h("span", null, "用 " + defaultLabel + " 打开")
                   ),
                   h("button", {
                     style: S.splitArrow,
