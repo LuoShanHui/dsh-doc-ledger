@@ -17,12 +17,12 @@ A DSH sidebar plugin that keeps a per-session document ledger — which document
 ```jsonc
 // ~/.dsh/profiles/<profile>/package.json
 "dependencies": {
-  "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.3.0"
+  "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.4.0"
 }
 ```
 
-1. Add the dependency line above (`#v0.3.0` pins the version; drop the tag to track the latest commit).
-   It is also published to npm, so `"dsh-doc-ledger": "0.3.0"` works too.
+1. Add the dependency line above (`#v0.4.0` pins the version; drop the tag to track the latest commit).
+   It is also published to npm, so `"dsh-doc-ledger": "0.4.0"` works too.
 2. Install with the pnpm bundled in your DSH runtime, reusing an existing store (full command under
    [Installation](#installation-as-a-plugin) below).
 3. Append one `doc-ledger` row to `cordis.patch.yml` (also in that section), reload the page, and the
@@ -435,10 +435,10 @@ start.
 
 1. Add one GitHub-hosted dependency to the `dependencies` of
    `~/.dsh/profiles/<profile>/package.json` (pnpm clones the repo itself, **no local clone needed**;
-   `#v0.3.0` pins the version, dropping the tag tracks the development head):
+   `#v0.4.0` pins the version, dropping the tag tracks the development head):
 
    ```json
-   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.3.0"
+   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.4.0"
    ```
 
    To modify the code or work offline, point it at a local directory instead:
@@ -451,7 +451,7 @@ start.
    tag, without cloning — a private mirror may lag behind):
 
    ```json
-   "dsh-doc-ledger": "0.3.0"
+   "dsh-doc-ledger": "0.4.0"
    ```
 
 2. Install with the pnpm bundled in your runtime (`<runtime>` is your runtime directory; **reuse an existing
@@ -670,10 +670,12 @@ tools/harness/                 UI verification: real client.js + fake ctx + synt
 tools/route-check.mjs          host route and security regression: 14 assertions
 tools/cache-check.mjs          cache decision regression: 8 assertions
 tools/client-core-check.mjs    client pure functions: 36 assertions
+tools/readme-check.mjs         bilingual README parity: section counts and order, links, anchors
+tools/release-notes-check.mjs  release-note parity: English twin, structure, tag-pinned images
 ```
 
 `npm test` runs six regression scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 8 +
-client 36 + i18n's 159-key integrity check + README parity 7 = **82 checks**, no external
+client 36 + i18n's 159-key integrity check + README parity 7 + release notes 9 = **91 checks**, no external
 dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to prove that the
 committed `client.js` matches `src/client/*.js` byte for byte.
 

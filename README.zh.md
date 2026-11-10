@@ -15,12 +15,12 @@
 ```jsonc
 // ~/.dsh/profiles/<profile>/package.json
 "dependencies": {
-  "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.3.0"
+  "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.4.0"
 }
 ```
 
-1. 加上面这行依赖（`#v0.3.0` 固定版本；想跟最新开发版就写 `github:LuoShanHui/dsh-doc-ledger`）。
-   也发布了 npm 包，可以换成 `"dsh-doc-ledger": "0.3.0"`；
+1. 加上面这行依赖（`#v0.4.0` 固定版本；想跟最新开发版就写 `github:LuoShanHui/dsh-doc-ledger`）。
+   也发布了 npm 包，可以换成 `"dsh-doc-ledger": "0.4.0"`；
 2. 用运行时自带的 pnpm 安装，复用已有 store（完整命令见下文「安装（插件形态）」）；
 3. 在 `cordis.patch.yml` 末尾 insert 一行 `doc-ledger`（同样在那一节），刷新页面 → 右侧栏出现「文档台账」。
 
@@ -366,10 +366,10 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
 所以不要把包直接 `cp` 进 `node_modules/`：下次启动它会消失。
 
 1. 在 `~/.dsh/profiles/<profile>/package.json` 的 `dependencies` 里加一行 GitHub 托管依赖
-   （pnpm 会直接拉仓库，**不需要先 clone**；`#v0.3.0` 固定版本，省掉 tag 就跟开发版）：
+   （pnpm 会直接拉仓库，**不需要先 clone**；`#v0.4.0` 固定版本，省掉 tag 就跟开发版）：
 
    ```json
-   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.3.0"
+   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.4.0"
    ```
 
    想改代码或内网环境，就改成指向本地目录：
@@ -382,7 +382,7 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
    少了 clone 仓库这一步；内网或镜像源上可能还没同步）：
 
    ```json
-   "dsh-doc-ledger": "0.3.0"
+   "dsh-doc-ledger": "0.4.0"
    ```
 
 2. 用运行时自带的 pnpm 安装（`<runtime>` 换成你的运行时目录；**复用已有的 store**，
@@ -640,10 +640,12 @@ tools/preview-decode-check.mjs 解码回归：10 个编码场景
 tools/harness/                  UI 验证工具：真 client.js + 假 ctx + 合成台账（npm run harness）
 tools/route-check.mjs          宿主路由与安全回归：14 项（同源 403、台账白名单、POST-only、400/404/405）
 tools/cache-check.mjs          缓存决策回归：8 项（精确 stamp、TTL 回退、live 重放下限）
-tools/client-core-check.mjs    客户端纯函数回归：32 项（分词 AND、排序、合并、格式化、高亮、资源地址）
+tools/client-core-check.mjs    客户端纯函数回归：36 项（分词 AND、排序、合并、格式化、高亮、复数、资源地址）
+tools/readme-check.mjs         双语 README 一致性：小节数量与顺序、互链、锚点
+tools/release-notes-check.mjs  Release notes 一致性：英文孪生、结构、配图钉 tag
 ```
 
-`npm test` 依次跑七支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 + 客户端 36 + i18n 字典完整性 + 双语 README 一致性 7 = **82 项**，无外部依赖），CI 里三套 Node 各跑一遍。
+`npm test` 依次跑七支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 + 客户端 36 + i18n 字典完整性 + 双语 README 一致性 7 + Release notes 一致性 9 = **91 项**，无外部依赖），CI 里三套 Node 各跑一遍。
 CI 还会执行 `npm run check:client`，确保提交的 `client.js` 与 `src/client/*.js` 逐字节一致。
 
 面板本身的 UI 变更用 `npm run harness` 在浏览器里看：它会用真实的 `client.js` + 假 cordis 上下文 + 合成台账起一个本地页，

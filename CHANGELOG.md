@@ -7,6 +7,14 @@
 
 ### Added
 
+- `docs/release-v0.4.0.md` / `.en.md`：本版 Release 正文双语版；
+  `tools/release-notes-check.mjs`（并入 `npm test`）断言每个 release note 都有英文孪生、
+  两版 `##` / `###` 数量一致、配图 URL 钉在同一 tag、英文版无中文残留。
+
+## [0.4.0] - 2026-11-10
+
+### Added
+
 - **已发布到 npm**：`dsh-doc-ledger@0.3.0`（<https://www.npmjs.com/package/dsh-doc-ledger>），
   装法与 GitHub tag 等价，少一次 clone；README 补了 npm 徽章与 `"dsh-doc-ledger": "0.3.0"` 写法。
 
