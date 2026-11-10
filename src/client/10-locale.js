@@ -34,8 +34,9 @@
       "row.missingTag": "已删除",
       "row.read": "读",
       "row.writeSlash": "/写",
-      "row.createdAt": "建 ",
-      "row.updatedAt": " · 改 ",
+      "row.onlyCreated": "建 {time}",
+      "row.onlyUpdated": "改 {time}",
+      "row.onlyUsed": "{time}",
 
       // section heads / chips
       "section.collapse": "收起这个分区",
@@ -247,8 +248,9 @@
       "row.missingTag": "Deleted",
       "row.read": "R",
       "row.writeSlash": "/W",
-      "row.createdAt": "Created ",
-      "row.updatedAt": " · Updated ",
+      "row.onlyCreated": "created {time}",
+      "row.onlyUpdated": "updated {time}",
+      "row.onlyUsed": "{time}",
 
       "section.collapse": "Collapse this section",
       "section.expand": "Expand this section",

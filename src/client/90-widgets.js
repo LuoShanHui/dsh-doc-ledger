@@ -133,12 +133,33 @@
         file.sessionTitle ? react.createElement("span", { style: S.tag, title: file.sessionId }, file.sessionTitle) : null,
         react.createElement("span", { style: S.dir }, highlight(shortPath(file.rel, 34), props.query)),
         react.createElement("span", { style: S.io }, t("row.read") + (file.reads || 0) + t("row.writeSlash") + (file.writes || 0)),
-        react.createElement("span", { style: S.times }, t("row.createdAt") + fmtTime(file.createdAt) + t("row.updatedAt") + fmtTime(file.updatedAt))
+        react.createElement("span", { style: S.times }, rowTime(file, props.mode))
       );
     }, function (prev, next) {
       return prev.file === next.file && prev.query === next.query
-        && prev.active === next.active && prev.index === next.index;
+        && prev.active === next.active && prev.index === next.index
+        && prev.mode === next.mode;
     });
+
+    /**
+     * One time per row, not two.
+     *
+     * A row used to print "created 11-06 16:00 · updated 11-06 16:30" no matter which
+     * section it sat in. The two stamps are usually minutes apart — and in the "Used"
+     * section neither is what the reader is scanning for. The section already tells you
+     * which dimension matters, so the row echoes it: last-used in Used, updated in
+     * Modified, created in Created. That halves the widest cell and removes the wrap
+     * that pushed rows to two lines.
+     */
+    function rowTime(file, mode) {
+      if (mode === "created") {
+        return file.createdAt ? t("row.onlyCreated", { time: fmtTime(file.createdAt) }) : "";
+      }
+      if (mode === "modified") {
+        return file.updatedAt ? t("row.onlyUpdated", { time: fmtTime(file.updatedAt) }) : "";
+      }
+      return t("row.onlyUsed", { time: fmtTime(file.lastUsedAt || file.updatedAt) });
+    }
 
     /** A visible keyboard focus ring, since inline styles cannot use :focus-visible. */
     function ringOn(event) {

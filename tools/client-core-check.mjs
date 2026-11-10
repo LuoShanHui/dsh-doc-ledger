@@ -18,7 +18,6 @@ import vm from "node:vm";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const dir = join(root, "src", "client");
 const SOURCES = ["05-runtime.js", "10-locale.js", "40-format.js", "50-host.js", "60-search.js", "80-core.js"];
-
 // Minimal stand-ins for what the factory closure supplies.
 const reactStub = {
   createElement: (type, props, ...children) => ({ type, props: props ?? {}, children })

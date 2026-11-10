@@ -136,6 +136,9 @@
         // arrays too, and counting those would offset every index past the end of the DOM).
         var reachable = open !== false && rendered !== false;
         var sort = prefix === "u" ? props.usedSort : (prefix === "ms" ? props.modifiedSort : props.createdSort);
+        // Which timestamp this section's rows show (see rowTime): the section already says
+        // which dimension matters, so a row does not repeat both stamps.
+        var mode = prefix === "u" ? "used" : (prefix === "ms" ? "modified" : "created");
         var sorted = sortFiles(list, sort);
         var limit = limits[prefix] || ROW_PAGE;
         var rows = sorted.slice(0, limit).map(function (file) {
@@ -145,6 +148,7 @@
             key: prefix + ":" + file.path,
             file: file,
             index: index,
+            mode: mode,
             active: reachable === true && index === (activeRow === null ? 0 : activeRow),
             query: props.query,
             onOpen: props.onOpen,

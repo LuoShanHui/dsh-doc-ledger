@@ -198,8 +198,9 @@ window.__ModuleLoader__.load({
       "row.missingTag": "已删除",
       "row.read": "读",
       "row.writeSlash": "/写",
-      "row.createdAt": "建 ",
-      "row.updatedAt": " · 改 ",
+      "row.onlyCreated": "建 {time}",
+      "row.onlyUpdated": "改 {time}",
+      "row.onlyUsed": "{time}",
 
       // section heads / chips
       "section.collapse": "收起这个分区",
@@ -411,8 +412,9 @@ window.__ModuleLoader__.load({
       "row.missingTag": "Deleted",
       "row.read": "R",
       "row.writeSlash": "/W",
-      "row.createdAt": "Created ",
-      "row.updatedAt": " · Updated ",
+      "row.onlyCreated": "created {time}",
+      "row.onlyUpdated": "updated {time}",
+      "row.onlyUsed": "{time}",
 
       "section.collapse": "Collapse this section",
       "section.expand": "Expand this section",
@@ -919,7 +921,7 @@ window.__ModuleLoader__.load({
         sectionHead: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 9px 3px", color: c.textDim, fontWeight: 600, userSelect: "none" },
         sectionTitle: { cursor: "pointer", flex: 1, background: "transparent", border: "none", padding: 0, margin: 0, font: "inherit", color: "inherit", textAlign: "left", fontWeight: 600 },
         sortChip: { display: "inline-flex", alignItems: "baseline", gap: "3px", padding: "2px 8px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: c.bgSoft, cursor: "pointer", fontWeight: 400, whiteSpace: "nowrap", color: "inherit", fontSize: "11px", lineHeight: "16px", font: "inherit", transition: "background 120ms ease, border-color 120ms ease" },
-        row: { display: "flex", alignItems: "center", gap: "6px", padding: "3px 9px", cursor: "pointer", borderTop: "1px solid rgba(128,128,128,0.1)" },
+        row: { display: "flex", alignItems: "center", gap: "8px", padding: "3px 9px", cursor: "pointer", borderTop: "1px solid rgba(128,128,128,0.1)", minWidth: 0, overflow: "hidden" },
         rowMissing: { opacity: 0.55 },
         mark: { background: c.mark, color: "inherit", borderRadius: "2px", padding: "0 1px" },
         tagMissing: { padding: "0 5px", borderRadius: "4px", background: c.dangerSoft, color: c.danger, whiteSpace: "nowrap", flex: "0 0 auto" },
@@ -934,10 +936,17 @@ window.__ModuleLoader__.load({
         filterActionGlyph: { fontSize: "10px", lineHeight: "16px", opacity: 0.75 },
         moreRow: { padding: "5px 9px", cursor: "pointer", color: c.accent, borderTop: "1px solid rgba(128,128,128,0.1)", textAlign: "center" },
         dot: { width: "7px", height: "7px", borderRadius: "2px", flex: "0 0 auto" },
-        name: { fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "38%" },
-        dir: { color: c.textDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: "40px" },
-        io: { color: c.textDim, whiteSpace: "nowrap", flex: "0 0 auto" },
-        times: { color: c.textDim, whiteSpace: "nowrap", flex: "0 0 auto", fontFamily: "ui-monospace, Consolas, monospace", fontSize: "11px" },
+        // Three visual tiers, and only three: the file name is the anchor (100% + semibold),
+        // the path is context (faint, 11px, allowed to shrink to nothing), the counters are
+        // metadata (dim, tabular). Before this every cell was the same grey at the same size,
+        // which read as a wall of text with no place for the eye to land.
+        name: { fontWeight: 600, color: "inherit", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "42%", flex: "0 1 auto" },
+        // A fixed, right-aligned time column is what makes a list scannable: with the width
+        // left to the text, every row's stamp started at a different x and the column read
+        // as noise. 74px fits "MM-DD HH:MM" at 11px with tabular figures.
+        dir: { color: c.textFaint, fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 0", minWidth: 0 },
+        io: { color: c.textFaint, whiteSpace: "nowrap", flex: "0 0 auto", fontSize: "11px", fontVariantNumeric: "tabular-nums", textAlign: "right", minWidth: "34px" },
+        times: { color: c.textDim, whiteSpace: "nowrap", flex: "0 0 auto", fontVariantNumeric: "tabular-nums", fontSize: "11px", textAlign: "right", minWidth: "72px" },
         tag: { padding: "0 5px", borderRadius: "4px", background: c.accentSoft, color: c.accent, whiteSpace: "nowrap", maxWidth: "90px", overflow: "hidden", textOverflow: "ellipsis", flex: "0 0 auto" },
         empty: { padding: "24px 12px", textAlign: "center", color: c.textDim },
         modal: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: "24px" },
@@ -990,7 +999,6 @@ window.__ModuleLoader__.load({
         row: Object.assign({}, row, { borderTop: "none", padding: "5px 12px", borderRadius: "8px", margin: "1px 0" }),
         name: Object.assign({}, base.name, { fontWeight: 600 }),
         dir: Object.assign({}, base.dir, { color: c.textFaint, fontSize: "11px" }),
-        times: Object.assign({}, base.times, { color: c.textFaint }),
         io: Object.assign({}, base.io, { color: c.textFaint }),
         empty: Object.assign({}, base.empty, { padding: "32px 12px" })
       });
@@ -1010,7 +1018,7 @@ window.__ModuleLoader__.load({
         cardHead: Object.assign({}, base.cardHead, { padding: "6px 9px" }),
         sectionHead: Object.assign({}, base.sectionHead, { padding: "6px 9px 2px", fontFamily: "ui-monospace, Consolas, monospace", fontSize: "11px" }),
         row: Object.assign({}, base.row, { padding: "4px 9px", gap: "10px" }),
-        name: Object.assign({}, base.name, { maxWidth: "34%", fontFamily: "ui-monospace, Consolas, monospace", fontSize: "11px", fontWeight: 600 }),
+        name: Object.assign({}, base.name, { maxWidth: "40%", fontSize: "11px", fontWeight: 600 }),
         dir: Object.assign({}, base.dir, { fontSize: "10px", color: c.textFaint }),
         io: Object.assign({}, base.io, { fontSize: "10px", color: c.textFaint, textAlign: "right", fontVariantNumeric: "tabular-nums" }),
         times: Object.assign({}, base.times, { fontSize: "10px", textAlign: "right", fontVariantNumeric: "tabular-nums" })
@@ -1287,12 +1295,33 @@ window.__ModuleLoader__.load({
         file.sessionTitle ? react.createElement("span", { style: S.tag, title: file.sessionId }, file.sessionTitle) : null,
         react.createElement("span", { style: S.dir }, highlight(shortPath(file.rel, 34), props.query)),
         react.createElement("span", { style: S.io }, t("row.read") + (file.reads || 0) + t("row.writeSlash") + (file.writes || 0)),
-        react.createElement("span", { style: S.times }, t("row.createdAt") + fmtTime(file.createdAt) + t("row.updatedAt") + fmtTime(file.updatedAt))
+        react.createElement("span", { style: S.times }, rowTime(file, props.mode))
       );
     }, function (prev, next) {
       return prev.file === next.file && prev.query === next.query
-        && prev.active === next.active && prev.index === next.index;
+        && prev.active === next.active && prev.index === next.index
+        && prev.mode === next.mode;
     });
+
+    /**
+     * One time per row, not two.
+     *
+     * A row used to print "created 11-06 16:00 · updated 11-06 16:30" no matter which
+     * section it sat in. The two stamps are usually minutes apart — and in the "Used"
+     * section neither is what the reader is scanning for. The section already tells you
+     * which dimension matters, so the row echoes it: last-used in Used, updated in
+     * Modified, created in Created. That halves the widest cell and removes the wrap
+     * that pushed rows to two lines.
+     */
+    function rowTime(file, mode) {
+      if (mode === "created") {
+        return file.createdAt ? t("row.onlyCreated", { time: fmtTime(file.createdAt) }) : "";
+      }
+      if (mode === "modified") {
+        return file.updatedAt ? t("row.onlyUpdated", { time: fmtTime(file.updatedAt) }) : "";
+      }
+      return t("row.onlyUsed", { time: fmtTime(file.lastUsedAt || file.updatedAt) });
+    }
 
     /** A visible keyboard focus ring, since inline styles cannot use :focus-visible. */
     function ringOn(event) {
@@ -1462,6 +1491,9 @@ window.__ModuleLoader__.load({
         // arrays too, and counting those would offset every index past the end of the DOM).
         var reachable = open !== false && rendered !== false;
         var sort = prefix === "u" ? props.usedSort : (prefix === "ms" ? props.modifiedSort : props.createdSort);
+        // Which timestamp this section's rows show (see rowTime): the section already says
+        // which dimension matters, so a row does not repeat both stamps.
+        var mode = prefix === "u" ? "used" : (prefix === "ms" ? "modified" : "created");
         var sorted = sortFiles(list, sort);
         var limit = limits[prefix] || ROW_PAGE;
         var rows = sorted.slice(0, limit).map(function (file) {
@@ -1471,6 +1503,7 @@ window.__ModuleLoader__.load({
             key: prefix + ":" + file.path,
             file: file,
             index: index,
+            mode: mode,
             active: reachable === true && index === (activeRow === null ? 0 : activeRow),
             query: props.query,
             onOpen: props.onOpen,
