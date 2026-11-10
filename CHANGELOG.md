@@ -27,6 +27,9 @@
 - `docs/release-v0.4.0.md` / `.en.md`：本版 Release 正文双语版；
   `tools/release-notes-check.mjs`（并入 `npm test`）断言每个 release note 都有英文孪生、
   两版 `##` / `###` 数量一致、配图 URL 钉在同一 tag、英文版无中文残留。
+- **`npm test` 现共 101 项**：引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 + 客户端 43
+  + i18n 179 个 key 的完整性 + 双语 README 一致性 10 + Release notes 一致性 9。
+  `readme-check` 新增一条：两版 README 声明的总数必须一致，且分项相加必须等于该总数。
 
 ## [0.4.0] - 2026-11-10
 

@@ -672,13 +672,13 @@ tools/preview-decode-check.mjs decoder regression: 10 encoding scenarios
 tools/harness/                 UI verification: real client.js + fake ctx + synthetic ledger (npm run harness)
 tools/route-check.mjs          host route and security regression: 14 assertions
 tools/cache-check.mjs          cache decision regression: 8 assertions
-tools/client-core-check.mjs    client pure functions: 36 assertions
-tools/readme-check.mjs         bilingual README parity: section counts and order, links, anchors
+tools/client-core-check.mjs    client pure functions: 43 assertions (search, sorting, merge, format, plurals, locale snapshot)
+tools/readme-check.mjs         bilingual README parity: sections, links, anchors, image files, language prefixes
 tools/release-notes-check.mjs  release-note parity: English twin, structure, tag-pinned images
 ```
 
 `npm test` runs six regression scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 8 +
-client 36 + i18n's 159-key integrity check + README parity 7 + release notes 9 = **91 checks**, no external
+client 43 + i18n's 179-key integrity check + README parity 10 + release notes 9 = **101 checks**, no external
 dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to prove that the
 committed `client.js` matches `src/client/*.js` byte for byte.
 

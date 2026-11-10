@@ -99,6 +99,22 @@ check("两版都提到当前的安装版本号", () => {
     assert.ok(text.includes("#v" + version), name + " must reference #v" + version);
   }
 });
+check("npm test 的总数在两版 README 里一致", () => {
+  // The suite total is written by hand in both editions; a hand-edited number rots the
+  // moment a check is added. Both must state the same figure, and it must match the sum of
+  // the per-script counts quoted alongside it.
+  const enTotal = (en.match(/\*\*(\d+) checks\*\*/) || [])[1];
+  const zhTotal = (zh.match(/\*\*(\d+) 项\*\*/) || [])[1];
+  assert.ok(enTotal, "README.md must state the suite total as **N checks**");
+  assert.ok(zhTotal, "README.zh.md must state the suite total as **N 项**");
+  assert.equal(enTotal, zhTotal, "the two editions disagree on the suite total");
+  // And the quoted breakdown must add up to that total.
+  const breakdown = en.match(/(\d+) \+[^\n]*?= \*\*\d+ checks\*\*/);
+  assert.ok(breakdown, "README.md must quote a per-suite breakdown before the total");
+  const parts = (en.match(/(\d+)(?= \+| =)/g) || []).map(Number);
+  const sum = parts.reduce((a, b) => a + b, 0);
+  assert.equal(sum, Number(enTotal), "the breakdown (" + parts.join("+") + ") must equal the stated total");
+});
 
 for (const [name, body] of cases) {
   body();
