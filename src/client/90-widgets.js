@@ -88,8 +88,12 @@
       var file = props.file;
       var open = function () { props.onOpen(file); };
       var missing = file.exists === false;
+      // Zebra striping for the "table" theme: an odd row gets the faint fill. It is applied
+      // through the style table so every theme inherits the same mechanism (only "table"
+      // defines a visible value; the rest map it to transparent).
+      var rowStyle = props.parity === 1 ? Object.assign({}, S.row, S.rowAlt) : S.row;
       return react.createElement("div", {
-        style: missing ? Object.assign({}, S.row, S.rowMissing) : S.row,
+        style: missing ? Object.assign({}, rowStyle, S.rowMissing) : rowStyle,
         // Roving tabindex: the card keeps ONE tabbable row (see SessionCard), so Tab enters
         // the list once instead of stopping on all ~900 rows of an expanded panel.
         tabIndex: props.active === true ? 0 : -1,
@@ -138,7 +142,7 @@
     }, function (prev, next) {
       return prev.file === next.file && prev.query === next.query
         && prev.active === next.active && prev.index === next.index
-        && prev.mode === next.mode;
+        && prev.mode === next.mode && prev.parity === next.parity;
     });
 
     /**

@@ -61,6 +61,22 @@ check("非 compact 主题至少有一处与 compact 不同", () => {
   }
 });
 
+check("四套主题两两可区分（不允许只差一两个数值）", () => {
+  // Two themes that differ only in a radius read as "the same look", which is exactly the
+  // report that made this check exist: cycling four themes felt like two.
+  const ids = ["compact", "airy", "table", "card"];
+  const built = Object.fromEntries(ids.map((id) => [id, sandbox.STYLE_THEMES[id]()]));
+  const differingKeys = (a, b) =>
+    Object.keys(built[a]).filter((key) => JSON.stringify(built[a][key]) !== JSON.stringify(built[b][key]));
+  for (let i = 0; i < ids.length; i += 1) {
+    for (let j = i + 1; j < ids.length; j += 1) {
+      const diff = differingKeys(ids[i], ids[j]);
+      assert.ok(diff.length >= 6,
+        ids[i] + " vs " + ids[j] + " differ in only " + diff.length + " keys; each theme needs its own identity");
+    }
+  }
+});
+
 check("setStyleTheme 会切换并拒绝未知 id", () => {
   vm.runInContext('setStyleTheme("card")', sandbox);
   assert.equal(sandbox.styleTheme(), "card");

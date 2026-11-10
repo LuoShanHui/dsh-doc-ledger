@@ -43,11 +43,19 @@
       var c = palette();
       return {
         root: { display: "flex", flexDirection: "column", height: "100%", minHeight: "320px", fontSize: "12px", color: c.text, overflow: "hidden", position: "relative" },
-        bar: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px", borderBottom: "1px solid " + c.borderSoft, flexWrap: "wrap" },
+        bar: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px 10px", borderBottom: "1px solid " + c.borderSoft },
+        // One row of the toolbar. It must be able to shrink (minWidth 0) and wrap, so the
+        // last button never lands outside the panel: at 380px a single flat row pushed
+        // "Theme" past the right edge and it was only half clickable.
+        barRow: { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", minWidth: 0 },
+        // Buttons may shrink and their labels stay on one line: without flexShrink a row
+        // whose natural width exceeds the panel simply overflows to the right (measured:
+        // "Theme" ended 6 px past a 380 px viewport, half outside the clickable area).
+        buttonBase: { minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
         title: { fontWeight: 600, fontSize: "13px", marginRight: "4px" },
         input: { flex: "1 1 120px", minWidth: "90px", padding: "4px 8px", borderRadius: "6px", border: "1px solid " + c.border, background: "transparent", color: "inherit", fontSize: "12px" },
-        button: { padding: "3px 9px", borderRadius: "6px", border: "1px solid " + c.border, background: "transparent", color: "inherit", fontSize: "12px", cursor: "pointer" },
-        buttonOn: { padding: "3px 9px", borderRadius: "6px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: "inherit", fontSize: "12px", cursor: "pointer" },
+        button: { padding: "3px 9px", borderRadius: "6px", border: "1px solid " + c.border, background: "transparent", color: "inherit", fontSize: "12px", cursor: "pointer", minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+        buttonOn: { padding: "3px 9px", borderRadius: "6px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: "inherit", fontSize: "12px", cursor: "pointer", minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
         summary: { padding: "6px 10px", color: c.textDim, borderBottom: "1px solid " + c.borderSoft },
         notice: { padding: "5px 10px", fontSize: "11px", color: c.warn, borderBottom: "1px solid " + c.borderSoft, cursor: "pointer" },
         list: { flex: 1, overflowY: "auto", padding: "6px 8px 16px" },
@@ -59,6 +67,7 @@
         sectionTitle: { cursor: "pointer", flex: 1, background: "transparent", border: "none", padding: 0, margin: 0, font: "inherit", color: "inherit", textAlign: "left", fontWeight: 600 },
         sortChip: { display: "inline-flex", alignItems: "baseline", gap: "3px", padding: "2px 8px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: c.bgSoft, cursor: "pointer", fontWeight: 400, whiteSpace: "nowrap", color: "inherit", fontSize: "11px", lineHeight: "16px", font: "inherit", transition: "background 120ms ease, border-color 120ms ease" },
         row: { display: "flex", alignItems: "center", gap: "8px", padding: "3px 9px", cursor: "pointer", borderTop: "1px solid rgba(128,128,128,0.1)", minWidth: 0, overflow: "hidden" },
+        rowAlt: { background: "transparent" },
         rowMissing: { opacity: 0.55 },
         mark: { background: c.mark, color: "inherit", borderRadius: "2px", padding: "0 1px" },
         tagMissing: { padding: "0 5px", borderRadius: "4px", background: c.dangerSoft, color: c.danger, whiteSpace: "nowrap", flex: "0 0 auto" },
@@ -142,7 +151,10 @@
     }
 
     /**
-     * "table": grid rows with zebra stripes and right-aligned tabular numbers.
+     * "table": real columns and zebra stripes — the data-dense reading of a ledger.
+     * Rows alternate a faint background, the name column is monospace, every number is
+     * right-aligned, and headings are uppercase. This is deliberately NOT "compact with
+     * a different radius": the alternation and the monospace are what make it a table.
      */
     function tableStyles() {
       var c = palette();
@@ -150,12 +162,19 @@
       return Object.assign({}, base, {
         root: Object.assign({}, base.root, { fontSize: "12px" }),
         bar: Object.assign({}, base.bar, { padding: "8px 10px", gap: "6px" }),
-        list: Object.assign({}, base.list, { padding: "4px 6px 16px" }),
-        card: Object.assign({}, base.card, { borderRadius: "6px", border: "1px solid " + c.borderSoft }),
-        cardHead: Object.assign({}, base.cardHead, { padding: "6px 9px" }),
-        sectionHead: Object.assign({}, base.sectionHead, { padding: "6px 9px 2px", fontFamily: "ui-monospace, Consolas, monospace", fontSize: "11px" }),
-        row: Object.assign({}, base.row, { padding: "4px 9px", gap: "10px" }),
-        name: Object.assign({}, base.name, { maxWidth: "40%", fontSize: "11px", fontWeight: 600 }),
+        list: Object.assign({}, base.list, { padding: "0 6px 16px" }),
+        card: Object.assign({}, base.card, { borderRadius: "2px", border: "1px solid " + c.border, marginBottom: "6px" }),
+        cardHead: Object.assign({}, base.cardHead, { padding: "5px 8px", borderRadius: 0 }),
+        sectionHead: Object.assign({}, base.sectionHead, {
+          padding: "5px 8px 2px", fontFamily: "ui-monospace, Consolas, monospace",
+          fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.06em",
+          borderBottom: "1px solid " + c.border
+        }),
+        row: Object.assign({}, base.row, { padding: "3px 8px", gap: "8px", borderRadius: 0 }),
+        rowAlt: { background: "rgba(128,128,128,0.055)" },
+        name: Object.assign({}, base.name, {
+          maxWidth: "38%", fontFamily: "ui-monospace, Consolas, monospace", fontSize: "11px", fontWeight: 600
+        }),
         dir: Object.assign({}, base.dir, { fontSize: "10px", color: c.textFaint }),
         io: Object.assign({}, base.io, { fontSize: "10px", color: c.textFaint, textAlign: "right", fontVariantNumeric: "tabular-nums" }),
         times: Object.assign({}, base.times, { fontSize: "10px", textAlign: "right", fontVariantNumeric: "tabular-nums" })
@@ -163,28 +182,40 @@
     }
 
     /**
-     * "card": floating cards with soft shadows and a per-card accent bar.
+     * "card": floating panels over a tinted backdrop, with the accent carried by the card
+     * itself. Rows inside a card are indistinguishable from "airy" except that the card
+     * floats and the list has gutters — so the card head gets an accent bar and a much
+     * larger radius, which is what actually reads as a different system.
      */
     function cardStyles() {
       var c = palette();
       var base = compactStyles();
       return Object.assign({}, base, {
-        root: Object.assign({}, base.root, { fontSize: "13px", background: c.bgSoft }),
-        bar: Object.assign({}, base.bar, { padding: "12px 14px", gap: "10px", borderBottom: "none" }),
+        root: Object.assign({}, base.root, { fontSize: "13px", background: c.bgSoft, gap: "2px" }),
+        bar: Object.assign({}, base.bar, { padding: "12px 14px", gap: "8px", borderBottom: "none", background: c.bg }),
         title: Object.assign({}, base.title, { fontWeight: 700, fontSize: "14px" }),
-        input: Object.assign({}, base.input, { padding: "6px 10px", borderRadius: "10px", background: c.bg, border: "1px solid " + c.borderSoft }),
-        button: Object.assign({}, base.button, { padding: "4px 10px", borderRadius: "10px", background: c.bg, border: "1px solid " + c.borderSoft }),
+        input: Object.assign({}, base.input, { padding: "6px 10px", borderRadius: "10px", background: c.bgSoft, border: "1px solid transparent" }),
+        button: Object.assign({}, base.button, { padding: "4px 10px", borderRadius: "10px", background: c.bgSoft, border: "1px solid transparent" }),
         buttonOn: Object.assign({}, base.buttonOn, { padding: "4px 10px", borderRadius: "10px" }),
-        summary: Object.assign({}, base.summary, { padding: "8px 14px", borderBottom: "none", background: "transparent" }),
+        summary: Object.assign({}, base.summary, { padding: "8px 14px", borderBottom: "none" }),
         notice: Object.assign({}, base.notice, { padding: "7px 14px", borderBottom: "none" }),
         list: Object.assign({}, base.list, { padding: "12px 12px 20px" }),
-        card: Object.assign({}, base.card, { border: "1px solid " + c.borderSoft, borderRadius: "14px", marginBottom: "12px", boxShadow: "0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04)", background: c.bg }),
-        cardHead: Object.assign({}, base.cardHead, { padding: "9px 12px", background: "transparent" }),
-        sectionHead: Object.assign({}, base.sectionHead, { padding: "10px 12px 4px" }),
+        // The card floats: bigger radius plus a real shadow, and an accent rail on the head.
+        card: Object.assign({}, base.card, {
+          border: "none", borderRadius: "16px", marginBottom: "14px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06)",
+          background: c.bg, overflow: "visible"
+        }),
+        cardHead: Object.assign({}, base.cardHead, {
+          padding: "10px 14px 10px 16px", background: "transparent",
+          borderRadius: "16px 16px 0 0",
+          borderLeft: "3px solid " + c.accent
+        }),
+        sectionHead: Object.assign({}, base.sectionHead, { padding: "10px 14px 4px" }),
         filterBar: Object.assign({}, base.filterBar, { padding: "8px 14px", borderBottom: "none", gap: "8px" }),
         filterChip: Object.assign({}, base.filterChip, { padding: "3px 10px", background: c.bg }),
         filterChipOn: Object.assign({}, base.filterChipOn, { padding: "3px 10px" }),
-        row: Object.assign({}, base.row, { borderTop: "none", padding: "5px 12px" }),
+        row: Object.assign({}, base.row, { borderTop: "none", padding: "5px 14px" }),
         name: Object.assign({}, base.name, { fontWeight: 600 }),
         empty: Object.assign({}, base.empty, { padding: "32px 12px" })
       });

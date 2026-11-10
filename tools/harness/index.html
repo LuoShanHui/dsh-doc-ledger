@@ -6,7 +6,10 @@
   <style>
     html, body { margin: 0; background: #0e1014; }
     body { padding: 20px; font-family: "Segoe UI", system-ui, sans-serif; }
-    #root { width: 520px; height: 760px; overflow: hidden; background: #ffffff; color: #1f2329; border-radius: 10px; }
+    /* Width follows the viewport (up to 520px) instead of being pinned to it: a fixed
+       520px stage made narrow-window checks meaningless — the panel never shrank, so a
+       toolbar overflow looked like a viewport-scroll artifact rather than a layout bug. */
+    #root { width: min(520px, 100%); height: 760px; overflow: hidden; background: #ffffff; color: #1f2329; border-radius: 10px; }
   </style>
 </head>
 <body>

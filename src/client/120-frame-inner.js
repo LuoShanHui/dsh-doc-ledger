@@ -653,40 +653,52 @@
         return function () { window.removeEventListener("keydown", onKey); };
       }, [menu, preview, previewMenu]);
 
+      // Two rows, so a narrow sidebar cannot push the last buttons off-screen.
+      // A single wrapped flex row put "Theme" past the right edge at 380px: it stayed
+      // clickable in the DOM but half of it was outside the viewport, which is exactly
+      // why only some of the four themes seemed reachable.
       var header = h("div", { style: S.bar },
-        h("span", { style: S.title }, t("toolbar.title")),
-        h("button", { style: scope === "current" ? S.buttonOn : S.button, onClick: function () { setScope("current"); } }, t("export.scopeCurrent")),
-        h("button", { style: scope === "all" ? S.buttonOn : S.button, onClick: function () { setScope("all"); } }, t("export.scopeAll")),
-        h(SearchBox, { inputRef: searchRef, onQuery: setQuery }),
-        h("button", { style: separate ? S.buttonOn : S.button, onClick: function () { setSeparate(!separate); } }, t("toolbar.separate")),
-        h("button", {
-          style: autoRefresh ? S.buttonOn : S.button,
-          title: autoRefresh ? t("toolbar.autoDesc") : t("toolbar.pausedDesc"),
-          onClick: function () { setAutoRefresh(!autoRefresh); }
-        }, autoRefresh ? t("toolbar.auto") : t("toolbar.paused")),
-        h("button", {
-          style: menu !== null && menu.kind === "export" ? S.buttonOn : S.button,
-          title: t("toolbar.export"),
-          onClick: function (event) { event.stopPropagation(); openExportMenu(event); }
-        }, t("toolbar.exportShort")),
-        h("button", {
-          style: S.button,
-          onClick: function () {
-            fetchScope(scope === "all" ? "all" : "current", function () { return true; }, { force: true, silent: true });
-            notify(t("toast.refreshed"));
-          }
-        }, t("toolbar.refresh")),
-        h("button", {
-          style: S.button,
-          title: t("theme.title") + t("theme." + theme),
-          onClick: function () {
-            var order = ["compact", "airy", "table", "card"];
-            var index = order.indexOf(theme);
-            var next = order[(index + 1) % order.length];
-            setTheme(next);
-            savePref("styleTheme", next);
-          }
-        }, t("theme.next"))
+        h("div", { style: S.barRow },
+          h("span", { style: S.title }, t("toolbar.title")),
+          h("button", { style: scope === "current" ? S.buttonOn : S.button, onClick: function () { setScope("current"); } }, t("export.scopeCurrent")),
+          h("button", { style: scope === "all" ? S.buttonOn : S.button, onClick: function () { setScope("all"); } }, t("export.scopeAll"))
+        ),
+        h("div", { style: S.barRow },
+          h(SearchBox, { inputRef: searchRef, onQuery: setQuery })
+        ),
+        h("div", { style: S.barRow },
+          h("button", { style: separate ? S.buttonOn : S.button, onClick: function () { setSeparate(!separate); } }, t("toolbar.separate")),
+          h("button", {
+            style: autoRefresh ? S.buttonOn : S.button,
+            title: autoRefresh ? t("toolbar.autoDesc") : t("toolbar.pausedDesc"),
+            onClick: function () { setAutoRefresh(!autoRefresh); }
+          }, autoRefresh ? t("toolbar.auto") : t("toolbar.paused")),
+          h("button", {
+            style: menu !== null && menu.kind === "export" ? S.buttonOn : S.button,
+            title: t("toolbar.export"),
+            onClick: function (event) { event.stopPropagation(); openExportMenu(event); }
+          }, t("toolbar.exportShort")),
+          h("button", {
+            style: S.button,
+            onClick: function () {
+              fetchScope(scope === "all" ? "all" : "current", function () { return true; }, { force: true, silent: true });
+              notify(t("toast.refreshed"));
+            }
+          }, t("toolbar.refresh")),
+          h("button", {
+            style: S.button,
+            title: t("theme.title") + t("theme." + theme),
+            // The label names the theme in force, not the action: a button that always said
+            // "Theme" gave no feedback, so cycling four looks felt like nothing happened.
+            onClick: function () {
+              var order = ["compact", "airy", "table", "card"];
+              var index = order.indexOf(theme);
+              var next = order[(index + 1) % order.length];
+              setTheme(next);
+              savePref("styleTheme", next);
+            }
+          }, t("theme.next") + ": " + t("theme." + theme))
+        )
       );
 
       /**

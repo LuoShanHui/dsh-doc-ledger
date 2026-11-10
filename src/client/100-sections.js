@@ -141,7 +141,7 @@
         var mode = prefix === "u" ? "used" : (prefix === "ms" ? "modified" : "created");
         var sorted = sortFiles(list, sort);
         var limit = limits[prefix] || ROW_PAGE;
-        var rows = sorted.slice(0, limit).map(function (file) {
+        var rows = sorted.slice(0, limit).map(function (file, ordinal) {
           var index = reachable === true ? rowCursor : -1;
           if (reachable === true) rowCursor += 1;
           return react.createElement(FileRow, {
@@ -149,6 +149,9 @@
             file: file,
             index: index,
             mode: mode,
+            // Alternate-row tint for the "table" theme; the row is memoised, so this has to
+            // be a prop rather than a CSS class (there is no stylesheet to hang one on).
+            parity: ordinal % 2,
             active: reachable === true && index === (activeRow === null ? 0 : activeRow),
             query: props.query,
             onOpen: props.onOpen,
