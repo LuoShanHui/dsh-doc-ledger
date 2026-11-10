@@ -308,6 +308,7 @@ window.__ModuleLoader__.load({
       "theme.table": "表格",
       "theme.card": "卡片",
       "theme.next": "主题",
+      "theme.pick": "选择主题",
 
       // file menu
       "menu.previewInSidebar": "在侧边栏预览",
@@ -515,6 +516,7 @@ window.__ModuleLoader__.load({
       "theme.table": "Table",
       "theme.card": "Card",
       "theme.next": "Theme",
+      "theme.pick": "Choose a theme",
 
       "menu.previewInSidebar": "Preview in sidebar",
       "menu.quick": "Quick look",
@@ -2168,6 +2170,35 @@ window.__ModuleLoader__.load({
         return lines.join("\n");
       };
 
+      /**
+       * Theme picker: a dropdown, not a cycling button.
+       *
+       * Cycling was a dead end — the reader had to click up to four times to reach the look
+       * they wanted, and with four themes the label alone never told them what was on offer.
+       * The list shows every theme with a check next to the active one.
+       */
+      var THEME_ORDER = ["compact", "airy", "table", "card"];
+      var openThemeMenu = function (event) {
+        if (menu !== null && menu !== undefined && menu.kind === "theme") { setMenu(null); return; }
+        var rect = event.currentTarget.getBoundingClientRect();
+        var panel = panelRect(event.currentTarget);
+        setMenu({
+          kind: "theme",
+          x: rect.left - panel.left,
+          y: rect.bottom - panel.top + 4,
+          bounds: { w: panel.width, h: panel.height },
+          title: t("theme.pick"),
+          returnFocus: event.currentTarget,
+          items: THEME_ORDER.map(function (id) {
+            return {
+              label: t("theme." + id),
+              current: theme === id,
+              action: { kind: "setTheme", theme: id }
+            };
+          })
+        });
+      };
+
       var openExportMenu = function (event) {
         if (menu !== null && menu !== undefined && menu.kind === "export") { setMenu(null); return; }
         var rect = event.currentTarget.getBoundingClientRect();
@@ -2272,6 +2303,13 @@ window.__ModuleLoader__.load({
           var target = action.target === "modified" ? setModifiedSort : (action.target === "created" ? setCreatedSort : setUsedSort);
           var current = action.target === "modified" ? modifiedSort : (action.target === "created" ? createdSort : usedSort);
           target({ key: action.key, dir: current.key === action.key ? (current.dir === "desc" ? "asc" : "desc") : defaultDir(action.key) });
+          return;
+        }
+        if (action.kind === "setTheme") {
+          if (typeof action.theme === "string" && action.theme !== "") {
+            setTheme(action.theme);
+            savePref("styleTheme", action.theme);
+          }
           return;
         }
         if (action.kind === "copyText") {
@@ -2602,18 +2640,12 @@ window.__ModuleLoader__.load({
             }
           }, t("toolbar.refresh")),
           h("button", {
-            style: S.button,
+            style: menu !== null && menu.kind === "theme" ? S.buttonOn : S.button,
             title: t("theme.title") + t("theme." + theme),
-            // The label names the theme in force, not the action: a button that always said
-            // "Theme" gave no feedback, so cycling four looks felt like nothing happened.
-            onClick: function () {
-              var order = ["compact", "airy", "table", "card"];
-              var index = order.indexOf(theme);
-              var next = order[(index + 1) % order.length];
-              setTheme(next);
-              savePref("styleTheme", next);
-            }
-          }, t("theme.next") + ": " + t("theme." + theme))
+            "aria-haspopup": "menu",
+            "aria-expanded": menu !== null && menu.kind === "theme",
+            onClick: function (event) { event.stopPropagation(); openThemeMenu(event); }
+          }, t("theme.next") + ": " + t("theme." + theme) + " ▾")
         )
       );
 

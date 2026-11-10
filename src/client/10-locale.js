@@ -144,6 +144,7 @@
       "theme.table": "表格",
       "theme.card": "卡片",
       "theme.next": "主题",
+      "theme.pick": "选择主题",
 
       // file menu
       "menu.previewInSidebar": "在侧边栏预览",
@@ -351,6 +352,7 @@
       "theme.table": "Table",
       "theme.card": "Card",
       "theme.next": "Theme",
+      "theme.pick": "Choose a theme",
 
       "menu.previewInSidebar": "Preview in sidebar",
       "menu.quick": "Quick look",

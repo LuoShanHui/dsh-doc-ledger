@@ -244,10 +244,11 @@ trimmed by `slimFile()`, because `uses` alone was 30% of the payload and the cli
 - **All sessions**: "Group by session" is on by default (one card per session, split into created/used
   inside the card); turn it off to merge everything into two cross-session lists where each row carries a
   session tag.
-- **Visual themes**: a "Theme" button in the toolbar cycles through four looks — **Compact** (the original),
-  **Airy** (whitespace and weight instead of hairlines), **Table** (grid rows and tabular numbers) and
-  **Card** (floating cards with soft shadows). The choice is remembered across reloads, and every theme
-  reads the host's color tokens so it follows light/dark mode.
+- **Visual themes**: a "Theme" dropdown in the toolbar switches between four looks — **Compact** (the default),
+  **Airy** (whitespace and weight instead of hairlines), **Table** (zebra rows and tabular numbers) and
+  **Card** (floating cards with soft shadows). Pick any theme directly — the active one is ticked. The
+  choice is remembered across reloads, and every theme reads the host's color tokens so it follows
+  light/dark mode.
 - **Type filter**: a row of type chips under the summary (docs / sheets / slides / images / code / web /
   config / data / archives / other) showing the actual counts in the current data. Click to filter to one
   type, click again to clear; types with a count of 0 are not shown, and the selection is remembered.
