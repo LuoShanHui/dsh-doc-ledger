@@ -6,11 +6,40 @@
 
 **English** · [中文](README.zh.md)
 
-**One document ledger per session**: which documents a session used, created or modified — with time ordering, type grouping, search, a cross-session summary, and two ways to preview.
-
-A DSH sidebar plugin that keeps a per-session document ledger — which documents a session read, created or modified — with time ordering, type grouping, search, two preview modes and a cross-session view. Windows only, UI in Chinese and English.
+A DSH sidebar plugin that keeps a **per-session document ledger** — which documents a session read, created
+or modified — with time ordering, type grouping, search, two preview modes and a cross-session view.
+Windows only, UI in Chinese and English.
 
 ![overview](docs/en-overview.png)
+
+<details>
+<summary><b>Contents</b></summary>
+
+- [30-second setup](#30-second-setup)
+- [What it does](#what-it-does)
+- [Screenshots](#screenshots)
+- [Installation](#installation-as-a-plugin)
+- [Security model](#security-model)
+- [Known limitations](#known-limitations)
+- [Reference](#reference)
+  - [Data model](#data-model)
+  - [Interface](#interface)
+  - [Preview: handed to DSH's own document preview](#preview-handed-to-dshs-own-document-preview-by-default)
+  - [Encoding in preview](#encoding-in-preview-applies-to-the-quick-look-dialog-only)
+  - [Opening files](#opening-files)
+  - [Open with: every associated program](#open-with-every-associated-program)
+  - [Real program icons](#real-program-icons)
+  - [Sort menu](#sort-menu)
+  - [Refreshing does not interrupt reading](#refreshing-does-not-interrupt-reading)
+  - [Routes](#routes)
+  - [Requests and caching](#requests-and-caching-performance)
+- [Traps we hit](#traps-we-hit)
+- [Verified / not verified](#verified--not-verified)
+- [How a PTC preset session is recorded](#how-a-ptc-preset-session-is-recorded)
+- [How the current session is located](#how-the-current-session-is-located)
+- [Files](#files)
+
+</details>
 
 ## 30-second setup
 
@@ -23,33 +52,29 @@ A DSH sidebar plugin that keeps a per-session document ledger — which document
 
 1. Add the dependency line above (`#v0.4.0` pins the version; drop the tag to track the latest commit).
    It is also published to npm, so `"dsh-doc-ledger": "0.4.0"` works too.
-2. Install with the pnpm bundled in your DSH runtime, reusing an existing store (full command under
-   [Installation](#installation-as-a-plugin) below).
-3. Append one `doc-ledger` row to `cordis.patch.yml` (also in that section), reload the page, and the
-   **Doc ledger** tab appears in the right sidebar.
+2. Install with the pnpm bundled in your DSH runtime, reusing an existing store — the full command is under
+   [Installation](#installation-as-a-plugin).
+3. Append one `doc-ledger` row to `cordis.patch.yml` (same section), reload the page, and the **Doc ledger**
+   tab appears in the right sidebar.
 
-Requires DSH `>=0.2.0-rc.1 <0.3.0-0` and Windows. If the install fails, or you want to modify the code,
-see the local-directory option under [Installation](#installation-as-a-plugin); for behaviour boundaries
-see [Known limitations](#known-limitations).
+Requires DSH `>=0.2.0-rc.1 <0.3.0-0` and Windows. If the install fails, or you want to modify the code, see
+the local-directory option under [Installation](#installation-as-a-plugin); for behaviour boundaries see
+[Known limitations](#known-limitations).
 
 > Experimental: it depends on host internals (`sessionQuery`, `webServer` prefix routes, bundle-patch
 > injection) and has only been verified on DSH `>=0.2.0-rc.1 <0.3.0-0`. When the host changes those
 > interfaces, this plugin has to follow.
 
-## Shapes
+## What it does
 
 | Shape | Entry point | Notes |
 |---|---|---|
 | Plugin (in-session tab) | A new **Doc ledger** tab in the right sidebar | The host half serves the page routes; the client half only mounts the tab. The current session refreshes **silently** every 8 seconds (no loading state, no list rebuild), and pauses while the quick-look dialog is open. |
 | Static report | `node tools/report.mjs --limit 40` | Emits `report.html`; double-click to read it, no plugin install needed. The output contains real paths and is gitignored. |
 
-The React panel is the **only maintained UI**; the static report just assembles a self-contained HTML file
-with `lib/ui.js` at export time. The old `/doc-ledger/ui` page was retired — that second UI had no
-open-with menu, no icons and no split view, so keeping it in sync bought nothing.
-
-In the **data model**, `uses[]`, `ext`, `birthtime`, `mtime`, `exists` and `presented` stay in host memory
-only: HTTP responses are trimmed by `slimFile()`, because `uses` alone was 30% of the payload and the
-client never renders it.
+In short: open the tab and you get every document the session touched, split into **Used** and
+**Created / Modified**, filterable by type, searchable with multi-word AND, sortable per section, and
+previewable either through DSH's own document preview or through a built-in quick-look dialog.
 
 ## Screenshots
 
@@ -70,7 +95,118 @@ language differs.
 The workspace in the screenshots (`C:\work\demo-workspace`), the document names and the program list are
 all synthetic sample data, not anyone's real project.
 
-## Data model
+## Installation (as a plugin)
+
+**A profile is a pnpm project** (`~/.dsh/profiles/<profile>` holds `package.json`, `pnpm-lock.yaml` and
+`pnpm-workspace.yaml`). DeepSeek Harness runs an install at startup and **deletes directories that are not
+listed as dependencies**, so do not `cp` the package into `node_modules/` — it will disappear on the next
+start.
+
+1. Add one GitHub-hosted dependency to the `dependencies` of
+   `~/.dsh/profiles/<profile>/package.json` (pnpm clones the repo itself, **no local clone needed**;
+   `#v0.4.0` pins the version, dropping the tag tracks the development head):
+
+   ```json
+   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.4.0"
+   ```
+
+   To modify the code or work offline, point it at a local directory instead:
+
+   ```json
+   "dsh-doc-ledger": "file:<path>/dsh-doc-ledger"
+   ```
+
+   The npm package works as well (`https://www.npmjs.com/package/dsh-doc-ledger`; same code as the GitHub
+   tag, without cloning — a private mirror may lag behind):
+
+   ```json
+   "dsh-doc-ledger": "0.4.0"
+   ```
+
+2. Install with the pnpm bundled in your runtime (`<runtime>` is your runtime directory; **reuse an existing
+   store**, otherwise pnpm offers to wipe the whole `node_modules`):
+
+   ```powershell
+   node <runtime>/dependencies/pnpm/bin/pnpm.mjs install `
+     --config.store-dir=<pnpm-store> `
+     --config.confirmModulesPurge=false
+   ```
+
+3. Append to the end of `~/.dsh/profiles/<profile>/cordis.patch.yml`:
+
+   ```yaml
+   # dsh-doc-ledger: per-session document ledger sidebar tab
+   - insert:
+       - id: doc-ledger
+         name: dsh-doc-ledger
+         config:
+           maxSessions: 40
+           debug: false
+   ```
+
+4. Reload the page (the client bundle has to be re-injected) — the **Doc ledger** tab appears in the right
+   sidebar.
+
+Verify:
+
+- `GET /doc-ledger/api/all?scope=all` returns 200 with a `sessions[]`;
+- `GET /doc-ledger/api/all?scope=current&session=<id>&timing=1` returns 200 and `data.timings.total` is
+  usually under 20 ms;
+- the **Doc ledger** tab is in the right sidebar and shows the current session.
+
+**Switching profiles**: the same four steps with `desktop` replaced by the target profile name.
+
+## Security model
+
+The plugin sits on the loopback port the host provides (`127.0.0.1`), but loopback is not safety: any page the
+user browses can send requests to `http://127.0.0.1:<port>/doc-ledger/api/...`. So the host side honours
+exactly three rules:
+
+1. **Same-origin check**: `Sec-Fetch-Site` of `cross-site`/`same-site`, an `Origin`/`Referer` pointing at
+   another site, or `Origin: null` all return 403.
+2. **Ledger paths only**: `/api/file`, `/api/open` and `/api/openwith` accept only files present in the
+   current cached ledger — `C:\Windows\win.ini` and friends return 403; `/icon` accepts only existing
+   `.exe/.ico/.lnk`.
+3. **Launching must be POST**: `/api/open` refuses GET, so `<img src=...>`, links and prefetches cannot start
+   a program.
+
+The plugin's routes do **not** go through the GUI's login state (the host only protects `/`), so those three
+rules are its entire defence. All three are pinned by `tools/route-check.mjs` (14 assertions) in CI, so a
+refactor cannot silently drop one of them.
+
+## Known limitations
+
+- **The session directory layout is an implicit contract**: the fingerprint comes from
+  `~/.dsh/sessions/<project>/<session id>/session.v4.jsonl.zstd`. If that structure is missing (different
+  `DSH_HOME`, changed runtime layout) it falls back to the old TTL invalidation — still correct, just slower.
+- **Lazy card mounting**: cards far from the viewport show only a title, and rows are built once you scroll or
+  focus them. Dragging the scrollbar to the far end shows a few frames of titles before the rows fill in; that
+  is the price of "build on demand" against a full first frame for 43 expanded cards.
+- **`exists` is cached for 20 seconds**: a file deleted on disk shows as "Deleted" up to 20 seconds later.
+- **UI is bilingual (zh / en)**: the `locale` dictionary covers every string in the panel (179 keys) and
+  follows the host's UI language. A language we do not ship (Japanese, Korean, …) shows **English**, because
+  every host `addLanguage` fallback chain ends at English. Data itself (session titles, file names, paths,
+  program names) is shown as-is and not translated. See [`docs/i18n.md`](docs/i18n.md).
+- **Files created by a shell do not count as created**: a file written by `git diff > x.diff`, PowerShell
+  redirection or an unzip has no path argument to capture, so it only shows up under "used" once something
+  reads it. Covering that would require the runtime to report shell file writes.
+- **A whole-file write counts as creation**: if a program overwrites an existing file without reading it
+  first (PTC's `fs.writeFileSync` allows this), it is recorded as created. Checked against file birth times
+  across all 43 sessions on this machine: 0 false positives.
+- **Mixed encoding is heuristic**: if exactly one line of a UTF-8 file is left with a single bad byte, it may
+  be read as "looks fine" GBK; bytes that truly cannot be decoded are reported as such.
+- **Quick look shows only the first 200 KB**: use "Sidebar" or "Open with" for the full content.
+- **Windows only**: registry enumeration, `explorer.exe` and the PowerShell icon extraction are all Windows
+  implementations.
+- **Two host capabilities are optional** and degrade silently when missing: `uiWorkspace.openSession` (no jump
+  entry) and `sidebarRight.openResource` (falls back to this plugin's own dialog).
+
+## Reference
+
+Everything below is detail: how the data is derived, how each part of the UI behaves, and the interesting
+implementation choices. Read it when you are changing the code, not when you are installing it.
+
+### Data model
 
 Each session's log is folded into one record per file:
 
@@ -95,15 +231,19 @@ Each session's log is folded into one record per file:
 - **Working directory**: starts from the session header's `cwd` and follows successful
   `working_directory` calls; relative paths are normalized against the cwd in effect at the time.
 
-## Interface
+The React panel is the **only maintained UI**; the static report just assembles a self-contained HTML file
+with `lib/ui.js` at export time. The old `/doc-ledger/ui` page was retired — that second UI had no
+open-with menu, no icons and no split view, so keeping it in sync bought nothing.
+
+`uses[]`, `ext`, `birthtime`, `mtime`, `exists` and `presented` stay in host memory only: HTTP responses are
+trimmed by `slimFile()`, because `uses` alone was 30% of the payload and the client never renders it.
+
+### Interface
 
 - **Current session**: two lists, created/modified and used.
 - **All sessions**: "Group by session" is on by default (one card per session, split into created/used
   inside the card); turn it off to merge everything into two cross-session lists where each row carries a
   session tag.
-- **Sorting**: the used list supports recently used / first used / read count / existence / type / path;
-  the created list supports created time / updated time / type / path / existence.
-- **Search**: paths, file names, delivery notes, session titles; Ctrl/⌘+K focuses it; matches are **highlighted**.
 - **Type filter**: a row of type chips under the summary (docs / sheets / slides / images / code / web /
   config / data / archives / other) showing the actual counts in the current data. Click to filter to one
   type, click again to clear; types with a count of 0 are not shown, and the selection is remembered.
@@ -122,10 +262,8 @@ Each session's log is folded into one record per file:
   "filtered X files / Y sessions", so the list and the summary no longer disagree.
 - **Clicking a row**: by default hands the file to DSH's own document preview in the right sidebar
   (Markdown rendering, images, PDF, Office, spreadsheets and syntax highlighting are all the host's job —
-  see the next section); `Shift+Enter`, or "Quick look" in the menu, opens this plugin's own dialog.
-
-### Interaction
-
+  see [Preview](#preview-handed-to-dshs-own-document-preview-by-default)); `Shift+Enter`, or "Quick look" in
+  the menu, opens this plugin's own dialog.
 - **Session cards**: click a title to fold or unfold the whole card. "All sessions" starts collapsed,
   "Current session" starts expanded. The "Expand all / Collapse all" control at the bottom right of a card
   handles every card at once (43 cards go from 43 clicks to 1).
@@ -201,11 +339,11 @@ Each session's log is folded into one record per file:
   program… / Reveal in Explorer / Copy full path. Deleted rows only offer a preview.
 - **Quick-look dialog**: the top right is a "default program + ▾" split button; the `▾` switches programs,
   opens the system "Open with" dialog, or reveals the file. Next to it, "Sidebar" hands the current file to
-  the host's document preview (next section); the full path at the bottom copies on click. A facts row under
-  the title shows size · lines · decoding · created/updated · read/write counts; past 200 KB, or when some
-  bytes cannot be decoded, a yellow notice row appears above the body (the old version appended `… truncated`
-  straight into the body, where it got copied along with the content). "Refresh" re-reads the current file
-  and keeps the scroll position.
+  the host's document preview (see [Preview](#preview-handed-to-dshs-own-document-preview-by-default)); the
+  full path at the bottom copies on click. A facts row under the title shows size · lines · decoding ·
+  created/updated · read/write counts; past 200 KB, or when some bytes cannot be decoded, a yellow notice row
+  appears above the body (the old version appended `… truncated` straight into the body, where it got copied
+  along with the content). "Refresh" re-reads the current file and keeps the scroll position.
 
 ### Preview: handed to DSH's own document preview by default
 
@@ -249,7 +387,7 @@ Same real files, after: `4845 → 0`, `6315 → 0`, `497 → 29`, `271 → 26`, 
 decoded is reported honestly in `replacements` ("N characters could not be decoded") rather than faked, and a
 Node build with a small ICU table (no `gb18030` decoder) falls back to UTF-8.
 
-### Opening files (what bit us)
+### Opening files
 
 The host process's PATH may be stripped (`cmd.exe` and `explorer.exe` by bare name give ENOENT), and spawn
 errors are asynchronous. Early versions returned 200 right after `spawn`, swallowing the error, which looked
@@ -269,6 +407,9 @@ Endpoints:
   `<img>` cannot start a program);
 - icons reuse the host's own `/open-in-app/icon/<id>`.
 
+Two Windows-specific traps that made launches *silently* invisible — `windowsHide` and a leaked
+`ELECTRON_RUN_AS_NODE` — are documented under [Traps we hit](#traps-we-hit).
+
 ### Open with: every associated program
 
 There is no separate "open with the system default" entry any more — the menu lists **every program this
@@ -287,6 +428,21 @@ registry, none of it is guessed:
 For `.md` on this machine the enumeration yields `VS Code (default)` / `WorkBuddy` / `IntelliJ IDEA`. Results
 are cached per extension for 60 seconds.
 
+The preview dialog's own split button mirrors this list:
+
+```
+[ icon  Open with VS Code ] [▾]     [Close]
+```
+
+- left half: the default program's real icon plus "Open with <default>", clicking opens with it;
+- right half `▾`: a dropdown listing every program registered for the extension (real icon + name +
+  "(default)"), followed by "Choose another program…" and "Reveal in Explorer";
+- the dropdown is positioned with `position: absolute` inside the dialog, right-aligned; the dialog container
+  is `overflow: visible` so a short preview cannot clip the menu.
+
+"Choose another program…" still calls `rundll32 shell32.dll,OpenAs_RunDLL <path>`, the native Windows
+"Open with" dialog, where any installed program can be picked on the spot.
+
 **Security**: the exe in `/api/open?mode=open&app=<exe>` must appear in that extension's enumeration, or the
 request returns 400 ("this program is not registered for .md"); `path` must also be a file that appeared in
 the ledger, or 403. Together with POST-only and the same-origin check, this local route cannot be turned into
@@ -304,91 +460,6 @@ The icons in the list are **extracted from the executable** (what Explorer shows
   broken image.
 
 Every item from `/api/openwith` carries an `icon` field that the client loads with `<img>`.
-
-### "Open with" inside the quick-look dialog
-
-The top right of the preview dialog is a **split button** matching the host's own open-with look:
-
-```
-[ icon  Open with VS Code ] [▾]     [Close]
-```
-
-- left half: the default program's real icon plus "Open with <default>", clicking opens with it;
-- right half `▾`: a dropdown listing every program registered for the extension (real icon + name +
-  "(default)"), followed by "Choose another program…" and "Reveal in Explorer";
-- the dropdown is positioned with `position: absolute` inside the dialog, right-aligned; the dialog container
-  is `overflow: visible` so a short preview cannot clip the menu.
-
-"Choose another program…" still calls `rundll32 shell32.dll,OpenAs_RunDLL <path>`, the native Windows
-"Open with" dialog, where any installed program can be picked on the spot.
-
-### The launcher was hidden by `windowsHide` (important)
-
-"Reveal in Explorer" and "open with the default program" both used to look like "clicked, nothing happened",
-and the root cause was the same:
-
-```js
-spawn(explorer, ["/select,", path], { windowsHide: true })   // ← the fatal line
-```
-
-On Windows, `windowsHide: true` sets `STARTUPINFO.wShowWindow = SW_HIDE`, so **explorer.exe creates the new
-window hidden** — and GUI programs (VS Code, IDEA, …) likewise. The process starts fine, exits with a normal
-code, the API returns 200, and nothing appears on screen.
-
-How to verify (whether the window is actually visible, not how many windows exist):
-
-```powershell
-# count visible vs hidden among CabinetWClass top-level windows
-[W]::EnumWindows(...) + [W]::IsWindowVisible($h)
-```
-
-Before the fix: `visible=2 hidden=15`; after dropping `windowsHide`, every reveal bumps `visible` by one and
-leaves `hidden` unchanged.
-
-**Rule: any launch the user is supposed to see must not pass `windowsHide`.** Only the helper process that
-brings Explorer to the foreground with PowerShell stays hidden (otherwise it flashes a black box).
-
-Also note: `explorer.exe /select,<path>` always opens a **new window**; it does not reuse an existing one.
-
-### The launcher inherited `ELECTRON_RUN_AS_NODE` (subtler, important)
-
-After fixing `windowsHide` one oddity remained, and only on "close the program, then click again": the first
-click on VS Code opened a window, and after closing it subsequent clicks did nothing at all.
-
-The cause is that the host itself is Electron, and its process environment carries:
-
-```
-ELECTRON_RUN_AS_NODE=1
-```
-
-Inherited through `spawn`, **any Electron app (VS Code, Cursor, …) starts in plain Node mode**: `Code.exe
-some-doc.md` is executed as `node some-doc.md`, which fails 78 ms later with
-`SyntaxError: Invalid or unexpected token` and exits, so a window never appears. It also writes nothing to
-`%APPDATA%\Code\logs`, so from the outside it is simply "clicked, nothing happened".
-
-Reproduce (inside the host environment):
-
-```text
-Code.exe file.md → stderr: file.md:1  SyntaxError: Invalid or unexpected token → exit 1
-```
-
-Fix: launch GUI programs with an environment stripped of the Electron switches:
-
-```js
-const env = {};
-for (const [key, value] of Object.entries(process.env)) {
-  if (/^ELECTRON_/i.test(key)) continue;
-  env[key] = value;
-}
-spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env });
-```
-
-Verify: same exe, same file — with the variable removed the window title immediately becomes
-`file.md - Visual Studio Code`, and closing and clicking again works second and third time too.
-
-> Note: native programs such as IntelliJ IDEA are unaffected by that variable; when it is already running, a
-> new `idea64.exe` hands the file to the existing instance and exits (the window title becomes the file). That
-> is normal JetBrains single-instance behaviour, not a launch failure.
 
 ### Sort menu
 
@@ -412,116 +483,40 @@ Measured: open the preview, scroll to 260 px, wait 10 seconds (which should have
 node, `scrollTop` still 260, 0 loading flashes, 0 requests; close the preview — exactly 1 silent refresh. The
 list's scroll position is likewise preserved across polls.
 
-## Security model
+### Routes
 
-The plugin sits on the loopback port the host provides (`127.0.0.1`), but loopback is not safety: any page the
-user browses can send requests to `http://127.0.0.1:<port>/doc-ledger/api/...`. So the host side honours
-exactly three rules:
+`http://127.0.0.1:<port>/doc-ledger/...`
 
-1. **Same-origin check**: `Sec-Fetch-Site` of `cross-site`/`same-site`, an `Origin`/`Referer` pointing at
-   another site, or `Origin: null` all return 403.
-2. **Ledger paths only**: `/api/file`, `/api/open` and `/api/openwith` accept only files present in the
-   current cached ledger — `C:\Windows\win.ini` and friends return 403; `/icon` accepts only existing
-   `.exe/.ico/.lnk`.
-3. **Launching must be POST**: `/api/open` refuses GET, so `<img src=...>`, links and prefetches cannot start
-   a program.
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/all?scope=all\|current&session=<id>&limit=<n>&timing=1&force=1` | GET | The ledger payload; `scope=current` folds only one session, `timing=1` adds timings and bypasses caches, `force=1` forces a replay |
+| `/api/file?path=<absolute>` | GET | Quick-look bytes (≤200 KB), with `ETag` / `If-None-Match` → 304 |
+| `/api/openwith?path=<absolute>` | GET | Programs registered for the extension, with icons and the default marker |
+| `/api/open?mode=open\|reveal&path=<absolute>[&app=<id>]` | **POST** | Launch or reveal; GET returns 405 |
+| `/icon?path=<exe>` | GET | Real 32×32 PNG icon extracted from the executable |
+| `/api/_clienterror` | POST | Opt-in client diagnostics, ignored unless `debug: true` |
 
-The plugin's routes do **not** go through the GUI's login state (the host only protects `/`), so those three
-rules are its entire defence.
+### Requests and caching (performance)
 
-## Installation (as a plugin)
+| Technique | Effect |
+|---|---|
+| `?scope=current&session=` folds one session | 613 KB → 19 KB, 1.7 s → 15 ms |
+| gzip + `slimFile()` | 613 KB → 31 KB full payload |
+| 3-second snapshot cache + `rev` fingerprint | repeat requests and polling cost ≈ 0; 0 DOM changes while `rev` is unchanged |
+| Log `size+mtime` fingerprint + per-session ledger on disk | cold full build 8.3 s → **0.9 s**; closed sessions never replay again |
+| "Expand all" in batches of 8 cards | 170 ms of blocking → **78 ms**, no task over 50 ms |
+| Batched icon extraction (one PowerShell call for N) | 6 icons 1288 ms → 255 ms |
+| 200 KB preview cap + `ETag` | big files cannot blow up memory; unchanged files answer 304 |
+| 15-second replay floor for live sessions | a silent poll of a busy session reuses the last fold |
 
-**A profile is a pnpm project** (`~/.dsh/profiles/<profile>` holds `package.json`, `pnpm-lock.yaml` and
-`pnpm-workspace.yaml`). DeepSeek Harness runs an install at startup and **deletes directories that are not
-listed as dependencies**, so do not `cp` the package into `node_modules/` — it will disappear on the next
-start.
-
-1. Add one GitHub-hosted dependency to the `dependencies` of
-   `~/.dsh/profiles/<profile>/package.json` (pnpm clones the repo itself, **no local clone needed**;
-   `#v0.4.0` pins the version, dropping the tag tracks the development head):
-
-   ```json
-   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.4.0"
-   ```
-
-   To modify the code or work offline, point it at a local directory instead:
-
-   ```json
-   "dsh-doc-ledger": "file:<path>/dsh-doc-ledger"
-   ```
-
-   The npm package works as well (`https://www.npmjs.com/package/dsh-doc-ledger`; same code as the GitHub
-   tag, without cloning — a private mirror may lag behind):
-
-   ```json
-   "dsh-doc-ledger": "0.4.0"
-   ```
-
-2. Install with the pnpm bundled in your runtime (`<runtime>` is your runtime directory; **reuse an existing
-   store**, otherwise pnpm offers to wipe the whole `node_modules`):
-
-   ```powershell
-   node <runtime>/dependencies/pnpm/bin/pnpm.mjs install `
-     --config.store-dir=<pnpm-store> `
-     --config.confirmModulesPurge=false
-   ```
-
-3. Append to the end of `~/.dsh/profiles/<profile>/cordis.patch.yml`:
-
-   ```yaml
-   # dsh-doc-ledger: per-session document ledger sidebar tab
-   - insert:
-       - id: doc-ledger
-         name: dsh-doc-ledger
-         config:
-           maxSessions: 40
-           debug: false
-   ```
-
-4. Reload the page (the client bundle has to be re-injected) — the **Doc ledger** tab appears in the right
-   sidebar.
-
-Verify:
-
-- `GET /doc-ledger/api/all?scope=all` returns 200 with a `sessions[]`;
-- `GET /doc-ledger/api/all?scope=current&session=<id>&timing=1` returns 200 and `data.timings.total` is
-  usually under 20 ms;
-- the **Doc ledger** tab is in the right sidebar and shows the current session.
-
-## Switching profiles
-
-The same three steps with `desktop` replaced by the target profile name.
-
-## Known limitations
-
-- **The session directory layout is an implicit contract**: the fingerprint comes from
-  `~/.dsh/sessions/<project>/<session id>/session.v4.jsonl.zstd`. If that structure is missing (different
-  `DSH_HOME`, changed runtime layout) it falls back to the old TTL invalidation — still correct, just slower.
-- **Lazy card mounting**: cards far from the viewport show only a title, and rows are built once you scroll or
-  focus them. Dragging the scrollbar to the far end shows a few frames of titles before the rows fill in; that
-  is the price of "build on demand" against a full first frame for 43 expanded cards.
-- **`exists` is cached for 20 seconds**: a file deleted on disk shows as "Deleted" up to 20 seconds later.
-- **UI is bilingual (zh / en)**: the `locale` dictionary covers every string in the panel (159 keys) and
-  follows the host's UI language; data itself (session titles, file names, paths, program names) is shown
-  as-is and not translated. See [`docs/i18n.md`](docs/i18n.md) for how it works and how it is verified.
-- **Files created by a shell do not count as created**: a file written by `git diff > x.diff`, PowerShell
-  redirection or an unzip has no path argument to capture, so it only shows up under "used" once something
-  reads it. Covering that would require the runtime to report shell file writes.
-- **A whole-file write counts as creation**: if a program overwrites an existing file without reading it
-  first (PTC's `fs.writeFileSync` allows this), it is recorded as created. Checked against file birth times
-  across all 43 sessions on this machine: 0 false positives.
-- **Mixed encoding is heuristic**: if exactly one line of a UTF-8 file is left with a single bad byte, it may
-  be read as "looks fine" GBK; bytes that truly cannot be decoded are reported as such.
-- **Quick look shows only the first 200 KB**: use "Sidebar" or "Open with" for the full content.
-- **Windows only**: registry enumeration, `explorer.exe` and the PowerShell icon extraction are all Windows
-  implementations.
-- **Two host capabilities are optional** and degrade silently when missing: `uiWorkspace.openSession` (no jump
-  entry) and `sidebarRight.openResource` (falls back to this plugin's own dialog).
+Ledger caching lives in `~/.dsh/doc-ledger-ledgers.json.gz`, keyed by the log's `size:mtime` stamp. The cache
+format and the ledger engine each carry a version (`LEDGER_VERSION`, `LEDGER_ENGINE`), so a change to either
+invalidates every entry rather than producing a wrong answer, and at most 250 sessions are kept.
 
 ## Traps we hit
 
-Each entry follows **symptom → cause → fix**. The long reproductions stay in the body sections
-linked from here.
+Each entry follows **symptom → cause → fix**. These are the ones that cost real time; the details live here
+rather than being scattered through the reference above.
 
 ### Host API contracts
 
@@ -539,18 +534,69 @@ linked from here.
   resolve, so an HTTP probe cannot tell whether the tab registered. Cause: the desktop shell does not
   serve those routes. Fix: the client bundle is injected from the boot manifest after a browser reload;
   verify in the page, not over HTTP.
+- **`locale.getLocale()` returns a snapshot object, not a string.** Symptom: English plurals show `1 files`.
+  Cause: it returns `{ active, locales, revision }`, and passing that object to `Intl.PluralRules` throws
+  `RangeError` — a `catch` then silently degrades every plural to the `_other` form. Fix: unwrap `.active`.
 
 ### Runtime and platform
 
-- **`windowsHide: true` hides the window you just launched.** Symptom: the process starts, exits 0, the
-  API returns 200, and nothing appears. Cause: it sets `STARTUPINFO.wShowWindow = SW_HIDE`, so
-  `explorer.exe` and GUI apps create a hidden window. Fix: never pass `windowsHide` for a launch the user
-  should see — see [the launcher section](#the-launcher-was-hidden-by-windowshide-important).
-- **`ELECTRON_RUN_AS_NODE` leaks into spawned GUI apps.** Symptom: the first click opens VS Code, and
-  after closing it, later clicks do nothing. Cause: the host's environment carries
-  `ELECTRON_RUN_AS_NODE=1`, so `Code.exe doc.md` runs as `node doc.md` and dies with a SyntaxError. Fix:
-  spawn GUI programs with an environment stripped of `^ELECTRON_` — see
-  [the launcher section](#the-launcher-inherited-electron_run_as_node-subtler-important).
+- **`windowsHide: true` hides the window you just launched (important).**
+
+  Symptom: "Reveal in Explorer" and "open with the default program" both looked like *clicked, nothing
+  happened* — the process started, exited 0, the API returned 200, and nothing appeared on screen.
+
+  Cause: `windowsHide: true` sets `STARTUPINFO.wShowWindow = SW_HIDE` on Windows, so **explorer.exe creates
+  the new window hidden** — and GUI programs (VS Code, IDEA, …) likewise.
+
+  ```js
+  spawn(explorer, ["/select,", path], { windowsHide: true })   // ← the fatal line
+  ```
+
+  Fix: never pass `windowsHide` for a launch the user should see. Only the helper process that brings
+  Explorer to the foreground with PowerShell stays hidden (otherwise it flashes a black box).
+
+  How to verify (whether the window is actually visible, not how many windows exist):
+
+  ```powershell
+  # count visible vs hidden among CabinetWClass top-level windows
+  [W]::EnumWindows(...) + [W]::IsWindowVisible($h)
+  ```
+
+  Before the fix: `visible=2 hidden=15`; after dropping `windowsHide`, every reveal bumps `visible` by one and
+  leaves `hidden` unchanged. Also note: `explorer.exe /select,<path>` always opens a **new window**; it does
+  not reuse an existing one.
+
+- **`ELECTRON_RUN_AS_NODE` leaks into spawned GUI apps (subtler).**
+
+  Symptom: the first click on VS Code opened a window; after closing it, later clicks did nothing at all.
+
+  Cause: the host itself is Electron, and its process environment carries `ELECTRON_RUN_AS_NODE=1`. Inherited
+  through `spawn`, **any Electron app (VS Code, Cursor, …) starts in plain Node mode**: `Code.exe some-doc.md`
+  is executed as `node some-doc.md`, which fails 78 ms later with `SyntaxError: Invalid or unexpected token`
+  and exits, so a window never appears. It also writes nothing to `%APPDATA%\Code\logs`, so from the outside
+  it is simply "clicked, nothing happened".
+
+  ```text
+  Code.exe file.md → stderr: file.md:1  SyntaxError: Invalid or unexpected token → exit 1
+  ```
+
+  Fix: launch GUI programs with an environment stripped of the Electron switches.
+
+  ```js
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (/^ELECTRON_/i.test(key)) continue;
+    env[key] = value;
+  }
+  spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env });
+  ```
+
+  Verify: same exe, same file — with the variable removed the window title immediately becomes
+  `file.md - Visual Studio Code`, and closing and clicking again works second and third time too.
+
+  > Note: native programs such as IntelliJ IDEA are unaffected by that variable; when it is already running, a
+  > new `idea64.exe` hands the file to the existing instance and exits (the window title becomes the file). That
+  > is normal JetBrains single-instance behaviour, not a launch failure.
 
 ### Front-end rendering
 
@@ -582,36 +628,6 @@ linked from here.
   is evaluated, before `apply()` installs the translator. Fix: store keys in those tables and resolve
   them through `t()` at render time.
 
-## Routes
-
-`http://127.0.0.1:<port>/doc-ledger/...`
-
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/all?scope=all\|current&session=<id>&limit=<n>&timing=1&force=1` | GET | The ledger payload; `scope=current` folds only one session, `timing=1` adds timings and bypasses caches, `force=1` forces a replay |
-| `/api/file?path=<absolute>` | GET | Quick-look bytes (≤200 KB), with `ETag` / `If-None-Match` → 304 |
-| `/api/openwith?path=<absolute>` | GET | Programs registered for the extension, with icons and the default marker |
-| `/api/open?mode=open\|reveal&path=<absolute>[&app=<id>]` | **POST** | Launch or reveal; GET returns 405 |
-| `/icon?path=<exe>` | GET | Real 32×32 PNG icon extracted from the executable |
-| `/api/_clienterror` | POST | Opt-in client diagnostics, ignored unless `debug: true` |
-
-## Requests and caching (performance)
-
-| Technique | Effect |
-|---|---|
-| `?scope=current&session=` folds one session | 613 KB → 19 KB, 1.7 s → 15 ms |
-| gzip + `slimFile()` | 613 KB → 31 KB full payload |
-| 3-second snapshot cache + `rev` fingerprint | repeat requests and polling cost ≈ 0; 0 DOM changes while `rev` is unchanged |
-| Log `size+mtime` fingerprint + per-session ledger on disk | cold full build 8.3 s → **0.9 s**; closed sessions never replay again |
-| "Expand all" in batches of 8 cards | 170 ms of blocking → **78 ms**, no task over 50 ms |
-| Batched icon extraction (one PowerShell call for N) | 6 icons 1288 ms → 255 ms |
-| 200 KB preview cap + `ETag` | big files cannot blow up memory; unchanged files answer 304 |
-| 15-second replay floor for live sessions | a silent poll of a busy session reuses the last fold |
-
-Ledger caching lives in `~/.dsh/doc-ledger-ledgers.json.gz`, keyed by the log's `size:mtime` stamp. The cache
-format and the ledger engine each carry a version (`LEDGER_VERSION`, `LEDGER_ENGINE`), so a change to either
-invalidates every entry rather than producing a wrong answer, and at most 250 sessions are kept.
-
 ## Verified / not verified
 
 Verified on this machine (Windows, DSH `>=0.2.0-rc.1 <0.3.0-0`, 43 sessions of which 32 are on disk):
@@ -622,9 +638,9 @@ Verified on this machine (Windows, DSH `>=0.2.0-rc.1 <0.3.0-0`, 43 sessions of w
 - host routes and the security matrix: 14 assertions (same-origin 403, ledger allowlist, POST-only,
   400/404/405, unknown route 404);
 - cache decisions: 8 assertions (exact stamp, TTL fallback, live replay floor);
-- client pure functions: 32 assertions (AND search, sorting, cross-session merge, formatting, highlight range
-  merging, `dsh-resource://` addresses);
-- i18n: 159 keys with matching zh/en sets, references and placeholders;
+- client pure functions: 43 assertions (AND search, sorting, cross-session merge, formatting, highlight range
+  merging, plurals, host locale snapshot, `dsh-resource://` addresses);
+- i18n: 179 keys with matching zh/en sets, references and placeholders;
 - the UI, in a browser via `npm run harness` in both languages.
 
 Not verified:
@@ -677,7 +693,7 @@ tools/readme-check.mjs         bilingual README parity: sections, links, anchors
 tools/release-notes-check.mjs  release-note parity: English twin, structure, tag-pinned images
 ```
 
-`npm test` runs six regression scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 8 +
+`npm test` runs eight check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 8 +
 client 43 + i18n's 179-key integrity check + README parity 10 + release notes 9 = **101 checks**, no external
 dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to prove that the
 committed `client.js` matches `src/client/*.js` byte for byte.

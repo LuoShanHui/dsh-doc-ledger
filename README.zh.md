@@ -10,6 +10,35 @@
 
 ![overview](docs/zh-overview.png)
 
+<details>
+<summary><b>目录</b></summary>
+
+- [30 秒上手](#30-秒上手)
+- [它做什么](#它做什么)
+- [截图](#截图)
+- [安装（插件形态）](#安装插件形态)
+- [安全模型](#安全模型)
+- [已知限制](#已知限制)
+- [参考](#参考)
+  - [数据模型](#数据模型)
+  - [界面](#界面)
+  - [预览：默认交给 DSH 自己的文档预览](#预览默认交给-dsh-自己的文档预览)
+  - [预览的编码处理](#预览的编码处理只作用于快速查看弹窗)
+  - [打开文件的实现](#打开文件的实现)
+  - [打开方式：列出所有关联程序](#打开方式列出所有关联程序)
+  - [真实程序图标](#真实程序图标)
+  - [排序菜单](#排序菜单)
+  - [刷新不打断阅读](#刷新不打断阅读)
+  - [路由](#路由)
+  - [请求与缓存](#请求与缓存性能)
+- [踩过的坑](#踩过的坑)
+- [已验证 / 未验证](#已验证--未验证)
+- [PTC 预设会话怎么记](#ptc-预设会话怎么记)
+- [当前会话怎么定位](#当前会话怎么定位)
+- [文件](#文件)
+
+</details>
+
 ## 30 秒上手
 
 ```jsonc
@@ -29,18 +58,14 @@
 > 实验性：依赖宿主内部 API（`sessionQuery`、`webServer` 前缀路由、bundle patch 注入），
 > 只在 DSH `>=0.2.0-rc.1 <0.3.0-0` 上验证过；宿主改接口时这个插件需要跟着改。
 
-## 形态
+## 它做什么
 
 | 形态 | 入口 | 说明 |
 |---|---|---|
 | 插件（会话内 tab） | 右侧 Sidebar 新增「文档台账」tab | 由 host 半侧提供页面路由，客户端半侧只负责挂载 tab；当前会话每 8 秒**静默**刷新一次（不显示加载态、不重建列表），快速查看打开时暂停 |
 | 静态报告 | `node tools/report.mjs --limit 40` | 生成 `report.html`，双击即可看，不需要安装插件（生成物含真实路径，已 gitignore） |
 
-插件形态的 React 面板是**唯一在维护的 UI**；静态报告只在导出时用 `lib/ui.js` 拼一份自包含 HTML。
-旧的 `/doc-ledger/ui` 页面已下线（第二套 UI 没有打开方式、图标和拆分视图，重复维护没有收益）。
-
-**数据模型**里的 `uses[]`、`ext`、`birthtime`、`mtime`、`exists`、`presented` 只留在宿主内存里，
-HTTP 响应会按 `slimFile()` 瘦身——`uses` 一项就占原响应的 30%，而客户端从不渲染它。
+一句话：打开这个 tab，就能看到本会话摸过的全部文档，分成**使用过**与**创建 / 修改**，可按类型筛选、多词 AND 搜索、每个分区独立排序，预览默认交给宿主的文档预览，也可以用自带的快速查看弹窗。
 
 ## 截图
 
@@ -58,7 +83,104 @@ HTTP 响应会按 `slimFile()` 瘦身——`uses` 一项就占原响应的 30%�
 截图里的工作区（`C:\work\demo-workspace`）、文档名和程序列表都是示例数据，
 不是任何人的真实项目。
 
-## 数据模型
+## 安装（插件形态）
+
+**profile 是一个 pnpm 工程**（`~/.dsh/profiles/<profile>` 下有 `package.json` / `pnpm-lock.yaml` /
+`pnpm-workspace.yaml`），DeepSeek Harness 启动时会跑 install，**把没写进 `package.json` 依赖的目录直接清掉**。
+所以不要把包直接 `cp` 进 `node_modules/`：下次启动它会消失。
+
+1. 在 `~/.dsh/profiles/<profile>/package.json` 的 `dependencies` 里加一行 GitHub 托管依赖
+   （pnpm 会直接拉仓库，**不需要先 clone**；`#v0.4.0` 固定版本，省掉 tag 就跟开发版）：
+
+   ```json
+   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.4.0"
+   ```
+
+   想改代码或内网环境，就改成指向本地目录：
+
+   ```json
+   "dsh-doc-ledger": "file:<path>/dsh-doc-ledger"
+   ```
+
+   也可以走 npm（`https://www.npmjs.com/package/dsh-doc-ledger`，与 GitHub tag 同一份代码，
+   少了 clone 仓库这一步；内网或镜像源上可能还没同步）：
+
+   ```json
+   "dsh-doc-ledger": "0.4.0"
+   ```
+
+2. 用运行时自带的 pnpm 安装（`<runtime>` 换成你的运行时目录；**复用已有的 store**，
+   否则 pnpm 会提示要清空整个 `node_modules`）：
+
+   ```powershell
+   node <runtime>/dependencies/pnpm/bin/pnpm.mjs install `
+     --config.store-dir=<pnpm-store> `
+     --config.confirmModulesPurge=false
+   ```
+
+3. 在 `~/.dsh/profiles/<profile>/cordis.patch.yml` 末尾加：
+
+   ```yaml
+   # dsh-doc-ledger: per-session document ledger sidebar tab
+   - insert:
+       - id: doc-ledger
+         name: dsh-doc-ledger
+         config:
+           maxSessions: 40
+           debug: false
+   ```
+
+4. 刷新页面（客户端 bundle 需要重新注入），右侧 Sidebar 出现「文档台账」。
+
+验证：
+
+- `GET /doc-ledger/api/all?scope=all` 返回 200 且有 `sessions[]`；
+- `GET /doc-ledger/api/all?scope=current&session=<id>&timing=1` 返回 200，`data.timings.total` 通常在 20 ms 内；
+- 右侧 Sidebar 出现「文档台账」tab，能看到当前会话的清单。
+
+卸载：从 `package.json` 删掉那条依赖 → `pnpm install`（同样的参数）→ 删掉 `cordis.patch.yml` 里的 insert 行。
+
+**换到别的 profile**：同样的三步，把 `desktop` 换成目标 profile 名即可。
+
+## 安全模型
+
+插件挂在宿主提供的回环端口上（`127.0.0.1`），但回环不等于安全：用户浏览的任何网页都能向
+`http://127.0.0.1:<port>/doc-ledger/api/...` 发请求。所以宿主侧只认下面三条：
+
+1. **同源校验**：`Sec-Fetch-Site` 是 `cross-site`/`same-site`、`Origin`/`Referer` 指向别的站点、
+   或 `Origin: null` 的请求一律 403。
+2. **只认台账里的路径**：`/api/file`、`/api/open`、`/api/openwith` 只接受当前缓存台账中出现过的文件，
+   `C:\Windows\win.ini` 这类路径返回 403；`/icon` 只接受已存在的 `.exe/.ico/.lnk`。
+3. **启动程序必须是 POST**：`/api/open` 拒绝 GET，`<img src=...>`、链接、预取都不能把程序拉起来。
+
+插件路由**不经过** GUI 的登录态（宿主只保护 `/`），上面三条就是它自己的全部防线。
+
+## 已知限制
+
+- **会话目录布局是隐式契约**：指纹来自 `~/.dsh/sessions/<项目>/<会话 id>/session.v4.jsonl.zstd`。
+  找不到这个结构（换 `DSH_HOME`、运行时改布局）就自动退回到原来的 TTL 失效，功能不受影响，只是慢一点。
+- **卡片懒挂载**：离视口很远的卡片只有标题，行要等滚动/聚焦上来才构建。
+  拖滚动条瞬移时，会先看到几帧标题、随后补齐；这是用「按需构建」换 43 张卡全展开的首帧。
+- **`exists` 有 20 秒缓存**：刚在磁盘上删掉的文件，最多 20 秒后才会显示成「已删除」。
+- **界面双语（zh / en）**：`locale` 字典覆盖面板全部文案（159 个 key），跟随宿主的界面语言；数据本身
+  （会话标题、文件名、路径、程序名）按原样显示、不翻译。实现与校验见 [`docs/i18n.md`](docs/i18n.md)。
+- **shell 产生的文件不算创建**：PTC 程序里用 `git diff > x.diff`、PowerShell 重定向、解压等命令写出的文件，
+  没有路径参数可抓，只会因为后续被读而出现在「使用过」。要覆盖得让运行时把 Shell 的文件写入也报上来。
+- **整文件写入即视为创建**：如果某个程序不读就直接覆盖一个已存在的文件（PTC 的 `fs.writeFileSync` 允许），
+  这个文件会被记成该会话「创建」。本机用「文件出生时间早于会话开始」反查过全部 43 个会话，
+  0 例误报（能被 `stat` 到的文件都对得上）。
+- **混编文件按行猜编码**：GB18030 与 UTF-8 在字节层面并不总是能区分，逐行取「替换字符更少」的那种是启发式——
+  一个 UTF-8 文件里若恰好有一行只剩单个坏字节，那一行可能被读成看起来正常、实际不对的汉字；
+  真正解不出的字节会如实标在提示行里，需要绝对准确时用「打开」交给编辑器。
+- **「快速查看」弹窗只给前 200 KB**：再大也只读这么多（避免把几百兆的文件读进内存），完整内容靠「侧边栏」或「打开」。
+- **宿主文档预览依赖 `openResource`**：没有这个方法的 DSH 版本会自动退回弹窗；宿主预览自己的解码策略没有在本仓库里验证，
+  所以 GB18030 之类的文件想读准原文时仍建议用「快速查看」。
+
+## 参考
+
+下面都是实现细节：数据怎么算出来、界面每一块怎么行为、以及一些有意思的取舍。改代码时读它，装插件时不用。
+
+### 数据模型
 
 从会话日志折叠出每个文件的记录：
 
@@ -79,12 +201,16 @@ HTTP 响应会按 `slimFile()` 瘦身——`uses` 一项就占原响应的 30%�
 - **失败调用**回滚：`tool/result` 带 `isError` 的调用会从台账里剔除，不会把报错算成「使用过」。
 - **工作目录**：初始取会话 header 的 `cwd`，随成功的 `working_directory` 调用切换，相对路径按当时的 cwd 归一化。
 
-## 界面
+插件形态的 React 面板是**唯一在维护的 UI**；静态报告只在导出时用 `lib/ui.js` 拼一份自包含 HTML。
+旧的 `/doc-ledger/ui` 页面已下线（第二套 UI 没有打开方式、图标和拆分视图，重复维护没有收益）。
+
+`uses[]`、`ext`、`birthtime`、`mtime`、`exists`、`presented` 只留在宿主内存里：HTTP 响应会按
+`slimFile()` 瘦身，因为 `uses` 一项就占原响应的 30%，而客户端从不渲染它。
+
+### 界面
 
 - **当前会话**：创建/修改 + 使用过两个清单。
 - **全部会话**：默认开启「区分会话」（每个会话一张卡片，卡片内再分创建/使用）；关掉则合并成两个跨会话清单，每行带会话标签。
-- **排序**：使用清单支持最近使用 / 首次使用 / 使用次数 / 存在状态 / 类型 / 路径；创建清单支持创建时间 / 更新时间 / 类型 / 路径 + 存在状态。
-- **搜索**：路径、文件名、交付说明、会话标题；Ctrl/⌘+K 聚焦；命中的片段会**高亮**。
 - **类型过滤**：摘要行下方的类型 chip（文档 / 表格 / 演示 / 图片 / 代码 / 网页 / 配置 / 数据 / 压缩包 / 其他），
   按当前数据的实际分布显示数量，点一下只看该类型，再点取消；计数为 0 的类型不出现，选择会记住。
   chip 用「文字 + 小号计数」两级排版（计数 `tabular-nums`，选中时跟着变蓝），有底色和 120 ms 过渡，
@@ -99,8 +225,6 @@ HTTP 响应会按 `slimFile()` 瘦身——`uses` 一项就占原响应的 30%�
   不再出现「筛出 25 行、摘要还写着 43 个会话」的割裂。
 - **点击行**：默认交给 DSH 自己的「文档预览」在右侧栏打开（Markdown 渲染、图片、PDF、Office、表格、语法高亮都由宿主负责，
   见下一节）；`Shift+回车` 或菜单里的「快速查看」则是本篇自己的弹窗。
-
-### 交互
 
 - **会话卡片**：点标题折叠或展开整张卡；「全部会话」默认全部收起，「当前会话」默认展开。
   卡片底部右侧「全部展开 / 全部折叠」一键处理所有卡片（43 张卡从 43 次点击变成 1 次）。
@@ -194,7 +318,7 @@ PowerShell 重定向写出的 UTF-16LE、UTF-8 文件里混进几行 GBK 的配�
 同一个真实文件的结果：`4845 → 0`、`6315 → 0`、`497 → 29`、`271 → 26`、`425 → 2`。剩下的解不出字节如实计入
 `replacements`，提示行写「N 个字符无法解码」，不假装成功；小 ICU 的 Node 没有 `gb18030` 解码器时自动退回 UTF-8。
 
-### 打开文件的实现（踩过的坑）
+### 打开文件的实现
 
 宿主进程的 PATH 可能是被清理过的（`cmd.exe`、`explorer.exe` 用裸名会 ENOENT），而且 spawn 的错误事件是异步的。
 早期版本 `spawn` 后立刻回 200，错误被吞掉，界面上就是「点了没反应」。现在：
@@ -227,23 +351,7 @@ PowerShell 重定向写出的 UTF-16LE、UTF-8 文件里混进几行 GBK 的配�
 以 `.md` 为例，本机枚举结果：`VS Code（默认）` / `WorkBuddy` / `IntelliJ IDEA`。
 结果按扩展名缓存 60 秒。
 
-**安全**：`/api/open?mode=open&app=<exe>` 里的 exe 必须出现在该扩展名的枚举结果里，
-否则返回 400「这个程序没有为 .md 注册打开方式」；`path` 还必须是台账里出现过的文件，否则 403。
-加上「只接受 POST」和同源校验，这个本地路由没法被网页当成任意程序启动器。
-
-### 真实程序图标
-
-列表里的图标是**从 exe 里抽出来的真图标**（和资源管理器里看到的一样），不是首字母色块：
-
-- 宿主新增 `GET /doc-ledger/icon?path=<exe>`，用 .NET 的
-  `[System.Drawing.Icon]::ExtractAssociatedIcon` 抽出 32×32 图标并保存成 PNG；
-- 缓存目录 `~/.dsh/doc-ledger-icons/`，文件名是 `sha1(exe + mtime)`，
-  程序升级后图标会自动刷新；进程内还有一层 Map 缓存，第二次请求约 10ms；
-- 抽不出来（或文件不存在）返回 404，客户端退回首字母色块，不会出现破图。
-
-`/api/openwith` 的每一项都带 `icon` 字段，客户端直接用 `<img>` 加载。
-
-### 快速查看弹窗里的「打开方式」
+预览弹窗右上角是一个**分裂按钮**，和宿主自带的「打开方式」外观一致：
 
 预览弹窗右上角是一个**分裂按钮**，和宿主自带的「打开方式」外观一致：
 
@@ -260,72 +368,21 @@ PowerShell 重定向写出的 UTF-16LE、UTF-8 文件里混进几行 GBK 的配�
 「选择其他程序…」仍然调用 `rundll32 shell32.dll,OpenAs_RunDLL <path>`，
 也就是 Windows 原生「打开方式」对话框，可以现场挑任意已安装程序。
 
-### 启动器被 `windowsHide` 隐藏了（重要）
+**安全**：`/api/open?mode=open&app=<exe>` 里的 exe 必须出现在该扩展名的枚举结果里，
+否则返回 400「这个程序没有为 .md 注册打开方式」；`path` 还必须是台账里出现过的文件，否则 403。
+加上「只接受 POST」和同源校验，这个本地路由没法被网页当成任意程序启动器。
 
-「在资源管理器中显示」和「用默认程序打开」都曾经看起来「点了没反应」，根因是同一个：
+### 真实程序图标
 
-```js
-spawn(explorer, ["/select,", path], { windowsHide: true })   // ← 致命的一行
-```
+列表里的图标是**从 exe 里抽出来的真图标**（和资源管理器里看到的一样），不是首字母色块：
 
-`windowsHide: true` 在 Windows 上会设置 `STARTUPINFO.wShowWindow = SW_HIDE`，
-于是 **explorer.exe 把新窗口创建成隐藏的**，GUI 程序（VS Code、IDEA 等）也一样。
-进程正常启动、退出码正常、API 返回 200，但屏幕上什么都没有。
+- 宿主新增 `GET /doc-ledger/icon?path=<exe>`，用 .NET 的
+  `[System.Drawing.Icon]::ExtractAssociatedIcon` 抽出 32×32 图标并保存成 PNG；
+- 缓存目录 `~/.dsh/doc-ledger-icons/`，文件名是 `sha1(exe + mtime)`，
+  程序升级后图标会自动刷新；进程内还有一层 Map 缓存，第二次请求约 10ms；
+- 抽不出来（或文件不存在）返回 404，客户端退回首字母色块，不会出现破图。
 
-验证方法（窗口是否真的可见，不是数窗口数量）：
-
-```powershell
-# 统计 CabinetWClass 顶层窗口里可见/隐藏的数量
-[W]::EnumWindows(...) + [W]::IsWindowVisible($h)
-```
-
-修复前：`visible=2 hidden=15`；把 `windowsHide` 去掉后每点一次 reveal，
-`visible` 加一、`hidden` 不变。
-
-**结论：凡是用户应该看得见的启动，都不能传 `windowsHide`。**
-只有那段用 PowerShell 把资源管理器提到前台的辅助进程仍然隐藏（否则会闪一个黑框）。
-
-顺带说明：`explorer.exe /select,<path>` 每次都会**新开一个窗口**，不会复用已有窗口。
-
-### 启动器继承了 `ELECTRON_RUN_AS_NODE`（更隐蔽，重要）
-
-修好 `windowsHide` 之后还剩一个只在「关掉程序再点一次」时出现的怪现象：
-第一次点 VS Code 能弹出窗口，关掉后再点就毫无反应。
-
-根因是宿主自己就是 Electron，它的进程环境里带着：
-
-```
-ELECTRON_RUN_AS_NODE=1
-```
-
-被 `spawn` 继承后，**任何 Electron 应用（VS Code、Cursor……）都会以纯 Node 模式启动**：
-`Code.exe 某文档.md` 被当成 `node 某文档.md` 去执行，78 毫秒后报
-`SyntaxError: Invalid or unexpected token` 退出，窗口永远不会出现。同时它也不写
-`%APPDATA%\Code\logs`，所以从外部看就是「点了没反应」。
-
-复现（宿主环境里直接跑）：
-
-```text
-Code.exe file.md → stderr: file.md:1  SyntaxError: Invalid or unexpected token → exit 1
-```
-
-修复：启动 GUI 程序时传一份剥掉 Electron 开关的环境：
-
-```js
-const env = {};
-for (const [key, value] of Object.entries(process.env)) {
-  if (/^ELECTRON_/i.test(key)) continue;
-  env[key] = value;
-}
-spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env });
-```
-
-验证：同一个 exe、同一个文件，去掉该变量后窗口标题立刻变成
-`file.md - Visual Studio Code`；关掉再点，第二次、第三次都能正常拉起。
-
-> 注意：IntelliJ IDEA 这类原生程序不受该变量影响；它已经在运行时，新的
-> `idea64.exe` 会把文件转交给已有实例然后退出（窗口标题会变成该文件），
-> 这是 JetBrains 的正常单实例行为，不是启动失败。
+`/api/openwith` 的每一项都带 `icon` 字段，客户端直接用 `<img>` 加载。
 
 ### 排序菜单
 
@@ -346,153 +403,7 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
 实测：预览打开后滚动到 260 px，等 10 秒（本该触发轮询）→ 同一 DOM 节点、`scrollTop` 仍是 260、0 次加载态闪烁、
 0 次请求；关闭预览 → 恰好 1 次静默刷新。列表滚动位置在轮询中同样保持不变。
 
-## 安全模型
-
-插件挂在宿主提供的回环端口上（`127.0.0.1`），但回环不等于安全：用户浏览的任何网页都能向
-`http://127.0.0.1:<port>/doc-ledger/api/...` 发请求。所以宿主侧只认下面三条：
-
-1. **同源校验**：`Sec-Fetch-Site` 是 `cross-site`/`same-site`、`Origin`/`Referer` 指向别的站点、
-   或 `Origin: null` 的请求一律 403。
-2. **只认台账里的路径**：`/api/file`、`/api/open`、`/api/openwith` 只接受当前缓存台账中出现过的文件，
-   `C:\Windows\win.ini` 这类路径返回 403；`/icon` 只接受已存在的 `.exe/.ico/.lnk`。
-3. **启动程序必须是 POST**：`/api/open` 拒绝 GET，`<img src=...>`、链接、预取都不能把程序拉起来。
-
-插件路由**不经过** GUI 的登录态（宿主只保护 `/`），上面三条就是它自己的全部防线。
-
-## 安装（插件形态）
-
-**profile 是一个 pnpm 工程**（`~/.dsh/profiles/<profile>` 下有 `package.json` / `pnpm-lock.yaml` /
-`pnpm-workspace.yaml`），DeepSeek Harness 启动时会跑 install，**把没写进 `package.json` 依赖的目录直接清掉**。
-所以不要把包直接 `cp` 进 `node_modules/`：下次启动它会消失。
-
-1. 在 `~/.dsh/profiles/<profile>/package.json` 的 `dependencies` 里加一行 GitHub 托管依赖
-   （pnpm 会直接拉仓库，**不需要先 clone**；`#v0.4.0` 固定版本，省掉 tag 就跟开发版）：
-
-   ```json
-   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.4.0"
-   ```
-
-   想改代码或内网环境，就改成指向本地目录：
-
-   ```json
-   "dsh-doc-ledger": "file:<path>/dsh-doc-ledger"
-   ```
-
-   也可以走 npm（`https://www.npmjs.com/package/dsh-doc-ledger`，与 GitHub tag 同一份代码，
-   少了 clone 仓库这一步；内网或镜像源上可能还没同步）：
-
-   ```json
-   "dsh-doc-ledger": "0.4.0"
-   ```
-
-2. 用运行时自带的 pnpm 安装（`<runtime>` 换成你的运行时目录；**复用已有的 store**，
-   否则 pnpm 会提示要清空整个 `node_modules`）：
-
-   ```powershell
-   node <runtime>/dependencies/pnpm/bin/pnpm.mjs install `
-     --config.store-dir=<pnpm-store> `
-     --config.confirmModulesPurge=false
-   ```
-
-3. 在 `~/.dsh/profiles/<profile>/cordis.patch.yml` 末尾加：
-
-   ```yaml
-   # dsh-doc-ledger: per-session document ledger sidebar tab
-   - insert:
-       - id: doc-ledger
-         name: dsh-doc-ledger
-         config:
-           maxSessions: 40
-           debug: false
-   ```
-
-4. 刷新页面（客户端 bundle 需要重新注入），右侧 Sidebar 出现「文档台账」。
-
-验证：
-
-- `GET /doc-ledger/api/all?scope=all` 返回 200 且有 `sessions[]`；
-- `GET /doc-ledger/api/all?scope=current&session=<id>&timing=1` 返回 200，`data.timings.total` 通常在 20 ms 内；
-- 右侧 Sidebar 出现「文档台账」tab，能看到当前会话的清单。
-
-卸载：从 `package.json` 删掉那条依赖 → `pnpm install`（同样的参数）→ 删掉 `cordis.patch.yml` 里的 insert 行。
-
-## 换到别的 profile
-
-同样的三步，把 `desktop` 换成目标 profile 名即可。
-
-## 已知限制
-
-- **会话目录布局是隐式契约**：指纹来自 `~/.dsh/sessions/<项目>/<会话 id>/session.v4.jsonl.zstd`。
-  找不到这个结构（换 `DSH_HOME`、运行时改布局）就自动退回到原来的 TTL 失效，功能不受影响，只是慢一点。
-- **卡片懒挂载**：离视口很远的卡片只有标题，行要等滚动/聚焦上来才构建。
-  拖滚动条瞬移时，会先看到几帧标题、随后补齐；这是用「按需构建」换 43 张卡全展开的首帧。
-- **`exists` 有 20 秒缓存**：刚在磁盘上删掉的文件，最多 20 秒后才会显示成「已删除」。
-- **界面双语（zh / en）**：`locale` 字典覆盖面板全部文案（159 个 key），跟随宿主的界面语言；数据本身
-  （会话标题、文件名、路径、程序名）按原样显示、不翻译。实现与校验见 [`docs/i18n.md`](docs/i18n.md)。
-- **shell 产生的文件不算创建**：PTC 程序里用 `git diff > x.diff`、PowerShell 重定向、解压等命令写出的文件，
-  没有路径参数可抓，只会因为后续被读而出现在「使用过」。要覆盖得让运行时把 Shell 的文件写入也报上来。
-- **整文件写入即视为创建**：如果某个程序不读就直接覆盖一个已存在的文件（PTC 的 `fs.writeFileSync` 允许），
-  这个文件会被记成该会话「创建」。本机用「文件出生时间早于会话开始」反查过全部 43 个会话，
-  0 例误报（能被 `stat` 到的文件都对得上）。
-- **混编文件按行猜编码**：GB18030 与 UTF-8 在字节层面并不总是能区分，逐行取「替换字符更少」的那种是启发式——
-  一个 UTF-8 文件里若恰好有一行只剩单个坏字节，那一行可能被读成看起来正常、实际不对的汉字；
-  真正解不出的字节会如实标在提示行里，需要绝对准确时用「打开」交给编辑器。
-- **「快速查看」弹窗只给前 200 KB**：再大也只读这么多（避免把几百兆的文件读进内存），完整内容靠「侧边栏」或「打开」。
-- **宿主文档预览依赖 `openResource`**：没有这个方法的 DSH 版本会自动退回弹窗；宿主预览自己的解码策略没有在本仓库里验证，
-  所以 GB18030 之类的文件想读准原文时仍建议用「快速查看」。
-
-## 踩过的坑
-
-每条按**现象 → 根因 → 修法**写；长篇复现步骤留在正文对应小节，这里用链接指过去。
-
-### 宿主 API 契约
-
-- **`listSessions()` 返回嵌套记录，不是扁平对象。** 现象：读 `record.id` / `record.cwd` 拿到 `undefined`。
-  根因：形状是 `{ header: { id, createdAt, cwd, agentPreset }, live, persisted }`。修法：一律经 `header` 读。
-- **实时会话可能根本没有 header 事件。** 现象：相对路径拼不出来，`/api/file` 回 ENOENT。
-  根因：header 事件被折叠进 `data`，且可能不在事件流里。修法：`buildLedger` 接受 `options.header`，
-  由调用方从会话列表播种。
-- **`readTitleSnapshots()` 的值有两种形态。** 现象：标题渲染成 `[object Object]`。
-  根因：返回 `[{ status, value: { session, title } }]`，而 `title` 可能是字符串也可能是快照对象。修法：两种都认。
-- **桌面版用 `file://` 加载前端。** 现象：`/plugins/*` 这类客户端资源路由不生效，HTTP 探测不到 tab 是否注册。
-  根因：桌面壳不提供那些路由。修法：客户端 bundle 靠刷新后由 boot 清单注入，要在页面里验证，不要靠 HTTP。
-
-### 运行时与平台
-
-- **`windowsHide: true` 会把刚启动的窗口藏起来。** 现象：进程正常启动、退出码 0、API 回 200，屏幕上什么都没有。
-  根因：它设置 `STARTUPINFO.wShowWindow = SW_HIDE`，于是 `explorer.exe` 和 GUI 程序都创建隐藏窗口。
-  修法：凡是用户该看得见的启动都不能传 `windowsHide` —— 见
-  [启动器被 windowsHide 隐藏了](#启动器被-windowshide-隐藏了重要)。
-- **`ELECTRON_RUN_AS_NODE` 会被 GUI 程序继承。** 现象：第一次点 VS Code 能开，关掉后再点毫无反应。
-  根因：宿主环境带 `ELECTRON_RUN_AS_NODE=1`，被继承后 `Code.exe doc.md` 被当成 `node doc.md` 执行，
-  报 SyntaxError 退出。修法：启动 GUI 程序时传一份剥掉 `^ELECTRON_` 的环境 —— 见
-  [启动器继承了 ELECTRON_RUN_AS_NODE](#启动器继承了-electron_run_as_node更隐蔽重要)。
-
-### 前端渲染
-
-- **`maxHeight` 的 flex 列会挤压小行。** 现象：预览弹窗里 11px 的信息行 / 提示行被压到 12px、字被裁掉一半，
-  看起来像被正文盖住。根因：高度缺口会分摊给**所有**子项，小行跟着缩，而该吸收收缩的正文没吸满。
-  修法：非正文行 `flex: 0 0 auto` + 显式 `lineHeight`，正文 `flex: 1 1 auto; minHeight: 0`。
-  实测 520×320 下信息行 / 提示行 / 脚注仍是 27 / 27 / 29 px，无裁切。
-- **非合成页里 `requestAnimationFrame` 被节流到 ~1 秒**（实测 594/1000/1000 ms）。现象：分片展开看起来是卡住的。
-  修法：分片用 `setTimeout(…, 0)`；用 rAF 会让「全部展开」显得坏掉。
-- **roving 索引只能数真正渲染出来的行。** 现象：折叠第一个分区后整张卡没有可 Tab 的行，方向键跳到错误的行。
-  根因：索引在所有分区上编号，而折叠分区根本不建 DOM。修法：只给已渲染且展开的行编号。
-
-### 缓存、测试与其它
-
-- **轮询 live 会话曾经会重放整个日志。** 现象：忙的会话每 8 秒一次 CPU 尖峰。
-  根因：每流一个 token 都会改 `size:mtime` 指纹，精确 stamp 缓存永不命中。修法：静默轮询加 15 秒重放下限
-  （`force=1` 与 `timing=1` 仍全量重放）。实测 290 KB 日志：真实重放 `replay` 26–42 ms、wall 51–67 ms ——
-  性能分析里那个 ~1 s 是 32 个会话冷启动重放，不是单次轮询。
-- **过时的断言会掩盖真实的行为变化。** 现象：测试通过了，但它描述的行为已经不是代码的行为。
-  根因：i18n 改造后 `categoryLabel("unknown")` 返回本地化的「其他」而不是回显原始分类，旧断言仍因错误原因通过。
-  修法：让断言写成新的契约。
-- **字典不能在求值期就被固化。** 现象：切换语言后分类名和排序标签仍是中文。
-  根因：`CATEGORY_LABEL` 和排序键表在工厂求值时就建好了，早于 `apply()` 安装翻译器。
-  修法：这些表存 key，渲染时经 `t()` 解析。
-
-## 路由
+### 路由
 
 | 路径 | 返回 |
 |---|---|
@@ -510,7 +421,7 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
 
 数据由 `ctx.sessionQuery` 提供：`listSessions()` 排序、`readSession(id)` 回放、`readTitleSnapshots(ids)` 取标题。没有 `sessionQuery` 的 profile 会返回空数据并在响应里带 `warning`。
 
-## 请求与缓存（性能）
+### 请求与缓存（性能）
 
 实测（34 个会话 / 1105 个文件，本机真实数据）原本每次 `/api/all` 要 **1.4–5.4 s / 613 KB**，打开面板和轮询都付这个钱。现在：
 
@@ -537,6 +448,116 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
 冷启动后第一次全量请求只重放**指纹变了**的会话（通常就是正在用的这个），本机实测 0.9 s；
 之后都在 15–300 ms 级。`exists` 不再烘进台账缓存：它在生成响应时按文件 `stat`（20 s 缓存，20 µs/文件），
 所以「已删除」标记永远反映磁盘现状（实测 1008 / 122）。
+
+## 踩过的坑
+
+每条按**现象 → 根因 → 修法**写；长篇复现步骤留在正文对应小节，这里用链接指过去。
+
+### 宿主 API 契约
+
+- **`listSessions()` 返回嵌套记录，不是扁平对象。** 现象：读 `record.id` / `record.cwd` 拿到 `undefined`。
+  根因：形状是 `{ header: { id, createdAt, cwd, agentPreset }, live, persisted }`。修法：一律经 `header` 读。
+- **实时会话可能根本没有 header 事件。** 现象：相对路径拼不出来，`/api/file` 回 ENOENT。
+  根因：header 事件被折叠进 `data`，且可能不在事件流里。修法：`buildLedger` 接受 `options.header`，
+  由调用方从会话列表播种。
+- **`readTitleSnapshots()` 的值有两种形态。** 现象：标题渲染成 `[object Object]`。
+  根因：返回 `[{ status, value: { session, title } }]`，而 `title` 可能是字符串也可能是快照对象。修法：两种都认。
+- **桌面版用 `file://` 加载前端。** 现象：`/plugins/*` 这类客户端资源路由不生效，HTTP 探测不到 tab 是否注册。
+  根因：桌面壳不提供那些路由。修法：客户端 bundle 靠刷新后由 boot 清单注入，要在页面里验证，不要靠 HTTP。
+
+### 运行时与平台
+
+- **`windowsHide: true` 会把刚启动的窗口藏起来（重要）。**
+
+  「在资源管理器中显示」和「用默认程序打开」都曾经看起来「点了没反应」，根因是同一个：
+
+  ```js
+  spawn(explorer, ["/select,", path], { windowsHide: true })   // ← 致命的一行
+  ```
+
+  `windowsHide: true` 在 Windows 上会设置 `STARTUPINFO.wShowWindow = SW_HIDE`，
+  于是 **explorer.exe 把新窗口创建成隐藏的**，GUI 程序（VS Code、IDEA 等）也一样。
+  进程正常启动、退出码正常、API 返回 200，但屏幕上什么都没有。
+
+  验证方法（窗口是否真的可见，不是数窗口数量）：
+
+  ```powershell
+  # 统计 CabinetWClass 顶层窗口里可见/隐藏的数量
+  [W]::EnumWindows(...) + [W]::IsWindowVisible($h)
+  ```
+
+  修复前：`visible=2 hidden=15`；把 `windowsHide` 去掉后每点一次 reveal，
+  `visible` 加一、`hidden` 不变。
+
+  **结论：凡是用户应该看得见的启动，都不能传 `windowsHide`。**
+  只有那段用 PowerShell 把资源管理器提到前台的辅助进程仍然隐藏（否则会闪一个黑框）。
+
+  顺带说明：`explorer.exe /select,<path>` 每次都会**新开一个窗口**，不会复用已有窗口。
+
+- **`ELECTRON_RUN_AS_NODE` 会被 GUI 程序继承（更隐蔽）。**
+
+  修好 `windowsHide` 之后还剩一个只在「关掉程序再点一次」时出现的怪现象：
+  第一次点 VS Code 能弹出窗口，关掉后再点就毫无反应。
+
+  根因是宿主自己就是 Electron，它的进程环境里带着：
+
+  ```
+  ELECTRON_RUN_AS_NODE=1
+  ```
+
+  被 `spawn` 继承后，**任何 Electron 应用（VS Code、Cursor……）都会以纯 Node 模式启动**：
+  `Code.exe 某文档.md` 被当成 `node 某文档.md` 去执行，78 毫秒后报
+  `SyntaxError: Invalid or unexpected token` 退出，窗口永远不会出现。同时它也不写
+  `%APPDATA%\Code\logs`，所以从外部看就是「点了没反应」。
+
+  复现（宿主环境里直接跑）：
+
+  ```text
+  Code.exe file.md → stderr: file.md:1  SyntaxError: Invalid or unexpected token → exit 1
+  ```
+
+  修复：启动 GUI 程序时传一份剥掉 Electron 开关的环境：
+
+  ```js
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (/^ELECTRON_/i.test(key)) continue;
+    env[key] = value;
+  }
+  spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env });
+  ```
+
+  验证：同一个 exe、同一个文件，去掉该变量后窗口标题立刻变成
+  `file.md - Visual Studio Code`；关掉再点，第二次、第三次都能正常拉起。
+
+  > 注意：IntelliJ IDEA 这类原生程序不受该变量影响；它已经在运行时，新的
+  > `idea64.exe` 会把文件转交给已有实例然后退出（窗口标题会变成该文件），
+  > 这是 JetBrains 的正常单实例行为，不是启动失败。
+
+
+### 前端渲染
+
+- **`maxHeight` 的 flex 列会挤压小行。** 现象：预览弹窗里 11px 的信息行 / 提示行被压到 12px、字被裁掉一半，
+  看起来像被正文盖住。根因：高度缺口会分摊给**所有**子项，小行跟着缩，而该吸收收缩的正文没吸满。
+  修法：非正文行 `flex: 0 0 auto` + 显式 `lineHeight`，正文 `flex: 1 1 auto; minHeight: 0`。
+  实测 520×320 下信息行 / 提示行 / 脚注仍是 27 / 27 / 29 px，无裁切。
+- **非合成页里 `requestAnimationFrame` 被节流到 ~1 秒**（实测 594/1000/1000 ms）。现象：分片展开看起来是卡住的。
+  修法：分片用 `setTimeout(…, 0)`；用 rAF 会让「全部展开」显得坏掉。
+- **roving 索引只能数真正渲染出来的行。** 现象：折叠第一个分区后整张卡没有可 Tab 的行，方向键跳到错误的行。
+  根因：索引在所有分区上编号，而折叠分区根本不建 DOM。修法：只给已渲染且展开的行编号。
+
+### 缓存、测试与其它
+
+- **轮询 live 会话曾经会重放整个日志。** 现象：忙的会话每 8 秒一次 CPU 尖峰。
+  根因：每流一个 token 都会改 `size:mtime` 指纹，精确 stamp 缓存永不命中。修法：静默轮询加 15 秒重放下限
+  （`force=1` 与 `timing=1` 仍全量重放）。实测 290 KB 日志：真实重放 `replay` 26–42 ms、wall 51–67 ms ——
+  性能分析里那个 ~1 s 是 32 个会话冷启动重放，不是单次轮询。
+- **过时的断言会掩盖真实的行为变化。** 现象：测试通过了，但它描述的行为已经不是代码的行为。
+  根因：i18n 改造后 `categoryLabel("unknown")` 返回本地化的「其他」而不是回显原始分类，旧断言仍因错误原因通过。
+  修法：让断言写成新的契约。
+- **字典不能在求值期就被固化。** 现象：切换语言后分类名和排序标签仍是中文。
+  根因：`CATEGORY_LABEL` 和排序键表在工厂求值时就建好了，早于 `apply()` 安装翻译器。
+  修法：这些表存 key，渲染时经 `t()` 解析。
 
 ## 已验证 / 未验证
 
