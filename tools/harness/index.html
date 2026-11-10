@@ -45,7 +45,10 @@
           return dict && dict[key] !== undefined ? dict[key] : key;
         };
       },
-      register: function (ns, dicts) { dictionaries = dicts; return function () {}; }
+      register: function (ns, dicts) { dictionaries = dicts; return function () {}; },
+      // The real service reports the active UI language; the bundle uses it to pick
+      // Intl.PluralRules, so the harness must answer honestly for ?locale=en.
+      getLocale: function () { return activeLocale; }
     },
     effect: function (fn) { try { fn(); } catch (error) { console.error("effect", error); } },
     slots: {

@@ -68,8 +68,17 @@ for (const m of categoryText.matchAll(/"(category\.\w+)"/g)) referenced.add(m[1]
 const sectionsText = readFileSync(join(dir, "100-sections.js"), "utf8");
 for (const m of sectionsText.matchAll(/label: "(sort\.\w+)"/g)) referenced.add(m[1]);
 
+// Plural variants (`key_one`, `key_other`, ...) are reached through the base key by t().
+const VARIANT = /_(one|other|zero|two|few|many)$/;
+const baseOf = (key) => key.replace(VARIANT, "");
+
 const dangling = [...referenced].filter((k) => !zhKeys.includes(k));
-const unused = zhKeys.filter((k) => !referenced.has(k) && !DYNAMIC.has(k));
+const unused = zhKeys.filter((k) => {
+  if (referenced.has(k)) return false;
+  if (DYNAMIC.has(k)) return false;
+  if (VARIANT.test(k) && (referenced.has(baseOf(k)) || DYNAMIC.has(baseOf(k)))) return false;
+  return true;
+});
 assert.deepEqual(dangling, [], "t() references keys missing from the dictionaries");
 assert.deepEqual(unused, [], "dictionary keys never referenced (add to DYNAMIC if reached through a table)");
 

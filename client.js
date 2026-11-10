@@ -26,15 +26,64 @@ window.__ModuleLoader__.load({
      *
      * `{name}` placeholders are substituted here rather than relying on the host's
      * translator, so dictionaries and call sites do not depend on host interpolation.
+     *
+     * PLURALS: a caller may pass `count`. The dictionary then supplies variants under
+     * `<key>_one` / `<key>_other` (plus `_few` / `_many` / `_zero` where a language needs
+     * them), chosen with Intl.PluralRules. Chinese has one form, so its `_other` entry is
+     * used for every count; English gets `1 file` / `2 files` without the call sites
+     * knowing which language is active.
      */
     var ZH_FALLBACK = {};
     var rawT = null;
+    var currentLocale = "zh";
+    var pluralRules = null;
 
-    function t(key, params) {
+    function lookup(key) {
       var text = rawT !== null ? rawT(key) : undefined;
       if (text === undefined || text === null || text === "" || text === key) {
         text = ZH_FALLBACK[key];
       }
+      return text;
+    }
+
+    function pluralForm(count) {
+      try {
+        if (pluralRules === null && typeof Intl !== "undefined" && Intl.PluralRules) {
+          pluralRules = new Intl.PluralRules(currentLocale);
+        }
+        if (pluralRules !== null) return pluralRules.select(Number(count));
+      } catch (error) {
+        /* an old runtime without Intl falls through to the _other form */
+      }
+      return "other";
+    }
+
+    /**
+     * The number a plural variant should agree with: `count`, or the first numeric
+     * param the call site supplied. Dictionary keys stay language-neutral, so a
+     * caller that says `{ n: 3 }` or `{ files: 2 }` gets `_one` / `_other` selected
+     * without declaring which of its params drives the plural.
+     */
+    function countOf(params) {
+      if (!params) return null;
+      if (typeof params.count === "number") return params.count;
+      for (var name in params) {
+        if (!Object.prototype.hasOwnProperty.call(params, name)) continue;
+        if (typeof params[name] === "number") return params[name];
+      }
+      return null;
+    }
+
+    function t(key, params) {
+      var text;
+      var num = countOf(params);
+      if (num !== null) {
+        var form = pluralForm(num);
+        text = lookup(key + "_" + form);
+        if (text === undefined) text = lookup(key + "_other");
+        if (text === undefined) text = lookup(key + "_one");
+      }
+      if (text === undefined) text = lookup(key);
       if (text === undefined || text === null) return String(key);
       if (!params) return String(text);
       return String(text).replace(/\{(\w+)\}/g, function (all, name) {
@@ -42,7 +91,13 @@ window.__ModuleLoader__.load({
       });
     }
 
-    function setTranslator(fn) { rawT = fn; }
+    function setTranslator(fn, locale) {
+      rawT = fn;
+      if (typeof locale === "string" && locale !== "") {
+        currentLocale = locale;
+        pluralRules = null;
+      }
+    }
     function setFallback(dict) { ZH_FALLBACK = dict || {}; }
 
     /**
@@ -125,6 +180,8 @@ window.__ModuleLoader__.load({
 
       // toast / copy
       "toast.copiedChars": "（{n} 字符）",
+      "toast.copiedChars_one": "（{n} 字符）",
+      "toast.copiedChars_other": "（{n} 字符）",
       "toast.copyFailed": "复制失败：",
       "toast.copiedMd": "已复制 Markdown",
       "toast.copiedCsv": "已复制 CSV",
@@ -163,6 +220,8 @@ window.__ModuleLoader__.load({
       "export.colModified": "修改",
 
       "export.currentListWithCount": "导出当前清单（{n} 行）",
+      "export.currentListWithCount_one": "导出当前清单（{n} 行）",
+      "export.currentListWithCount_other": "导出当前清单（{n} 行）",
       "export.markdown": "复制清单（Markdown 表格）",
       "export.csv": "复制清单（CSV）",
       "export.paths": "复制全部路径",
@@ -199,11 +258,15 @@ window.__ModuleLoader__.load({
       // quick-look modal
       "preview.defaultApp": "默认程序",
       "preview.lines": " {n} 行",
+      "preview.lines_one": " {n} 行",
+      "preview.lines_other": " {n} 行",
       "preview.createdAt": "创建于 ",
       "preview.updatedAt": "改于 ",
       "preview.readWrite": "读 {reads} 写 {writes}",
       "preview.truncated": "只显示前 {shown}（共 {total}），完整内容请用上面的按钮打开",
       "preview.undecodable": " {n} 个字符无法解码",
+      "preview.undecodable_one": " {n} 个字符无法解码",
+      "preview.undecodable_other": " {n} 个字符无法解码",
       "preview.aria": "预览 ",
       "preview.openWith": "用 {app} 打开",
       "preview.chooseOther": "选择其他程序",
@@ -220,8 +283,16 @@ window.__ModuleLoader__.load({
 
       // summary line
       "summary.line": "会话 {sessions} · 使用 {used} · 创建 {created} · 读 {reads} 次 · 写 {writes} 次",
-      "summary.filteredLine": "　·　筛选后 {files} 个文件 / {sessions} 个会话",
+      "summary.filteredLine": "　·　筛选后{files} /{sessions}",
+      "summary.countFiles": " {n} 个文件",
+      "summary.countFiles_one": " {n} 个文件",
+      "summary.countFiles_other": " {n} 个文件",
+      "summary.countSessions": " {n} 个会话",
+      "summary.countSessions_one": " {n} 个会话",
+      "summary.countSessions_other": " {n} 个会话",
       "summary.onlyRecentLine": "　（仅最近 {shown} 个会话，共 {total}）",
+      "summary.onlyRecentLine_one": "　（仅最近 {shown} 个会话，共 {total}）",
+      "summary.onlyRecentLine_other": "　（仅最近 {shown} 个会话，共 {total}）",
       "summary.loadEarlier": "加载更早的会话",
 
       // empty / filter / expand
@@ -231,6 +302,8 @@ window.__ModuleLoader__.load({
       "empty.noMatch": "没有同时匹配「{terms}」的文档",
       "empty.readFailed": "读取失败：",
       "filter.only": "只看 {type}（{count} 个文件）",
+      "filter.only_one": "只看 {type}（{count} 个文件）",
+      "filter.only_other": "只看 {type}（{count} 个文件）",
       "filter.missingTitle": "只看磁盘上已经不存在的文件",
       "filter.clearTitle": "清除类型与「已删除」筛选（搜索框里的词保留）",
       "filter.clearAria": "清除筛选条件",
@@ -308,6 +381,8 @@ window.__ModuleLoader__.load({
       "frame.errorPrefix": "Document ledger panel error: ",
 
       "toast.copiedChars": " ({n} chars)",
+      "toast.copiedChars_one": " ({n} char)",
+      "toast.copiedChars_other": " ({n} chars)",
       "toast.copyFailed": "Copy failed: ",
       "toast.copiedMd": "Markdown copied",
       "toast.copiedCsv": "CSV copied",
@@ -344,6 +419,8 @@ window.__ModuleLoader__.load({
       "export.colCreatedShort": "Created",
       "export.colModified": "Modified",
       "export.currentListWithCount": "Export current list ({n} rows)",
+      "export.currentListWithCount_one": "Export current list ({n} row)",
+      "export.currentListWithCount_other": "Export current list ({n} rows)",
       "export.markdown": "Copy list (Markdown table)",
       "export.csv": "Copy list (CSV)",
       "export.paths": "Copy all paths",
@@ -377,11 +454,15 @@ window.__ModuleLoader__.load({
 
       "preview.defaultApp": "Default program",
       "preview.lines": " {n} lines",
+      "preview.lines_one": " {n} line",
+      "preview.lines_other": " {n} lines",
       "preview.createdAt": "Created ",
       "preview.updatedAt": "Updated ",
       "preview.readWrite": "R {reads} W {writes}",
       "preview.truncated": "Showing first {shown} of {total}; use the buttons above for the full file",
       "preview.undecodable": " {n} undecodable chars",
+      "preview.undecodable_one": " {n} undecodable char",
+      "preview.undecodable_other": " {n} undecodable chars",
       "preview.aria": "Preview ",
       "preview.openWith": "Open with {app}",
       "preview.chooseOther": "Choose another program",
@@ -397,8 +478,16 @@ window.__ModuleLoader__.load({
       "preview.esc": "  ·  Esc to close",
 
       "summary.line": "Sessions {sessions} · used {used} · created {created} · R {reads} · W {writes}",
-      "summary.filteredLine": "  ·  filtered {files} files / {sessions} sessions",
+      "summary.filteredLine": "  ·  filtered{files} /{sessions}",
+      "summary.countFiles": " {n} files",
+      "summary.countFiles_one": " {n} file",
+      "summary.countFiles_other": " {n} files",
+      "summary.countSessions": " {n} sessions",
+      "summary.countSessions_one": " {n} session",
+      "summary.countSessions_other": " {n} sessions",
       "summary.onlyRecentLine": "  (latest {shown} sessions of {total})",
+      "summary.onlyRecentLine_one": "  (latest {shown} session of {total})",
+      "summary.onlyRecentLine_other": "  (latest {shown} sessions of {total})",
       "summary.loadEarlier": "Load earlier sessions",
 
       "empty.mergeAll": "Merge all (dedupe by path)",
@@ -407,6 +496,8 @@ window.__ModuleLoader__.load({
       "empty.noMatch": "No documents matching all of: {terms}",
       "empty.readFailed": "Read failed: ",
       "filter.only": "Only {type} ({count} files)",
+      "filter.only_one": "Only {type} ({count} file)",
+      "filter.only_other": "Only {type} ({count} files)",
       "filter.missingTitle": "Only files that no longer exist on disk",
       "filter.clearTitle": "Clear type / deleted filters (keeps the search text)",
       "filter.clearAria": "Clear filters",
@@ -2304,7 +2395,7 @@ window.__ModuleLoader__.load({
 
       var summaryLine = ready ? h("div", { style: S.summary },
         t("summary.line", { sessions: summary.sessions || 0, used: summary.used || 0, created: summary.created || 0, reads: summary.reads || 0, writes: summary.writes || 0 }) +
-        (filterActive ? t("summary.filteredLine", { files: visible.files, sessions: visible.sessions }) : "") +
+        (filterActive ? t("summary.filteredLine", { files: t("summary.countFiles", { n: visible.files }), sessions: t("summary.countSessions", { n: visible.sessions }) }) : "") +
         (payload.truncated === true ? t("summary.onlyRecentLine", { shown: payload.maxSessions, total: payload.totalSessions }) : ""),
         payload.truncated === true && scope === "all" ? h("button", {
           type: "button",
@@ -2701,7 +2792,15 @@ window.__ModuleLoader__.load({
       // Install the host translator BEFORE any dictionary registration / render, so
       // evaluation-time constants (category labels, sort labels) and TabTitle all see it.
       setFallback(zh);
-      setTranslator(ctx.locale.bind(NS));
+      // The active language drives Intl.PluralRules; without a host hint we stay on zh,
+      // whose dictionary has a single form, so plurals degrade gracefully.
+      var activeLocale = "zh";
+      try {
+        if (typeof ctx.locale.getLocale === "function") activeLocale = String(ctx.locale.getLocale() || "zh");
+      } catch (error) {
+        activeLocale = "zh";
+      }
+      setTranslator(ctx.locale.bind(NS), activeLocale);
       ctx.effect(function () {
         return ctx.locale.register(NS, { zh: zh, en: en });
       }, "doc-ledger: dictionaries");

@@ -877,7 +877,7 @@
 
       var summaryLine = ready ? h("div", { style: S.summary },
         t("summary.line", { sessions: summary.sessions || 0, used: summary.used || 0, created: summary.created || 0, reads: summary.reads || 0, writes: summary.writes || 0 }) +
-        (filterActive ? t("summary.filteredLine", { files: visible.files, sessions: visible.sessions }) : "") +
+        (filterActive ? t("summary.filteredLine", { files: t("summary.countFiles", { n: visible.files }), sessions: t("summary.countSessions", { n: visible.sessions }) }) : "") +
         (payload.truncated === true ? t("summary.onlyRecentLine", { shown: payload.maxSessions, total: payload.totalSessions }) : ""),
         payload.truncated === true && scope === "all" ? h("button", {
           type: "button",

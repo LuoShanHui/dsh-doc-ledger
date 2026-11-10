@@ -20,7 +20,15 @@
       // Install the host translator BEFORE any dictionary registration / render, so
       // evaluation-time constants (category labels, sort labels) and TabTitle all see it.
       setFallback(zh);
-      setTranslator(ctx.locale.bind(NS));
+      // The active language drives Intl.PluralRules; without a host hint we stay on zh,
+      // whose dictionary has a single form, so plurals degrade gracefully.
+      var activeLocale = "zh";
+      try {
+        if (typeof ctx.locale.getLocale === "function") activeLocale = String(ctx.locale.getLocale() || "zh");
+      } catch (error) {
+        activeLocale = "zh";
+      }
+      setTranslator(ctx.locale.bind(NS), activeLocale);
       ctx.effect(function () {
         return ctx.locale.register(NS, { zh: zh, en: en });
       }, "doc-ledger: dictionaries");

@@ -247,6 +247,36 @@ check("iconUrl: 路径被 URL 编码", () => {
   assert.equal(f("iconUrl")("C:\\Program Files\\a.exe"), "/doc-ledger/icon?path=C%3A%5CProgram%20Files%5Ca.exe");
 });
 
+// --- plural selection -------------------------------------------------------
+// The same t() must pick `_one` for 1 and `_other` for 0/2 in English, and must fall
+// back to the base key when a language has no plural variants (Chinese).
+check("t(): 英文单选 _one，复数选 _other", () => {
+  const sb = sandbox;
+  sb.__enProbe = { "x.files_one": "{n} file", "x.files_other": "{n} files", "x.files": "{n} files" };
+  vm.runInContext(
+    'setFallback(__enProbe); setTranslator(function (k) { return __enProbe[k]; }, "en");',
+    sb
+  );
+  assert.equal(f("t")("x.files", { n: 1 }), "1 file");
+  assert.equal(f("t")("x.files", { n: 2 }), "2 files");
+  assert.equal(f("t")("x.files", { n: 0 }), "0 files");
+});
+check("t(): 无变体时回退基础 key（中文形态）", () => {
+  const sb = sandbox;
+  vm.runInContext('setFallback({ "y.rows": "行数 {n}" }); rawT = null;', sb);
+  assert.equal(f("t")("y.rows", { n: 5 }), "行数 5");
+});
+check("t(): count 之外的首个数字参数也能驱动复数", () => {
+  const sb = sandbox;
+  sb.__p = { "z.s_one": "{files} file", "z.s_other": "{files} files" };
+  vm.runInContext('setFallback(__p); setTranslator(function (k) { return __p[k]; }, "en");', sb);
+  assert.equal(f("t")("z.s", { files: 1 }), "1 file");
+  assert.equal(f("t")("z.s", { files: 3 }), "3 files");
+});
+check("t(): 未知 key 原样返回，不崩", () => {
+  assert.equal(f("t")("no.such.key"), "no.such.key");
+});
+
 let passed = 0;
 for (const [name, body] of cases) {
   body();
