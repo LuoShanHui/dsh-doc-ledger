@@ -311,7 +311,7 @@
           role: "menuitem",
           tabIndex: -1,
           "data-menu-item": "1",
-          onMouseEnter: function (event) { event.currentTarget.style.background = "rgba(128,128,128,0.16)"; },
+          onMouseEnter: function (event) { event.currentTarget.style.background = S.menuHover; },
           onMouseLeave: function (event) { event.currentTarget.style.background = "transparent"; },
           onClick: function (event) {
             event.stopPropagation();
@@ -320,7 +320,7 @@
         },
           entry.iconLabel ? h(AppIcon, { label: entry.iconLabel, exe: entry.iconExe }) : null,
           h("span", { style: { flex: 1 } }, entry.label),
-          entry.current === true ? h("span", { style: { color: "rgba(79,124,247,0.95)" } }, "✓") : null
+          entry.current === true ? h("span", { style: { color: S.checkMark } }, "✓") : null
         );
       };
       return h("div", {

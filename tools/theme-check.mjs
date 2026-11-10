@@ -42,11 +42,21 @@ check("所有主题的 key 集合一致", () => {
   assert.ok(base.length >= 55, "expected the full style key set, got " + base.length);
 });
 
-check("每个主题每个 key 都是非空对象", () => {
+// A handful of keys are semantic color strings for imperative handlers (focus ring, hover
+// wash, check mark) rather than style objects — the only two shapes the table holds.
+const COLOR_KEYS = ["focusRing", "hoverWash", "ghostLabel", "menuHover", "checkMark"];
+
+check("每个主题每个 key 都是非空对象或颜色字符串", () => {
   for (const id of themes) {
     const styles = sandbox.STYLE_THEMES[id]();
     for (const key of Object.keys(styles)) {
-      assert.ok(styles[key] !== null && typeof styles[key] === "object" && Object.keys(styles[key]).length > 0,
+      const value = styles[key];
+      if (COLOR_KEYS.includes(key)) {
+        assert.equal(typeof value, "string", id + "." + key + " must be a color string");
+        assert.ok(value.length > 0, id + "." + key + " must not be empty");
+        continue;
+      }
+      assert.ok(value !== null && typeof value === "object" && Object.keys(value).length > 0,
         id + "." + key + " must be a non-empty style object");
     }
   }
@@ -88,6 +98,34 @@ check("每个主题都引用宿主 token（深浅色跟随）", () => {
   const compact = sandbox.STYLE_THEMES.compact();
   const rootStyle = JSON.stringify(compact.root);
   assert.ok(rootStyle.includes("--dsw-alias"), "root must use a host theme token");
+});
+
+check("颜色只引用真实存在的宿主 token（拼错的 token 会静默退化成浅色）", () => {
+  // The host declares a fixed set; a name outside it silently falls back to the literal,
+  // which is how the panel ignored dark mode: --dsw-alias-accent, --dsw-alias-border and
+  // --dsw-alias-label-tertiary do not exist.
+  const REAL = [
+    "--dsw-alias-bg-base", "--dsw-alias-bg-layer-1", "--dsw-alias-bg-layer-2",
+    "--dsw-alias-bg-overlay", "--dsw-alias-border-l1", "--dsw-alias-border-l2",
+    "--dsw-alias-brand-primary", "--dsw-alias-label-primary", "--dsw-alias-label-secondary",
+    "--dsw-alias-state-error-primary", "--dsw-alias-state-idle-primary",
+    "--dsw-alias-state-success-primary", "--dsw-alias-state-warn-primary",
+    "--dsw-specific-sidebar-fill"
+  ];
+  const source = readFileSync(join(root, "src", "client", "70-styles.js"), "utf8");
+  // Only real `var(--token` references count: prose in a comment is not a token use.
+  const used = new Set([...source.matchAll(/var\((--dsw-[a-z0-9-]+)/g)].map((m) => m[1]));
+  const unknown = [...used].filter((token) => !REAL.includes(token));
+  assert.deepEqual(unknown, [], "unknown theme tokens (they fall back to a light literal)");
+});
+
+check("样式表里没有写死的十六进制或 rgba 颜色", () => {
+  // Every colour has to come from the palette so it can follow light/dark. The palette
+  // itself is the one place allowed to hold fallback literals.
+  const source = readFileSync(join(root, "src", "client", "70-styles.js"), "utf8");
+  const body = source.slice(source.indexOf("function compactStyles"));
+  const literals = [...body.matchAll(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g)].map((m) => m[0]);
+  assert.deepEqual(literals, [], "hardcoded colours outside the palette: " + literals.slice(0, 5).join(", "));
 });
 
 for (const [name, body] of cases) {

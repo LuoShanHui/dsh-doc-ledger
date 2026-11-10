@@ -17,32 +17,80 @@
      * grey, so every theme still reads in light and dark mode.
      */
 
-    var ACCENT = "var(--dsw-alias-accent, #4f7cf7)";
+    /**
+     * Host theme tokens, spelled exactly as the Theme provider declares them (checked with
+     * cordis_inspect_query → client/Theme/listTokens). These are the ONLY names that exist:
+     * `--dsw-alias-accent`, `--dsw-alias-border` and `--dsw-alias-label-tertiary` are not
+     * real tokens, so using them silently fell back to a light-mode literal and the panel
+     * ignored dark mode entirely.
+     *
+     * Every token is declared light+dark by the host, so a single `var(...)` follows the
+     * active theme. The literal fallback only matters outside the host (harness, static
+     * report), where it provides a readable light scheme.
+     */
+    var TOKEN = {
+      text: "var(--dsw-alias-label-primary, #1f2329)",
+      textDim: "var(--dsw-alias-label-secondary, rgba(128,128,128,0.95))",
+      // No tertiary label token exists; the secondary colour at reduced weight is the
+      // closest honest equivalent.
+      textFaint: "var(--dsw-alias-label-secondary, rgba(128,128,128,0.95))",
+      bg: "var(--dsw-alias-bg-layer-1, #ffffff)",
+      bgSoft: "var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.07))",
+      bgBase: "var(--dsw-alias-bg-base, #ffffff)",
+      bgOverlay: "var(--dsw-alias-bg-overlay, #ffffff)",
+      border: "var(--dsw-alias-border-l1, rgba(128,128,128,0.28))",
+      borderStrong: "var(--dsw-alias-border-l2, rgba(128,128,128,0.4))",
+      accent: "var(--dsw-alias-brand-primary, #4f7cf7)",
+      danger: "var(--dsw-alias-state-error-primary, #b91c1c)",
+      success: "var(--dsw-alias-state-success-primary, #15805b)",
+      warn: "var(--dsw-alias-state-warn-primary, #b06c10)",
+      idle: "var(--dsw-alias-state-idle-primary, rgba(128,128,128,0.9))",
+      sidebarFill: "var(--dsw-specific-sidebar-fill, rgba(128,128,128,0.04))"
+    };
+
+    var ACCENT = TOKEN.accent;
 
     function palette() {
       return {
-        text: "var(--dsw-alias-label-primary, #1f2329)",
-        textDim: "var(--dsw-alias-label-secondary, rgba(128,128,128,0.95))",
-        textFaint: "var(--dsw-alias-label-tertiary, rgba(128,128,128,0.62))",
-        bg: "var(--dsw-alias-bg-layer-1, #ffffff)",
-        bgSoft: "var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.07))",
-        border: "var(--dsw-alias-border, rgba(128,128,128,0.28))",
-        borderSoft: "rgba(128,128,128,0.16)",
-        accent: ACCENT,
-        accentSoft: "rgba(79,124,247,0.14)",
-        accentBorder: "rgba(79,124,247,0.72)",
-        danger: "rgba(185,28,28,0.95)",
-        dangerSoft: "rgba(185,28,28,0.16)",
-        mark: "rgba(250,204,21,0.45)",
-        warn: "rgba(176,108,16,0.98)",
-        warnSoft: "rgba(240,180,60,0.14)"
+        text: TOKEN.text,
+        textDim: TOKEN.textDim,
+        textFaint: TOKEN.textFaint,
+        bg: TOKEN.bg,
+        bgSoft: TOKEN.bgSoft,
+        bgBase: TOKEN.bgBase,
+        bgOverlay: TOKEN.bgOverlay,
+        border: TOKEN.border,
+        borderStrong: TOKEN.borderStrong,
+        // A 16% hairline: the token itself is a solid colour, so the soft variant is built
+        // from it rather than invented as an rgba literal that dark mode cannot follow.
+        borderSoft: "color-mix(in srgb, " + TOKEN.border + " 55%, transparent)",
+        accent: TOKEN.accent,
+        accentSoft: "color-mix(in srgb, " + TOKEN.accent + " 14%, transparent)",
+        accentBorder: "color-mix(in srgb, " + TOKEN.accent + " 72%, transparent)",
+        danger: TOKEN.danger,
+        dangerSoft: "color-mix(in srgb, " + TOKEN.danger + " 16%, transparent)",
+        success: TOKEN.success,
+        warn: TOKEN.warn,
+        warnSoft: "color-mix(in srgb, " + TOKEN.warn + " 14%, transparent)",
+        mark: "color-mix(in srgb, #facc15 45%, transparent)",
+        // Structural shades: hairlines, scrims and shadows are also colour decisions, so
+        // they belong in the palette instead of being literals the dark theme cannot see.
+        hairline: "color-mix(in srgb, " + TOKEN.border + " 40%, transparent)",
+        warnBorder: "color-mix(in srgb, " + TOKEN.warn + " 30%, transparent)",
+        scrim: "rgba(0,0,0,0.55)",
+        shadowMenu: "0 8px 24px rgba(0,0,0,0.28)",
+        shadowToast: "0 4px 14px rgba(0,0,0,0.22)",
+        shadowCard: "0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06)",
+        // Text drawn on a solid accent/success/error fill: fixed white in both schemes,
+        // because the fill itself is the contrast anchor.
+        onAccent: "#ffffff"
       };
     }
 
     function compactStyles() {
       var c = palette();
       return {
-        root: { display: "flex", flexDirection: "column", height: "100%", minHeight: "320px", fontSize: "12px", color: c.text, overflow: "hidden", position: "relative" },
+        root: { display: "flex", flexDirection: "column", height: "100%", minHeight: "320px", fontSize: "12px", color: c.text, background: c.bg, overflow: "hidden", position: "relative" },
         bar: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px 10px", borderBottom: "1px solid " + c.borderSoft },
         // One row of the toolbar. It must be able to shrink (minWidth 0) and wrap, so the
         // last button never lands outside the panel: at 380px a single flat row pushed
@@ -54,8 +102,8 @@
         buttonBase: { minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
         title: { fontWeight: 600, fontSize: "13px", marginRight: "4px" },
         input: { flex: "1 1 120px", minWidth: "90px", padding: "4px 8px", borderRadius: "6px", border: "1px solid " + c.border, background: "transparent", color: "inherit", fontSize: "12px" },
-        button: { padding: "3px 9px", borderRadius: "6px", border: "1px solid " + c.border, background: "transparent", color: "inherit", fontSize: "12px", cursor: "pointer", minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-        buttonOn: { padding: "3px 9px", borderRadius: "6px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: "inherit", fontSize: "12px", cursor: "pointer", minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+        button: { padding: "3px 9px", borderRadius: "6px", border: "1px solid " + c.border, background: "transparent", color: c.text, fontSize: "12px", cursor: "pointer", minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+        buttonOn: { padding: "3px 9px", borderRadius: "6px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: c.accent, fontWeight: 600, fontSize: "12px", cursor: "pointer", minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
         summary: { padding: "6px 10px", color: c.textDim, borderBottom: "1px solid " + c.borderSoft },
         notice: { padding: "5px 10px", fontSize: "11px", color: c.warn, borderBottom: "1px solid " + c.borderSoft, cursor: "pointer" },
         list: { flex: 1, overflowY: "auto", padding: "6px 8px 16px" },
@@ -65,22 +113,22 @@
         cardMeta: { color: c.textDim, whiteSpace: "nowrap" },
         sectionHead: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 9px 3px", color: c.textDim, fontWeight: 600, userSelect: "none" },
         sectionTitle: { cursor: "pointer", flex: 1, background: "transparent", border: "none", padding: 0, margin: 0, font: "inherit", color: "inherit", textAlign: "left", fontWeight: 600 },
-        sortChip: { display: "inline-flex", alignItems: "baseline", gap: "3px", padding: "2px 8px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: c.bgSoft, cursor: "pointer", fontWeight: 400, whiteSpace: "nowrap", color: "inherit", fontSize: "11px", lineHeight: "16px", font: "inherit", transition: "background 120ms ease, border-color 120ms ease" },
-        row: { display: "flex", alignItems: "center", gap: "8px", padding: "3px 9px", cursor: "pointer", borderTop: "1px solid rgba(128,128,128,0.1)", minWidth: 0, overflow: "hidden" },
+        sortChip: { display: "inline-flex", alignItems: "baseline", gap: "3px", padding: "2px 8px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: c.bgSoft, cursor: "pointer", fontWeight: 400, whiteSpace: "nowrap", color: c.textDim, fontSize: "11px", lineHeight: "16px", font: "inherit", transition: "background 120ms ease, border-color 120ms ease" },
+        row: { display: "flex", alignItems: "center", gap: "8px", padding: "3px 9px", cursor: "pointer", borderTop: "1px solid " + c.hairline, minWidth: 0, overflow: "hidden" },
         rowAlt: { background: "transparent" },
         rowMissing: { opacity: 0.55 },
         mark: { background: c.mark, color: "inherit", borderRadius: "2px", padding: "0 1px" },
         tagMissing: { padding: "0 5px", borderRadius: "4px", background: c.dangerSoft, color: c.danger, whiteSpace: "nowrap", flex: "0 0 auto" },
         filterBar: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 10px", borderBottom: "1px solid " + c.borderSoft, flexWrap: "wrap" },
         filterLabel: { color: c.textDim, fontSize: "11px", marginRight: "1px" },
-        filterChip: { display: "inline-flex", alignItems: "baseline", gap: "4px", padding: "2px 9px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: c.bgSoft, color: "inherit", fontSize: "11px", lineHeight: "16px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 120ms ease, border-color 120ms ease" },
-        filterChipOn: { display: "inline-flex", alignItems: "baseline", gap: "4px", padding: "2px 9px", borderRadius: "999px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: "inherit", fontSize: "11px", lineHeight: "16px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 120ms ease, border-color 120ms ease" },
+        filterChip: { display: "inline-flex", alignItems: "baseline", gap: "4px", padding: "2px 9px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: c.bgSoft, color: c.text, fontSize: "11px", lineHeight: "16px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 120ms ease, border-color 120ms ease" },
+        filterChipOn: { display: "inline-flex", alignItems: "baseline", gap: "4px", padding: "2px 9px", borderRadius: "999px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: c.accent, fontSize: "11px", lineHeight: "16px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 120ms ease, border-color 120ms ease" },
         chipCount: { color: c.textDim, fontSize: "10px", fontVariantNumeric: "tabular-nums" },
         chipCountOn: { color: c.accent, fontSize: "10px", fontWeight: 600, fontVariantNumeric: "tabular-nums" },
         filterDivider: { width: "1px", height: "12px", background: c.borderSoft, flex: "0 0 auto", margin: "0 1px" },
         filterAction: { display: "inline-flex", alignItems: "center", gap: "4px", padding: "2px 7px", border: "none", borderRadius: "5px", background: "transparent", color: c.textDim, fontSize: "11px", lineHeight: "16px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 120ms ease, color 120ms ease" },
         filterActionGlyph: { fontSize: "10px", lineHeight: "16px", opacity: 0.75 },
-        moreRow: { padding: "5px 9px", cursor: "pointer", color: c.accent, borderTop: "1px solid rgba(128,128,128,0.1)", textAlign: "center" },
+        moreRow: { padding: "5px 9px", cursor: "pointer", color: c.accent, borderTop: "1px solid " + c.hairline, textAlign: "center" },
         dot: { width: "7px", height: "7px", borderRadius: "2px", flex: "0 0 auto" },
         // Three visual tiers, and only three: the file name is the anchor (100% + semibold),
         // the path is context (faint, 11px, allowed to shrink to nothing), the counters are
@@ -95,14 +143,14 @@
         times: { color: c.textDim, whiteSpace: "nowrap", flex: "0 0 auto", fontVariantNumeric: "tabular-nums", fontSize: "11px", textAlign: "right", minWidth: "72px" },
         tag: { padding: "0 5px", borderRadius: "4px", background: c.accentSoft, color: c.accent, whiteSpace: "nowrap", maxWidth: "90px", overflow: "hidden", textOverflow: "ellipsis", flex: "0 0 auto" },
         empty: { padding: "24px 12px", textAlign: "center", color: c.textDim },
-        modal: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: "24px" },
+        modal: { position: "fixed", inset: 0, background: c.scrim, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: "24px" },
         modalBox: { background: c.bg, color: "inherit", borderRadius: "10px", width: "min(900px, 100%)", maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "visible", border: "1px solid " + c.border },
         modalHead: { display: "flex", alignItems: "center", gap: "8px", padding: "9px 12px", minWidth: 0, flex: "0 0 auto", borderBottom: "1px solid " + c.borderSoft },
         pre: { margin: 0, padding: "10px 12px", overflow: "auto", fontSize: "12px", lineHeight: 1.5, fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", whiteSpace: "pre-wrap", wordBreak: "break-word", flex: "1 1 auto", minHeight: 0 },
         modalFoot: { padding: "6px 12px", borderTop: "1px solid " + c.borderSoft, fontSize: "11px", lineHeight: "16px", color: c.textDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 0 auto" },
         modalMeta: { padding: "5px 12px", fontSize: "11px", lineHeight: "16px", color: c.textDim, borderBottom: "1px solid " + c.borderSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 0 auto" },
-        modalWarn: { padding: "5px 12px", fontSize: "11px", lineHeight: "16px", color: c.warn, background: c.warnSoft, borderBottom: "1px solid rgba(240,180,60,0.3)", flex: "0 0 auto" },
-        menu: { position: "absolute", zIndex: 80, padding: "4px", borderRadius: "8px", background: c.bg, border: "1px solid " + c.border, boxShadow: "0 8px 24px rgba(0,0,0,0.28)" },
+        modalWarn: { padding: "5px 12px", fontSize: "11px", lineHeight: "16px", color: c.warn, background: c.warnSoft, borderBottom: "1px solid " + c.warnBorder, flex: "0 0 auto" },
+        menu: { position: "absolute", zIndex: 80, padding: "4px", borderRadius: "8px", background: c.bg, border: "1px solid " + c.border, boxShadow: c.shadowMenu },
         menuItem: { display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", borderRadius: "6px", cursor: "pointer", whiteSpace: "nowrap" },
         menuLabel: { padding: "4px 10px 2px", color: c.textDim, fontSize: "11px" },
         menuSep: { height: "1px", margin: "4px 2px", background: c.borderSoft },
@@ -112,10 +160,18 @@
         split: { position: "relative", display: "flex", alignItems: "stretch" },
         splitMain: { display: "flex", alignItems: "center", gap: "6px", padding: "3px 10px", borderRadius: "6px 0 0 6px", border: "1px solid " + c.border, background: "transparent", color: "inherit", fontSize: "12px", cursor: "pointer", whiteSpace: "nowrap" },
         splitArrow: { padding: "3px 6px", borderRadius: "0 6px 6px 0", border: "1px solid " + c.border, borderLeft: "none", background: "transparent", color: "inherit", fontSize: "10px", cursor: "pointer" },
-        dropdown: { position: "absolute", right: 0, top: "calc(100% + 6px)", width: "230px", maxHeight: "280px", overflowY: "auto", padding: "4px", borderRadius: "8px", background: c.bg, border: "1px solid " + c.border, boxShadow: "0 8px 24px rgba(0,0,0,0.28)", zIndex: 85 },
-        toast: { position: "absolute", left: "12px", right: "12px", bottom: "12px", padding: "8px 10px", borderRadius: "8px", color: "#fff", fontSize: "12px", zIndex: 70, wordBreak: "break-word", boxShadow: "0 4px 14px rgba(0,0,0,0.22)" },
-        toastOk: { background: "rgba(21,128,91,0.95)" },
-        toastError: { background: "rgba(178,44,44,0.95)" }
+        dropdown: { position: "absolute", right: 0, top: "calc(100% + 6px)", width: "230px", maxHeight: "280px", overflowY: "auto", padding: "4px", borderRadius: "8px", background: c.bg, border: "1px solid " + c.border, boxShadow: c.shadowMenu, zIndex: 85 },
+        // Semantic colors for the imperative handlers (focus ring, ghost hover). They live
+        // in the table so a theme can retune them, and so no handler ever holds a literal:
+        // a hardcoded grey on hoverOff painted dark text on a dark theme.
+        focusRing: "color-mix(in srgb, " + TOKEN.accent + " 55%, transparent)",
+        hoverWash: "color-mix(in srgb, " + TOKEN.textDim + " 14%, transparent)",
+        ghostLabel: TOKEN.textDim,
+        menuHover: "color-mix(in srgb, " + TOKEN.textDim + " 16%, transparent)",
+        checkMark: TOKEN.accent,
+        toast: { position: "absolute", left: "12px", right: "12px", bottom: "12px", padding: "8px 10px", borderRadius: "8px", color: c.onAccent, fontSize: "12px", zIndex: 70, wordBreak: "break-word", boxShadow: c.shadowToast },
+        toastOk: { background: c.success, color: c.onAccent },
+        toastError: { background: c.danger, color: c.onAccent }
       };
     }
 
@@ -171,7 +227,7 @@
           borderBottom: "1px solid " + c.border
         }),
         row: Object.assign({}, base.row, { padding: "3px 8px", gap: "8px", borderRadius: 0 }),
-        rowAlt: { background: "rgba(128,128,128,0.055)" },
+        rowAlt: { background: "color-mix(in srgb, " + c.textDim + " 6%, transparent)" },
         name: Object.assign({}, base.name, {
           maxWidth: "38%", fontFamily: "ui-monospace, Consolas, monospace", fontSize: "11px", fontWeight: 600
         }),
@@ -203,7 +259,7 @@
         // The card floats: bigger radius plus a real shadow, and an accent rail on the head.
         card: Object.assign({}, base.card, {
           border: "none", borderRadius: "16px", marginBottom: "14px",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06)",
+          boxShadow: c.shadowCard,
           background: c.bg, overflow: "visible"
         }),
         cardHead: Object.assign({}, base.cardHead, {
@@ -241,6 +297,9 @@
       if (next === currentTheme && S !== null) return;
       currentTheme = next;
       S = STYLE_THEMES[next]();
+      // Handlers write hover/focus to element.style, which React never reconciles: without
+      // this, a control the pointer had touched keeps the previous theme's fill.
+      if (typeof clearHoverArtifacts === "function") clearHoverArtifacts();
       styleListeners.forEach(function (fn) {
         try { fn(S); } catch (error) { /* a subscriber must not break a theme switch */ }
       });

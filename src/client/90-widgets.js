@@ -165,9 +165,27 @@
       return t("row.onlyUsed", { time: fmtTime(file.lastUsedAt || file.updatedAt) });
     }
 
-    /** A visible keyboard focus ring, since inline styles cannot use :focus-visible. */
+    /**
+     * Keyboard focus ring and ghost-action hover.
+     *
+     * These are imperative because inline styles have no `:focus-visible` / `:hover`, so the
+     * handler writes the property directly. Two consequences had to be handled:
+     *
+     * 1. the colors must come from the active style table, not from a literal — a hardcoded
+     *    `rgba(118,118,126,0.98)` on hoverOff painted dark grey text on a dark theme, so the
+     *    label vanished as soon as the pointer left it;
+     * 2. whatever a handler writes outlives a theme switch, because React only reconciles
+     *    props it knows about. `collectNode` remembers those nodes and `clearHoverArtifacts`
+     *    drops the overrides when the theme changes.
+     */
+    var HOVER_NODES = new Set();
+    function track(node) {
+      if (node !== null && node !== undefined) HOVER_NODES.add(node);
+      return node;
+    }
     function ringOn(event) {
-      event.currentTarget.style.boxShadow = "0 0 0 2px rgba(79,124,247,0.55)";
+      var node = track(event.currentTarget);
+      node.style.boxShadow = "0 0 0 2px " + (S.focusRing || "rgba(79,124,247,0.55)");
     }
     function ringOff(event) {
       event.currentTarget.style.boxShadow = "";
@@ -177,12 +195,28 @@
      * hover wash on top of it would read as a second, unrelated state.
      */
     function hoverOn(event) {
-      event.currentTarget.style.background = "rgba(128,128,128,0.14)";
-      event.currentTarget.style.color = "inherit";
+      var node = track(event.currentTarget);
+      node.style.background = S.hoverWash || "rgba(128,128,128,0.14)";
+      node.style.color = "inherit";
     }
     function hoverOff(event) {
-      event.currentTarget.style.background = "transparent";
-      event.currentTarget.style.color = "rgba(118,118,126,0.98)";
+      var node = event.currentTarget;
+      node.style.background = "transparent";
+      // Restore the label to the theme's own dim color instead of a literal grey.
+      node.style.color = S.ghostLabel || "inherit";
+    }
+    /** Drop every imperatively written override so a new theme starts clean. */
+    function clearHoverArtifacts() {
+      HOVER_NODES.forEach(function (node) {
+        try {
+          node.style.boxShadow = "";
+          node.style.background = "";
+          node.style.color = "";
+        } catch (error) {
+          /* a detached node is already gone */
+        }
+      });
+      HOVER_NODES.clear();
     }
     /** Enter/Space activate anything that only looks like a button. */
     function onActivate(handler) {
