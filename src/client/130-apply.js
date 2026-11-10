@@ -1,6 +1,6 @@
     function TabTitle() {
       try {
-        return react.createElement("span", null, "文档台账");
+        return react.createElement("span", null, t("tab.title"));
       } catch (error) {
         return null;
       }
@@ -17,7 +17,10 @@
     }
 
     function applyInner(ctx) {
-      var t = ctx.locale.bind(NS);
+      // Install the host translator BEFORE any dictionary registration / render, so
+      // evaluation-time constants (category labels, sort labels) and TabTitle all see it.
+      setFallback(zh);
+      setTranslator(ctx.locale.bind(NS));
       ctx.effect(function () {
         return ctx.locale.register(NS, { zh: zh, en: en });
       }, "doc-ledger: dictionaries");
