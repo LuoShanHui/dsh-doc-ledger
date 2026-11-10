@@ -14,6 +14,14 @@
 
 - 准备 npm 分发：去掉 `private`、`files` 增补 `CHANGELOG.md` / `SECURITY.md` / `docs/overview.png` / `docs/i18n.md`，
   加 `publishConfig.access = public`（代码与 0.3.0 一致，只影响打包内容）。
+- **C-3 第一层：客户端源码分片**。`client.js` 拆成 `src/client/*.js` 14 个按职责命名的片段，
+  `tools/build-client.mjs` 按固定顺序确定性拼接回产物（SHA256 与原文件一致，零新依赖、无打包器）。
+  新增 `npm run build:client` / `npm run check:client`，CI 多一步「产物未漂移」门禁。
+- **新增 32 项客户端纯函数回归**（`tools/client-core-check.mjs`，用 `node:vm` 求值真实源码片段）：
+  分词 AND、排序、跨会话合并、格式化、高亮区间合并、`dsh-resource://` 地址。
+  `npm test` 现共 **71 项断言**。
+- 多语言现状与完整补齐路线写入 `docs/i18n-plan.md`；`tools/i18n-extract.mjs` 自动生成
+  `docs/i18n-strings.md`（209 处中文串 / 165 条唯一，含首次出现位置）。
 
 ## [0.3.0] - 2026-11-09
 

@@ -582,23 +582,30 @@ PTC 会话的日志里没有逐个 `read`/`write` 的 `tool/call`，只有一段
 
 ```
 index.js             host 插件：路由、快照与缓存、注册表枚举、图标抽取
-client.js            客户端插件：Sidebar tab（React，手写、无打包器）
+client.js            客户端插件：Sidebar tab（由 src/client/*.js 拼接生成，勿直接编辑）
+src/client/*.js      客户端源码分片（14 个，按职责切分；改这里再 npm run build:client）
 lib/ledger.js        引擎：事件折叠 -> 文件台账（纯函数，无依赖）
 lib/ui.js            仅静态报告用：把数据拼成自包含 HTML
 lib/ui.css           仅静态报告用
 lib/ui.client.js     仅静态报告用：浏览器端清单/排序/搜索
 lib/preview-text.js  预览解码：BOM / UTF-8 / 按行 GB18030 回退（纯函数，无依赖）
+tools/build-client.mjs      确定性拼接 src/client/*.js -> client.js（--check 校验产物未漂移）
+tools/i18n-extract.mjs      抽取 UI 中文串，生成 docs/i18n-strings.md
 tools/report.mjs     静态报告生成器（复用同一引擎）
 tools/ledger-scan-check.mjs    引擎回归：7 个 PTC 写文件场景
 tools/preview-decode-check.mjs 解码回归：10 个编码场景
 tools/harness/                  UI 验证工具：真 client.js + 假 ctx + 合成台账（npm run harness）
 tools/route-check.mjs          宿主路由与安全回归：14 项（同源 403、台账白名单、POST-only、400/404/405）
 tools/cache-check.mjs          缓存决策回归：8 项（精确 stamp、TTL 回退、live 重放下限）
+tools/client-core-check.mjs    客户端纯函数回归：32 项（分词 AND、排序、合并、格式化、高亮、资源地址）
 ```
 
-`npm test` 依次跑四支回归脚本（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 = **39 项断言**，无外部依赖），CI 里三套 Node 各跑一遍。
+`npm test` 依次跑五支回归脚本（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 + 客户端 32 = **71 项断言**，无外部依赖），CI 里三套 Node 各跑一遍。
+CI 还会执行 `npm run check:client`，确保提交的 `client.js` 与 `src/client/*.js` 逐字节一致。
 
 面板本身的 UI 变更用 `npm run harness` 在浏览器里看：它会用真实的 `client.js` + 假 cordis 上下文 + 合成台账起一个本地页，
 fixture 里故意放了「多词搜索只该命中一个文件」「已删除文件」「子代理会话」这些场景，用法见 `tools/harness/README.md`。
 
-引擎不依赖任何 `@deepseek-ai/*` 包，host 与 client 都只用 Node 内置模块和 `ctx` 服务；客户端 bundle 是手写的，不需要打包器。
+引擎不依赖任何 `@deepseek-ai/*` 包，host 与 client 都只用 Node 内置模块和 `ctx` 服务；客户端 bundle 是手写的，
+**分片只是为了可读性与可测性**：宿主只加载一个 `factory` 闭包（`require` 仅注入 react），所以源码按固定顺序拼接成单个
+`client.js`，不引入打包器。多语言现状与补齐路线见 `docs/i18n.md` / `docs/i18n-plan.md`。

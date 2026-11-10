@@ -1,6 +1,6 @@
-# Syntax + regression checks. The plugin has no build step and no dependencies, so
-# there is nothing to install: the engine and the decoder are pure ESM modules and the
-# two check scripts run on plain node.
+# Syntax + regression checks. No package install: every check runs on plain node.
+# client.js is assembled from src/client/*.js by tools/build-client.mjs; the drift
+# check makes sure a committed artifact always matches its source fragments.
 name: ci
 
 on:
@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
+      - name: client artifact in sync with source fragments
+        run: npm run check:client
       - name: syntax check
         run: npm run check
       - name: regression tests
