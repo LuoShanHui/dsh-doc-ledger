@@ -11,17 +11,19 @@
       other: "#94a3b8"
     };
 
+    // Keys, not literals: this table is built at factory-evaluation time, before the
+    // host translator is installed. categoryLabel() resolves through t() at render time.
     var CATEGORY_LABEL = {
-      doc: "文档",
-      sheet: "表格",
-      slide: "演示",
-      image: "图片",
-      code: "代码",
-      web: "网页",
-      config: "配置",
-      data: "数据",
-      archive: "压缩",
-      other: "其他"
+      doc: "category.doc",
+      sheet: "category.sheet",
+      slide: "category.slide",
+      image: "category.image",
+      code: "category.code",
+      web: "category.web",
+      config: "category.config",
+      data: "category.data",
+      archive: "category.archive",
+      other: "category.other"
     };
 
     function categoryColor(category) {
@@ -29,7 +31,8 @@
     }
 
     function categoryLabel(category) {
-      return CATEGORY_LABEL[category] || String(category || "其他");
+      var key = CATEGORY_LABEL[category] || "category.other";
+      return t(key);
     }
 
     function pad(value) {
@@ -59,7 +62,7 @@
 
     /** Short label for how the preview bytes were decoded; null when it is plain UTF-8. */
     function encodingLabel(encoding) {
-      if (encoding === "utf-8+gb18030") return "GB18030 混合解码";
+      if (encoding === "utf-8+gb18030") return t("encoding.gb18030Mixed");
       if (encoding === "utf-16le") return "UTF-16LE";
       if (encoding === "utf-16be") return "UTF-16BE";
       return null;

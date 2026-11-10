@@ -178,9 +178,9 @@
           area.select();
           document.execCommand("copy");
           document.body.removeChild(area);
-          notify(note + "（" + text.length + " 字符）");
+          notify(note + t("toast.copiedChars", { n: text.length }));
         } catch (error) {
-          notify("复制失败：" + String(error), "error");
+          notify(t("toast.copyFailed") + String(error), "error");
         }
       };
 
@@ -188,7 +188,7 @@
         try {
           if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
             navigator.clipboard.writeText(text).then(function () {
-              notify(note + "（" + text.length + " 字符）");
+              notify(note + t("toast.copiedChars", { n: text.length }));
             }, function () {
               fallbackCopy(text, note);
             });
@@ -212,13 +212,13 @@
         if (format === "summary") {
           var used = rows.filter(function (row) { return (row.file.reads || 0) > 0; }).length;
           var createdRows = rows.filter(function (row) { return row.file.created === "confirmed" || row.file.created === "inferred"; }).length;
-          return "文档台账 · " + (data.scope === "all" ? "全部会话" : "当前会话") +
-            (data.query ? " · 搜索「" + data.query + "」" : "") +
-            "\n行数 " + rows.length + " · 使用过 " + used + " · 创建 " + createdRows;
+          return t("export.titlePrefix") + (data.scope === "all" ? t("export.scopeAll") : t("export.scopeCurrent")) +
+            (data.query ? t("export.query", { q: data.query }) : "") +
+            t("export.lines", { lines: rows.length, used: used, created: createdRows });
         }
         var header = format === "csv"
-          ? ["会话", "文件", "相对路径", "绝对路径", "读", "写", "创建时间", "修改时间"]
-          : ["会话", "文件", "相对路径", "读", "写", "创建", "修改"];
+          ? [t("export.colSession"), t("export.colFile"), t("export.colRel"), t("export.colAbs"), t("export.colRead"), t("export.colWrite"), t("export.colCreated"), t("export.colUpdated")]
+          : [t("export.colSession"), t("export.colFile"), t("export.colRel"), t("export.colRead"), t("export.colWrite"), t("export.colCreatedShort"), t("export.colModified")];
         if (format === "csv") {
           return [header.map(csvCell).join(",")].concat(rows.map(function (row) {
             return [row.sessionTitle, row.file.name, row.file.rel, row.file.path, row.file.reads || 0, row.file.writes || 0, fmtTime(row.file.createdAt), fmtTime(row.file.updatedAt)].map(csvCell).join(",");
@@ -249,13 +249,13 @@
           x: rect.left - panel.left,
           y: rect.bottom - panel.top + 4,
           bounds: { w: panel.width, h: panel.height },
-          title: "导出当前清单（" + count + " 行）",
+          title: t("export.currentListWithCount", { n: count }),
           items: [
-            { label: "复制清单（Markdown 表格）", action: { kind: "copyText", format: "md" } },
-            { label: "复制清单（CSV）", action: { kind: "copyText", format: "csv" } },
-            { label: "复制全部路径", action: { kind: "copyText", format: "paths" } },
+            { label: t("export.markdown"), action: { kind: "copyText", format: "md" } },
+            { label: t("export.csv"), action: { kind: "copyText", format: "csv" } },
+            { label: t("export.paths"), action: { kind: "copyText", format: "paths" } },
             { sep: true },
-            { label: "复制摘要", action: { kind: "copyText", format: "summary" } }
+            { label: t("export.summary"), action: { kind: "copyText", format: "summary" } }
           ]
         });
       };
@@ -347,32 +347,32 @@
         }
         if (action.kind === "copyText") {
           var text = buildExport(action.format);
-          copyText(text, "已复制" + (action.format === "md" ? " Markdown" : action.format === "csv" ? " CSV" : action.format === "paths" ? "路径" : "摘要"));
+          copyText(text, action.format === "md" ? t("toast.copiedMd") : action.format === "csv" ? t("toast.copiedCsv") : action.format === "paths" ? t("toast.copiedPaths") : t("toast.copiedSummary"));
           return;
         }
         if (action.kind === "copySessionName") {
-          copyText(String((action.session && action.session.title) || ""), "已复制会话名称");
+          copyText(String((action.session && action.session.title) || ""), t("toast.copiedSessionName"));
           return;
         }
         if (action.kind === "copySessionId") {
-          copyText(String((action.session && action.session.sessionId) || ""), "已复制会话 ID");
+          copyText(String((action.session && action.session.sessionId) || ""), t("toast.copiedSessionId"));
           return;
         }
         if (action.kind === "jumpSession") {
           if (jumpToSession(action.session && action.session.sessionId)) {
-            notify("已切换到「" + ((action.session && action.session.title) || "该会话") + "」");
+            notify(t("toast.switchedTo", { name: (action.session && action.session.title) || t("toast.thisSession") }));
           } else {
-            notify("这个环境不支持跳转会话", "error");
+            notify(t("toast.jumpUnsupported"), "error");
           }
           return;
         }
         if (action.kind === "preview") { openDefault(file); return; }
         if (action.kind === "quick") { openPreview(file); return; }
-        if (action.kind === "copy") { copyText(file.path, "已复制路径"); return; }
+        if (action.kind === "copy") { copyText(file.path, t("toast.copiedPath")); return; }
         var mode = action.kind === "reveal" ? "reveal" : (action.kind === "choose" ? "choose" : "open");
         var suffix = action.app ? "&app=" + encodeURIComponent(action.app) : "";
         postJson("/api/open?mode=" + mode + "&path=" + encodeURIComponent(file.path) + suffix).then(function () {
-          notify(mode === "reveal" ? "已在资源管理器中定位" : (mode === "choose" ? "已打开「打开方式」对话框" : "已交给系统打开"));
+          notify(mode === "reveal" ? t("toast.located") : (mode === "choose" ? t("toast.openWith") : t("toast.opened")));
         }).catch(function (error) {
           notify(String((error && error.message) || error), "error");
         });
@@ -387,8 +387,8 @@
         return target === "created" ? createdSort : usedSort;
       };
       var sortTitleOf = function (target) {
-        if (target === "modified") return "修改排序";
-        return target === "created" ? "创建 / 修改排序" : "使用过排序";
+        if (target === "modified") return t("sort.modified");
+        return target === "created" ? t("sort.createdModified") : t("sort.used");
       };
 
       var openSortMenu = function (event, target) {
@@ -408,7 +408,7 @@
           y: rect.bottom - panel.top + 4,
           bounds: { w: panel.width, h: panel.height },
           returnFocus: event.currentTarget,
-          title: sortTitleOf(target) + " · 点当前项切方向",
+          title: sortTitleOf(target) + t("sort.directionHint"),
           items: keys.map(function (key) {
             return {
               label: key.label,
@@ -424,25 +424,25 @@
         // modal (which explains why) and the menu does not offer a dead action.
         var canHost = hostPreviewReady() && file !== null && file !== undefined && file.exists !== false;
         var items = [];
-        if (canHost) items.push({ label: "在侧边栏预览", action: { kind: "preview", file: file } });
-        items.push({ label: canHost ? "快速查看" : "预览", action: { kind: "quick", file: file } });
+        if (canHost) items.push({ label: t("menu.previewInSidebar"), action: { kind: "preview", file: file } });
+        items.push({ label: canHost ? t("menu.quick") : t("menu.preview"), action: { kind: "quick", file: file } });
         items.push({ sep: true });
-        items.push({ label: "打开方式", labelOnly: true });
+        items.push({ label: t("menu.openWith"), labelOnly: true });
         if (list.length === 0) {
-          items.push({ label: "没有找到为这个类型注册的程序", labelOnly: true });
+          items.push({ label: t("menu.noApps"), labelOnly: true });
         }
         list.forEach(function (app) {
           items.push({
-            label: app.label + (app.isDefault ? "（默认）" : ""),
+            label: app.label + (app.isDefault ? t("menu.default") : ""),
             iconLabel: app.label,
             iconExe: app.exe,
             action: { kind: "open", file: file, app: app.exe }
           });
         });
         items.push({ sep: true });
-        items.push({ label: "选择其他程序…", action: { kind: "choose", file: file } });
-        items.push({ label: "在资源管理器中显示", action: { kind: "reveal", file: file } });
-        items.push({ label: "复制完整路径", action: { kind: "copy", file: file } });
+        items.push({ label: t("menu.chooseOther"), action: { kind: "choose", file: file } });
+        items.push({ label: t("menu.reveal"), action: { kind: "reveal", file: file } });
+        items.push({ label: t("menu.copyFullPath"), action: { kind: "copy", file: file } });
         return items;
       };
 
@@ -491,24 +491,24 @@
 
       var buildSessionItems = function (session) {
         var items = [
-          { label: "复制会话名称", action: { kind: "copySessionName", session: session } },
-          { label: "复制会话 ID", action: { kind: "copySessionId", session: session } }
+          { label: t("menu.copySessionName"), action: { kind: "copySessionName", session: session } },
+          { label: t("menu.copySessionId"), action: { kind: "copySessionId", session: session } }
         ];
         if (canJumpToSession()) {
           items.push({ sep: true });
-          items.push({ label: "跳转到这个会话", action: { kind: "jumpSession", session: session } });
+          items.push({ label: t("menu.jumpToSession"), action: { kind: "jumpSession", session: session } });
           // Subagent lineage: the parent id rides on the session payload, the children are
           // whatever else is loaded and names this session as its parent.
           var parent = sessionById(session.parentSessionId);
           if (typeof session.parentSessionId === "string" && session.parentSessionId !== "") {
             items.push({
-              label: parent !== null ? "跳到父会话：" + (parent.title || parent.sessionId) : "跳到父会话",
+              label: parent !== null ? t("menu.jumpToParentWith") + (parent.title || parent.sessionId) : t("menu.jumpToParent"),
               action: { kind: "jumpSession", session: parent !== null ? parent : { sessionId: session.parentSessionId, title: session.parentSessionId } }
             });
           }
           childSessionsOf(session.sessionId).slice(0, 5).forEach(function (child) {
             items.push({
-              label: "跳到子会话：" + (child.title || child.sessionId),
+              label: t("menu.jumpToChildWith") + (child.title || child.sessionId),
               action: { kind: "jumpSession", session: child }
             });
           });
@@ -641,28 +641,28 @@
       }, [menu, preview, previewMenu]);
 
       var header = h("div", { style: S.bar },
-        h("span", { style: S.title }, "文档台账"),
-        h("button", { style: scope === "current" ? S.buttonOn : S.button, onClick: function () { setScope("current"); } }, "当前会话"),
-        h("button", { style: scope === "all" ? S.buttonOn : S.button, onClick: function () { setScope("all"); } }, "全部会话"),
+        h("span", { style: S.title }, t("toolbar.title")),
+        h("button", { style: scope === "current" ? S.buttonOn : S.button, onClick: function () { setScope("current"); } }, t("export.scopeCurrent")),
+        h("button", { style: scope === "all" ? S.buttonOn : S.button, onClick: function () { setScope("all"); } }, t("export.scopeAll")),
         h(SearchBox, { inputRef: searchRef, onQuery: setQuery }),
-        h("button", { style: separate ? S.buttonOn : S.button, onClick: function () { setSeparate(!separate); } }, "区分会话"),
+        h("button", { style: separate ? S.buttonOn : S.button, onClick: function () { setSeparate(!separate); } }, t("toolbar.separate")),
         h("button", {
           style: autoRefresh ? S.buttonOn : S.button,
-          title: autoRefresh ? "每 8 秒自动刷新（预览打开时暂停），点击暂停" : "已暂停自动刷新，点击恢复",
+          title: autoRefresh ? t("toolbar.autoDesc") : t("toolbar.pausedDesc"),
           onClick: function () { setAutoRefresh(!autoRefresh); }
-        }, autoRefresh ? "自动刷新" : "已暂停"),
+        }, autoRefresh ? t("toolbar.auto") : t("toolbar.paused")),
         h("button", {
           style: menu !== null && menu.kind === "export" ? S.buttonOn : S.button,
-          title: "导出当前清单",
+          title: t("toolbar.export"),
           onClick: function (event) { event.stopPropagation(); openExportMenu(event); }
-        }, "导出"),
+        }, t("toolbar.exportShort")),
         h("button", {
           style: S.button,
           onClick: function () {
             fetchScope(scope === "all" ? "all" : "current", function () { return true; }, { force: true, silent: true });
-            notify("已刷新");
+            notify(t("toast.refreshed"));
           }
-        }, "刷新")
+        }, t("toolbar.refresh"))
       );
 
       /**
@@ -675,22 +675,22 @@
         for (var appIndex = 0; appIndex < previewApps.length; appIndex++) {
           if (previewApps[appIndex].isDefault) { defaultApp = previewApps[appIndex]; break; }
         }
-        var defaultLabel = defaultApp !== null ? defaultApp.label : "默认程序";
+        var defaultLabel = defaultApp !== null ? defaultApp.label : t("preview.defaultApp");
 
         // One line of context above the body. File facts come first: in a narrow window
         // the row ellipsizes, and "how big / how decoded" matters more than the counters.
         var metaBits = [];
         if (typeof preview.bytes === "number") metaBits.push(fmtBytes(preview.bytes));
-        if (preview.lines > 0) metaBits.push(preview.lines + " 行");
+        if (preview.lines > 0) metaBits.push(t("preview.lines", { n: preview.lines }));
         var decodedAs = encodingLabel(preview.encoding);
         if (decodedAs !== null) metaBits.push(decodedAs);
         var known = preview.file || null;
         if (known !== null) {
-          if (known.createdAt) metaBits.push("创建于 " + fmtTime(known.createdAt));
-          if (known.updatedAt) metaBits.push("改于 " + fmtTime(known.updatedAt));
+          if (known.createdAt) metaBits.push(t("preview.createdAt") + fmtTime(known.createdAt));
+          if (known.updatedAt) metaBits.push(t("preview.updatedAt") + fmtTime(known.updatedAt));
           var reads = known.reads || 0;
           var writes = known.writes || 0;
-          if (reads > 0 || writes > 0) metaBits.push("读 " + reads + " 写 " + writes);
+          if (reads > 0 || writes > 0) metaBits.push(t("preview.readWrite", { reads: reads, writes: writes }));
         }
         var previewMeta = metaBits.length === 0 ? null : h("div", { style: S.modalMeta }, metaBits.join("　·　"));
 
@@ -698,9 +698,9 @@
         // appended to the body, where they were easy to miss and got copied along.
         var notices = [];
         if (preview.truncated === true) {
-          notices.push("只显示前 " + fmtBytes(preview.shown) + "（共 " + fmtBytes(preview.bytes) + "），完整内容请用上面的按钮打开");
+          notices.push(t("preview.truncated", { shown: fmtBytes(preview.shown), total: fmtBytes(preview.bytes) }));
         }
-        if (preview.replacements > 0) notices.push(preview.replacements + " 个字符无法解码");
+        if (preview.replacements > 0) notices.push(t("preview.undecodable", { n: preview.replacements }));
         var previewNotice = notices.length === 0 ? null : h("div", { style: S.modalWarn }, notices.join("　·　"));
 
         return h("div", { style: S.modal, onClick: function () { setPreview(null); } },
@@ -709,7 +709,7 @@
             style: S.modalBox,
             role: "dialog",
             "aria-modal": "true",
-            "aria-label": "预览 " + preview.name,
+            "aria-label": t("preview.aria") + preview.name,
             tabIndex: -1,
             onClick: function (event) { event.stopPropagation(); },
             onKeyDown: function (event) {
@@ -735,20 +735,20 @@
                 h("div", { style: S.split },
                   h("button", {
                     style: S.splitMain,
-                    title: "用 " + defaultLabel + " 打开",
-                    "aria-label": "用 " + defaultLabel + " 打开",
+                    title: t("preview.openWith", { app: defaultLabel }),
+                    "aria-label": t("preview.openWith", { app: defaultLabel }),
                     onClick: function () { act({ kind: "open", file: preview, app: "" }); }
                   },
                     defaultApp !== null ? h(AppIcon, { label: defaultApp.label, exe: defaultApp.exe }) : null,
-                    narrow === true ? null : h("span", null, "用 " + defaultLabel + " 打开")
+                    narrow === true ? null : h("span", null, t("preview.openWith", { app: defaultLabel }))
                   ),
                   h("button", {
                     style: S.splitArrow,
-                    title: "选择其他程序",
+                    title: t("preview.chooseOther"),
                     onClick: function (event) { event.stopPropagation(); setPreviewMenu(!previewMenu); }
                   }, "▾"),
                   previewMenu === true ? h("div", { style: S.dropdown },
-                    previewApps.length === 0 ? h("div", { style: S.menuLabel }, "没有找到为这个类型注册的程序") : null,
+                    previewApps.length === 0 ? h("div", { style: S.menuLabel }, t("menu.noApps")) : null,
                     previewApps.map(function (app) {
                       return h("div", {
                         key: app.exe,
@@ -762,7 +762,7 @@
                         onClick: function () { setPreviewMenu(false); act({ kind: "open", file: preview, app: app.exe }); }
                       },
                         h(AppIcon, { label: app.label, exe: app.exe }),
-                        h("span", { style: { flex: 1 } }, app.label + (app.isDefault ? "（默认）" : ""))
+                        h("span", { style: { flex: 1 } }, app.label + (app.isDefault ? t("menu.default") : ""))
                       );
                     }),
                     h("div", { style: S.menuSep }),
@@ -774,7 +774,7 @@
                       onBlur: ringOff,
                       onKeyDown: onActivate(function () { setPreviewMenu(false); act({ kind: "choose", file: preview }); }),
                       onClick: function () { setPreviewMenu(false); act({ kind: "choose", file: preview }); }
-                    }, "选择其他程序…"),
+                    }, t("menu.chooseOther")),
                     h("div", {
                       style: S.menuItem,
                       role: "menuitem",
@@ -783,40 +783,40 @@
                       onBlur: ringOff,
                       onKeyDown: onActivate(function () { setPreviewMenu(false); act({ kind: "reveal", file: preview }); }),
                       onClick: function () { setPreviewMenu(false); act({ kind: "reveal", file: preview }); }
-                    }, "在资源管理器中显示")
+                    }, t("menu.reveal"))
                   ) : null
                 ),
                 // Escape hatch from the modal into the host's full preview (images,
                 // PDFs, Office, rendered markdown) — never offered for a deleted file.
                 hostPreviewReady() && preview.file !== null && preview.file !== undefined && preview.file.exists !== false ? h("button", {
                   style: S.button,
-                  title: "在侧边栏的文档预览中打开（图片 / PDF / Office / Markdown 都由宿主渲染）",
+                  title: t("preview.sidebarTitle"),
                   onClick: function () {
                     if (hostPreviewOpen(preview.file, sessionId)) setPreview(null);
                   }
-                }, "侧边栏") : null,
+                }, t("preview.sidebar")) : null,
                 h("button", {
                   style: S.button,
-                  title: "重新读取这个文件（没变时宿主只回 304，不重传正文）",
+                  title: t("preview.reloadTitle"),
                   onClick: refreshPreview
-                }, "刷新"),
+                }, t("toolbar.refresh")),
                 h("button", {
                   style: S.button,
-                  title: preview.truncated === true ? "复制可见内容（文件已截断）" : "复制文件内容",
-                  onClick: function () { copyText(preview.text || "", "已复制内容"); }
-                }, "复制"),
-                h("button", { style: S.button, onClick: function () { setPreview(null); } }, "关闭")
+                  title: preview.truncated === true ? t("preview.copyTruncated") : t("preview.copyContent"),
+                  onClick: function () { copyText(preview.text || "", t("toast.copiedContent")); }
+                }, t("preview.copy")),
+                h("button", { style: S.button, onClick: function () { setPreview(null); } }, t("preview.close"))
               )
             ),
             previewMeta,
             previewNotice,
             h("pre", { ref: preRef, style: S.pre, tabIndex: 0 },
-              preview.status === "loading" ? "加载中…" : (preview.text || "")),
+              preview.status === "loading" ? t("preview.loading") : (preview.text || "")),
             h("div", {
               style: Object.assign({}, S.modalFoot, { cursor: "pointer" }),
-              title: preview.path + "（点击复制完整路径）",
-              onClick: function () { copyText(preview.path, "已复制路径"); }
-            }, preview.path + "　·　Esc 关闭")
+              title: preview.path + t("preview.copyPathHint"),
+              onClick: function () { copyText(preview.path, t("toast.copiedPath")); }
+            }, preview.path + t("preview.esc"))
           )
         );
       };
@@ -876,14 +876,14 @@
       });
 
       var summaryLine = ready ? h("div", { style: S.summary },
-        "会话 " + (summary.sessions || 0) + " · 使用 " + (summary.used || 0) + " · 创建 " + (summary.created || 0) + " · 读 " + (summary.reads || 0) + " 次 · 写 " + (summary.writes || 0) + " 次" +
-        (filterActive ? "　·　筛选后 " + visible.files + " 个文件 / " + visible.sessions + " 个会话" : "") +
-        (payload.truncated === true ? "　（仅最近 " + payload.maxSessions + " 个会话，共 " + payload.totalSessions + "）" : ""),
+        t("summary.line", { sessions: summary.sessions || 0, used: summary.used || 0, created: summary.created || 0, reads: summary.reads || 0, writes: summary.writes || 0 }) +
+        (filterActive ? t("summary.filteredLine", { files: visible.files, sessions: visible.sessions }) : "") +
+        (payload.truncated === true ? t("summary.onlyRecentLine", { shown: payload.maxSessions, total: payload.totalSessions }) : ""),
         payload.truncated === true && scope === "all" ? h("button", {
           type: "button",
           style: Object.assign({}, S.button, { marginLeft: "8px", padding: "1px 8px", fontSize: "11px" }),
           onClick: function () { loadEarlier(payload.maxSessions || 40); }
-        }, "加载更早的会话") : null
+        }, t("summary.loadEarlier")) : null
       ) : null;
 
       // What the export actions copy: the rows currently visible after scope + search.
@@ -1136,7 +1136,7 @@
           .map(function (session, index) { return h(SessionCard, cardProps(session, index)); });
       } else if (sessions.length > 0) {
         var merged = mergeSessions(sessions);
-        var flatProps = cardProps({ sessionId: "__flat__", title: "全部合并（按路径去重）", files: merged });
+        var flatProps = cardProps({ sessionId: "__flat__", title: t("empty.mergeAll"), files: merged });
         flatProps.usedSort = usedSort;
         flatProps.createdSort = createdSort;
         flatProps.open = cardOpen.__flat__ !== false;
@@ -1150,10 +1150,10 @@
         cards = hasVisibleRow(merged) ? [h(SessionCard, flatProps)] : [];
       }
 
-      var emptyText = missingCurrent ? "本会话还没有文档记录" : (query === "" ? "没有文档记录" : "没有同时匹配「" + query.trim().split(/\s+/).join("」「") + "」的文档");
+      var emptyText = missingCurrent ? t("empty.noCurrent") : (query === "" ? t("empty.noDocs") : t("empty.noMatch", { terms: query.trim().split(/\s+/).join(" ") }));
       var placeholder = activeState.status === "error"
-        ? "读取失败：" + activeState.message
-        : "加载中…";
+        ? t("empty.readFailed") + activeState.message
+        : t("preview.loading");
       var body = !ready
         ? h("div", { style: S.empty }, placeholder)
         : (cards.length > 0 ? cards : h("div", { style: S.empty }, emptyText));
@@ -1164,18 +1164,18 @@
         ? h("div", {
           style: S.notice,
           role: "status",
-          title: "后台刷新失败，显示的是上次成功的数据",
+          title: t("toast.backgroundFailed"),
           onClick: function () {
             setOffline(null);
             fetchScope(scopeRef.current, function () { return true; }, { force: true, silent: true });
           }
-        }, "刷新失败：" + offline + "　点击重试")
+        }, t("toast.refreshFailed") + offline + t("toast.clickRetry"))
         : null;
 
       // Kept in the tree even when hidden: a new child index would remount the list.
       var showFilterBar = categoryChips.length >= 2 || (scope === "all" && separate);
       var filterBar = h("div", { style: showFilterBar ? S.filterBar : Object.assign({}, S.filterBar, { display: "none" }) },
-        h("span", { style: S.filterLabel }, "类型"),
+        h("span", { style: S.filterLabel }, t("sort.type")),
         categoryChips.map(function (chip) {
           var on = typeSet !== null && typeSet[chip.key] === true;
           return h("button", {
@@ -1183,7 +1183,7 @@
             type: "button",
             style: on ? S.filterChipOn : S.filterChip,
             "aria-pressed": on,
-            title: "只看 " + categoryLabel(chip.key) + "（" + chip.count + " 个文件）",
+            title: t("filter.only", { type: categoryLabel(chip.key), count: chip.count }),
             onFocus: ringOn,
             onBlur: ringOff,
             onClick: function () { toggleType(chip.key); }
@@ -1196,12 +1196,12 @@
           type: "button",
           style: deletedOnly === true ? S.filterChipOn : S.filterChip,
           "aria-pressed": deletedOnly === true,
-          title: "只看磁盘上已经不存在的文件",
+          title: t("filter.missingTitle"),
           onFocus: ringOn,
           onBlur: ringOff,
           onClick: function () { setDeletedOnly(function (previous) { return previous !== true; }); }
         },
-          h("span", null, "已删除"),
+          h("span", null, t("row.missingTag")),
           h("span", { style: deletedOnly === true ? S.chipCountOn : S.chipCount }, String(visible.deleted))
         ),
         // A reset is an action, not a filter: a hairline divider plus a ghost button.
@@ -1209,8 +1209,8 @@
         typeSet !== null || deletedOnly === true ? h("button", {
           type: "button",
           style: S.filterAction,
-          title: "清除类型与「已删除」筛选（搜索框里的词保留）",
-          "aria-label": "清除筛选条件",
+          title: t("filter.clearTitle"),
+          "aria-label": t("filter.clearAria"),
           onMouseEnter: hoverOn,
           onMouseLeave: hoverOff,
           onFocus: ringOn,
@@ -1220,18 +1220,18 @@
             savePref("typeFilter", []);
             setDeletedOnly(false);
           }
-        }, h("span", { style: S.filterActionGlyph, "aria-hidden": "true" }, "✕"), "清除筛选") : null,
+        }, h("span", { style: S.filterActionGlyph, "aria-hidden": "true" }, "✕"), t("filter.clear")) : null,
         scope === "all" && separate ? h("button", {
           type: "button",
           style: Object.assign({}, S.filterAction, { marginLeft: "auto" }),
-          title: everyOpen === true || bulkBusy === true ? "收起所有会话卡片" : "展开所有会话卡片",
+          title: everyOpen === true || bulkBusy === true ? t("expand.collapseTitle") : t("expand.expandTitle"),
           "aria-busy": bulkBusy === true,
           onMouseEnter: hoverOn,
           onMouseLeave: hoverOff,
           onFocus: ringOn,
           onBlur: ringOff,
           onClick: toggleAllCards
-        }, everyOpen === true || bulkBusy === true ? "全部折叠" : "全部展开") : null
+        }, everyOpen === true || bulkBusy === true ? t("expand.collapse") : t("expand.expand")) : null
       );
 
       return h("div", { "data-doc-ledger-root": "1", style: S.root, onClick: function () { if (menu !== null) setMenu(null); } },
@@ -1246,7 +1246,7 @@
           style: Object.assign({}, S.toast, toast.kind === "error" ? S.toastError : S.toastOk),
           role: "status",
           "aria-live": "polite",
-          title: "点击关闭",
+          title: t("toast.close"),
           onClick: function () { setToast(null); }
         }, (toast.kind === "error" ? "! " : "✓ ") + toast.text)
       );

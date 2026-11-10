@@ -6,7 +6,7 @@
             type: "button",
             style: S.sectionTitle,
             "aria-expanded": props.open === true,
-            title: props.open ? "收起这个分区" : "展开这个分区",
+            title: props.open ? t("section.collapse") : t("section.expand"),
             onFocus: ringOn,
             onBlur: ringOff,
             onClick: props.onToggle
@@ -15,8 +15,8 @@
           h("button", {
             type: "button",
             style: S.sortChip,
-            title: "排序方式（再点一次收起）",
-            "aria-label": "排序方式：" + props.sortLabel,
+            title: t("section.sortTitle"),
+            "aria-label": t("section.sortPrefix") + props.sortLabel,
             "aria-haspopup": "menu",
             onFocus: ringOn,
             onBlur: ringOff,
@@ -160,7 +160,7 @@
             onBlur: ringOff,
             onClick: function (event) { event.stopPropagation(); showMore(prefix); },
             onKeyDown: onActivate(function () { showMore(prefix); })
-          }, "显示更多（还有 " + (sorted.length - limit) + " 行）"));
+          }, t("section.morePrefix") + (sorted.length - limit) + t("section.moreSuffix")));
         }
         return rows;
       };
@@ -172,12 +172,12 @@
       var splitChip = h("button", {
         type: "button",
         style: S.sortChip,
-        title: split ? "合并「创建 / 修改」" : "把「创建」和「修改」拆成两个分区",
+        title: split ? t("section.mergeTitle") : t("section.splitTitle"),
         "aria-pressed": split === true,
         onFocus: ringOn,
         onBlur: ringOff,
         onClick: function (event) { event.stopPropagation(); props.onToggleSplit(); }
-      }, split ? "合并" : "拆开");
+      }, split ? t("section.merge") : t("section.split"));
 
       rowCountRef.current = rowCursor;
       return react.createElement("div", {
@@ -192,7 +192,7 @@
           role: "button",
           tabIndex: 0,
           "aria-expanded": props.open === true,
-          "aria-label": (session.title || session.sessionId) + "，文档台账，右键打开会话菜单",
+          "aria-label": (session.title || session.sessionId) + t("section.cardAria"),
           onFocus: ringOn,
           onBlur: ringOff,
           onClick: function () { props.onToggleCard(props.sessionId); },
@@ -207,13 +207,13 @@
           react.createElement("span", { style: S.cardTitle, title: session.title }, (props.open ? "▾ " : "▸ ") + (session.title || session.sessionId)),
           react.createElement("span", { style: S.cardMeta },
             split
-              ? "使用 " + used.length + " · 创建 " + createdSplit.length + " · 修改 " + modifiedSplit.length
-              : "使用 " + used.length + " · 创建 " + created.length
+              ? t("section.usedShort") + used.length + t("section.createdShort") + createdSplit.length + t("section.modifiedShort") + modifiedSplit.length
+              : t("section.usedShort") + used.length + t("section.createdShort") + created.length
           )
         ),
         showBody ? react.createElement("div", null,
           used.length > 0 ? react.createElement(Section, {
-            title: "使用过", count: used.length, open: props.usedOpen, rows: usedRows,
+            title: t("section.used"), count: used.length, open: props.usedOpen, rows: usedRows,
             sortLabel: props.usedLabel, dir: props.usedSort.dir,
             onToggle: function () { props.onToggleSection(props.sessionId + ":used"); },
             onSort: function (event) { props.onSortMenu(event, "used"); }
@@ -221,21 +221,21 @@
           split
             ? [
               createdSplit.length > 0 ? react.createElement(Section, {
-                key: "created", title: "创建", count: createdSplit.length, open: props.createdOpen, rows: createdSplitRows,
+                key: "created", title: t("section.created"), count: createdSplit.length, open: props.createdOpen, rows: createdSplitRows,
                 sortLabel: props.createdLabel, dir: props.createdSort.dir,
                 onToggle: function () { props.onToggleSection(props.sessionId + ":created"); },
                 onSort: function (event) { props.onSortMenu(event, "created"); },
                 extra: splitChip
               }) : null,
               modifiedSplit.length > 0 ? react.createElement(Section, {
-                key: "modified", title: "修改（仅改动）", count: modifiedSplit.length, open: props.modifiedOpen, rows: modifiedSplitRows,
+                key: "modified", title: t("section.modifiedOnly"), count: modifiedSplit.length, open: props.modifiedOpen, rows: modifiedSplitRows,
                 sortLabel: props.modifiedLabel, dir: props.modifiedSort.dir,
                 onToggle: function () { props.onToggleSection(props.sessionId + ":modified"); },
                 onSort: function (event) { props.onSortMenu(event, "modified"); }
               }) : null
             ]
             : (created.length > 0 ? react.createElement(Section, {
-              title: "创建 / 修改", count: created.length, open: props.createdOpen, rows: createdRows,
+              title: t("section.createdModified"), count: created.length, open: props.createdOpen, rows: createdRows,
               sortLabel: props.createdLabel, dir: props.createdSort.dir,
               onToggle: function () { props.onToggleSection(props.sessionId + ":created"); },
               onSort: function (event) { props.onSortMenu(event, "created"); },
@@ -316,7 +316,7 @@
         style: Object.assign({}, S.menu, { left: Math.min(menu.x, Math.max(4, bounds.w - width - 4)) + "px", top: top + "px", maxHeight: maxHeight + "px", overflowY: "auto", width: width + "px" }),
         role: "menu",
         tabIndex: -1,
-        "aria-label": menu.title || "操作菜单",
+        "aria-label": menu.title || t("sort.menu"),
         onClick: function (event) { event.stopPropagation(); },
         onKeyDown: function (event) {
           var node = event.currentTarget;
@@ -348,28 +348,28 @@
     }
 
     var USED_KEYS = [
-      { key: "lastUsed", label: "最近使用" },
-      { key: "firstUsed", label: "首次使用" },
-      { key: "reads", label: "读取次数" },
-      { key: "exists", label: "存在状态" },
-      { key: "type", label: "类型" },
-      { key: "path", label: "路径" }
+      { key: "lastUsed", label: "sort.lastUsed" },
+      { key: "firstUsed", label: "sort.firstUsed" },
+      { key: "reads", label: "sort.reads" },
+      { key: "exists", label: "sort.exists" },
+      { key: "type", label: "sort.type" },
+      { key: "path", label: "sort.path" }
     ];
     var CREATED_KEYS = [
-      { key: "createdAt", label: "创建时间" },
-      { key: "updatedAt", label: "更新时间" },
-      { key: "writes", label: "写入次数" },
-      { key: "exists", label: "存在状态" },
-      { key: "type", label: "类型" },
-      { key: "path", label: "路径" }
+      { key: "createdAt", label: "sort.createdAt" },
+      { key: "updatedAt", label: "sort.updatedAt" },
+      { key: "writes", label: "sort.writes" },
+      { key: "exists", label: "sort.exists" },
+      { key: "type", label: "sort.type" },
+      { key: "path", label: "sort.path" }
     ];
     var MODIFIED_KEYS = [
-      { key: "updatedAt", label: "更新时间" },
-      { key: "createdAt", label: "创建时间" },
-      { key: "writes", label: "写入次数" },
-      { key: "exists", label: "存在状态" },
-      { key: "type", label: "类型" },
-      { key: "path", label: "路径" }
+      { key: "updatedAt", label: "sort.updatedAt" },
+      { key: "createdAt", label: "sort.createdAt" },
+      { key: "writes", label: "sort.writes" },
+      { key: "exists", label: "sort.exists" },
+      { key: "type", label: "sort.type" },
+      { key: "path", label: "sort.path" }
     ];
 
     /** The panel's own box: popups are absolute inside it, so a clipping sidebar cannot cut them. */
@@ -385,7 +385,7 @@
 
     function labelOf(keys, spec) {
       for (var i = 0; i < keys.length; i++) {
-        if (keys[i].key === spec.key) return keys[i].label;
+        if (keys[i].key === spec.key) return t(keys[i].label);
       }
       return spec.key;
     }

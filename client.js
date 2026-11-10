@@ -14,15 +14,408 @@ window.__ModuleLoader__.load({
     var KIND = "doc-ledger";
     var BASE = "/doc-ledger";
 
+    /**
+     * Translator installed by apply() once the host's locale service exists.
+     *
+     * The client is one factory closure: components are declared at evaluation time but
+     * only rendered after apply(), so `t` cannot be imported as a module. Instead the
+     * whole bundle calls this single `t(key, params)`; apply() swaps the underlying
+     * function to `ctx.locale.bind(NS)`. Before that (and in the harness / static report,
+     * which have no real locale service) it falls back to the Chinese source strings, so
+     * a raw "a.b.c" key is never shown and evaluation-time constants stay readable.
+     *
+     * `{name}` placeholders are substituted here rather than relying on the host's
+     * translator, so dictionaries and call sites do not depend on host interpolation.
+     */
+    var ZH_FALLBACK = {};
+    var rawT = null;
+
+    function t(key, params) {
+      var text = rawT !== null ? rawT(key) : undefined;
+      if (text === undefined || text === null || text === "" || text === key) {
+        text = ZH_FALLBACK[key];
+      }
+      if (text === undefined || text === null) return String(key);
+      if (!params) return String(text);
+      return String(text).replace(/\{(\w+)\}/g, function (all, name) {
+        return params[name] === undefined || params[name] === null ? all : String(params[name]);
+      });
+    }
+
+    function setTranslator(fn) { rawT = fn; }
+    function setFallback(dict) { ZH_FALLBACK = dict || {}; }
+
+    /**
+     * UI dictionaries. Every user-visible string in the panel goes through t().
+     * Grouped by surface; `docs/i18n-strings.md` lists the original literals and
+     * `tools/i18n-check.mjs` asserts zh/en key sets, references and placeholders.
+     */
     var zh = {
+      // tab / guide
       "tab.title": "文档台账",
       "guide.title": "文档台账",
-      "guide.description": "按会话查看用过与创建/修改过的文档"
+      "guide.description": "按会话查看用过与创建/修改过的文档",
+
+      // categories (also used by CATEGORY_LABEL)
+      "category.doc": "文档",
+      "category.sheet": "表格",
+      "category.slide": "演示",
+      "category.image": "图片",
+      "category.code": "代码",
+      "category.web": "网页",
+      "category.config": "配置",
+      "category.data": "数据",
+      "category.archive": "压缩",
+      "category.other": "其他",
+
+      // encoding
+      "encoding.gb18030Mixed": "GB18030 混合解码",
+
+      // search box
+      "search.placeholder": "搜索文件 / 路径 / 类型 / 会话，空格分隔多个词  (Ctrl+K)",
+      "search.aria": "搜索文档路径、类型或会话",
+
+      // row (file)
+      "row.missingSuffix": "（文件已不存在）",
+      "row.ariaSuffix": "，回车打开预览，Shift+回车快速查看，Shift+F10 打开菜单",
+      "row.missingTag": "已删除",
+      "row.read": "读",
+      "row.writeSlash": "/写",
+      "row.createdAt": "建 ",
+      "row.updatedAt": " · 改 ",
+
+      // section heads / chips
+      "section.collapse": "收起这个分区",
+      "section.expand": "展开这个分区",
+      "section.sortTitle": "排序方式（再点一次收起）",
+      "section.sortPrefix": "排序方式：",
+      "section.morePrefix": "显示更多（还有 ",
+      "section.moreSuffix": " 行）",
+      "section.mergeTitle": "合并「创建 / 修改」",
+      "section.splitTitle": "把「创建」和「修改」拆成两个分区",
+      "section.merge": "合并",
+      "section.split": "拆开",
+      "section.cardAria": "，文档台账，右键打开会话菜单",
+      "section.usedShort": "使用 ",
+      "section.createdShort": " · 创建 ",
+      "section.modifiedShort": " · 修改 ",
+      "section.used": "使用过",
+      "section.created": "创建",
+      "section.modifiedOnly": "修改（仅改动）",
+      "section.createdModified": "创建 / 修改",
+
+      // sort menu
+      "sort.menu": "操作菜单",
+      "sort.lastUsed": "最近使用",
+      "sort.firstUsed": "首次使用",
+      "sort.reads": "读取次数",
+      "sort.exists": "存在状态",
+      "sort.type": "类型",
+      "sort.path": "路径",
+      "sort.createdAt": "创建时间",
+      "sort.updatedAt": "更新时间",
+      "sort.writes": "写入次数",
+      "sort.directionHint": " · 点当前项切方向",
+      "sort.modified": "修改排序",
+      "sort.createdModified": "创建 / 修改排序",
+      "sort.used": "使用过排序",
+
+      // frame error boundary
+      "frame.errorPrefix": "文档台账面板出错：",
+
+      // toast / copy
+      "toast.copiedChars": "（{n} 字符）",
+      "toast.copyFailed": "复制失败：",
+      "toast.copiedMd": "已复制 Markdown",
+      "toast.copiedCsv": "已复制 CSV",
+      "toast.copiedPaths": "已复制路径",
+      "toast.copiedSummary": "已复制摘要",
+      "toast.copiedSessionName": "已复制会话名称",
+      "toast.copiedSessionId": "已复制会话 ID",
+      "toast.switchedTo": "已切换到「{name}」",
+      "toast.thisSession": "该会话",
+      "toast.jumpUnsupported": "这个环境不支持跳转会话",
+      "toast.copiedPath": "已复制路径",
+      "toast.located": "已在资源管理器中定位",
+      "toast.openWith": "已打开「打开方式」对话框",
+      "toast.opened": "已交给系统打开",
+      "toast.refreshed": "已刷新",
+      "toast.refreshFailed": "刷新失败：",
+      "toast.clickRetry": "　点击重试",
+      "toast.backgroundFailed": "后台刷新失败，显示的是上次成功的数据",
+      "toast.copiedContent": "已复制内容",
+
+      // export
+      "export.titlePrefix": "文档台账 · ",
+      "export.scopeAll": "全部会话",
+      "export.scopeCurrent": "当前会话",
+      "export.query": " · 搜索「{q}」",
+      "export.lines": "\n行数 {lines} · 使用过 {used} · 创建 {created}",
+      "export.colSession": "会话",
+      "export.colFile": "文件",
+      "export.colRel": "相对路径",
+      "export.colAbs": "绝对路径",
+      "export.colRead": "读",
+      "export.colWrite": "写",
+      "export.colCreated": "创建时间",
+      "export.colUpdated": "修改时间",
+      "export.colCreatedShort": "创建",
+      "export.colModified": "修改",
+
+      "export.currentListWithCount": "导出当前清单（{n} 行）",
+      "export.markdown": "复制清单（Markdown 表格）",
+      "export.csv": "复制清单（CSV）",
+      "export.paths": "复制全部路径",
+      "export.summary": "复制摘要",
+
+      // toolbar
+      "toolbar.title": "文档台账",
+      "toolbar.separate": "区分会话",
+      "toolbar.autoDesc": "每 8 秒自动刷新（预览打开时暂停），点击暂停",
+      "toolbar.pausedDesc": "已暂停自动刷新，点击恢复",
+      "toolbar.auto": "自动刷新",
+      "toolbar.paused": "已暂停",
+      "toolbar.export": "导出当前清单",
+      "toolbar.exportShort": "导出",
+      "toolbar.refresh": "刷新",
+
+      // file menu
+      "menu.previewInSidebar": "在侧边栏预览",
+      "menu.quick": "快速查看",
+      "menu.preview": "预览",
+      "menu.openWith": "打开方式",
+      "menu.noApps": "没有找到为这个类型注册的程序",
+      "menu.default": "（默认）",
+      "menu.chooseOther": "选择其他程序…",
+      "menu.reveal": "在资源管理器中显示",
+      "menu.copyFullPath": "复制完整路径",
+      "menu.copySessionName": "复制会话名称",
+      "menu.copySessionId": "复制会话 ID",
+      "menu.jumpToSession": "跳转到这个会话",
+      "menu.jumpToParentWith": "跳到父会话：",
+      "menu.jumpToParent": "跳到父会话",
+      "menu.jumpToChildWith": "跳到子会话：",
+
+      // quick-look modal
+      "preview.defaultApp": "默认程序",
+      "preview.lines": " {n} 行",
+      "preview.createdAt": "创建于 ",
+      "preview.updatedAt": "改于 ",
+      "preview.readWrite": "读 {reads} 写 {writes}",
+      "preview.truncated": "只显示前 {shown}（共 {total}），完整内容请用上面的按钮打开",
+      "preview.undecodable": " {n} 个字符无法解码",
+      "preview.aria": "预览 ",
+      "preview.openWith": "用 {app} 打开",
+      "preview.chooseOther": "选择其他程序",
+      "preview.sidebarTitle": "在侧边栏的文档预览中打开（图片 / PDF / Office / Markdown 都由宿主渲染）",
+      "preview.sidebar": "侧边栏",
+      "preview.reloadTitle": "重新读取这个文件（没变时宿主只回 304，不重传正文）",
+      "preview.copyTruncated": "复制可见内容（文件已截断）",
+      "preview.copyContent": "复制文件内容",
+      "preview.copy": "复制",
+      "preview.close": "关闭",
+      "preview.loading": "加载中…",
+      "preview.copyPathHint": "（点击复制完整路径）",
+      "preview.esc": "　·　Esc 关闭",
+
+      // summary line
+      "summary.line": "会话 {sessions} · 使用 {used} · 创建 {created} · 读 {reads} 次 · 写 {writes} 次",
+      "summary.filteredLine": "　·　筛选后 {files} 个文件 / {sessions} 个会话",
+      "summary.onlyRecentLine": "　（仅最近 {shown} 个会话，共 {total}）",
+      "summary.loadEarlier": "加载更早的会话",
+
+      // empty / filter / expand
+      "empty.mergeAll": "全部合并（按路径去重）",
+      "empty.noCurrent": "本会话还没有文档记录",
+      "empty.noDocs": "没有文档记录",
+      "empty.noMatch": "没有同时匹配「{terms}」的文档",
+      "empty.readFailed": "读取失败：",
+      "filter.only": "只看 {type}（{count} 个文件）",
+      "filter.missingTitle": "只看磁盘上已经不存在的文件",
+      "filter.clearTitle": "清除类型与「已删除」筛选（搜索框里的词保留）",
+      "filter.clearAria": "清除筛选条件",
+      "filter.clear": "清除筛选",
+      "expand.collapseTitle": "收起所有会话卡片",
+      "expand.expandTitle": "展开所有会话卡片",
+      "expand.collapse": "全部折叠",
+      "expand.expand": "全部展开",
+      "toast.close": "点击关闭"
     };
+
     var en = {
       "tab.title": "Doc ledger",
       "guide.title": "Doc ledger",
-      "guide.description": "Documents used and created per session"
+      "guide.description": "Documents used and created per session",
+
+      "category.doc": "Docs",
+      "category.sheet": "Sheets",
+      "category.slide": "Slides",
+      "category.image": "Images",
+      "category.code": "Code",
+      "category.web": "Web",
+      "category.config": "Config",
+      "category.data": "Data",
+      "category.archive": "Archives",
+      "category.other": "Other",
+
+      "encoding.gb18030Mixed": "GB18030 mixed decoding",
+
+      "search.placeholder": "Search files / paths / types / sessions, space-separated terms  (Ctrl+K)",
+      "search.aria": "Search document paths, types or sessions",
+
+      "row.missingSuffix": " (file no longer exists)",
+      "row.ariaSuffix": ", Enter to preview, Shift+Enter for quick look, Shift+F10 for menu",
+      "row.missingTag": "Deleted",
+      "row.read": "R",
+      "row.writeSlash": "/W",
+      "row.createdAt": "Created ",
+      "row.updatedAt": " · Updated ",
+
+      "section.collapse": "Collapse this section",
+      "section.expand": "Expand this section",
+      "section.sortTitle": "Sort by (click again to close)",
+      "section.sortPrefix": "Sort by: ",
+      "section.morePrefix": "Show more (",
+      "section.moreSuffix": " more)",
+      "section.mergeTitle": "Merge Created / Modified",
+      "section.splitTitle": "Split Created and Modified into two sections",
+      "section.merge": "Merge",
+      "section.split": "Split",
+      "section.cardAria": ", document ledger, right-click for the session menu",
+      "section.usedShort": "Used ",
+      "section.createdShort": " · Created ",
+      "section.modifiedShort": " · Modified ",
+      "section.used": "Used",
+      "section.created": "Created",
+      "section.modifiedOnly": "Modified (only)",
+      "section.createdModified": "Created / Modified",
+
+      "sort.menu": "Actions",
+      "sort.lastUsed": "Recently used",
+      "sort.firstUsed": "First used",
+      "sort.reads": "Read count",
+      "sort.exists": "Exists",
+      "sort.type": "Type",
+      "sort.path": "Path",
+      "sort.createdAt": "Created time",
+      "sort.updatedAt": "Updated time",
+      "sort.writes": "Write count",
+      "sort.directionHint": " · click again to reverse",
+      "sort.modified": "Modified sort",
+      "sort.createdModified": "Created / Modified sort",
+      "sort.used": "Used sort",
+
+      "frame.errorPrefix": "Document ledger panel error: ",
+
+      "toast.copiedChars": " ({n} chars)",
+      "toast.copyFailed": "Copy failed: ",
+      "toast.copiedMd": "Markdown copied",
+      "toast.copiedCsv": "CSV copied",
+      "toast.copiedPaths": "Paths copied",
+      "toast.copiedSummary": "Summary copied",
+      "toast.copiedSessionName": "Session name copied",
+      "toast.copiedSessionId": "Session ID copied",
+      "toast.switchedTo": "Switched to {name}",
+      "toast.thisSession": "this session",
+      "toast.jumpUnsupported": "Session switching is unavailable here",
+      "toast.copiedPath": "Path copied",
+      "toast.located": "Revealed in Explorer",
+      "toast.openWith": "Open-with dialog shown",
+      "toast.opened": "Handed to the system",
+      "toast.refreshed": "Refreshed",
+      "toast.refreshFailed": "Refresh failed: ",
+      "toast.clickRetry": "  click to retry",
+      "toast.backgroundFailed": "Background refresh failed; showing last successful data",
+      "toast.copiedContent": "Content copied",
+
+      "export.titlePrefix": "Doc ledger · ",
+      "export.scopeAll": "All sessions",
+      "export.scopeCurrent": "Current session",
+      "export.query": " · search \"{q}\"",
+      "export.lines": "\nRows {lines} · used {used} · created {created}",
+      "export.colSession": "Session",
+      "export.colFile": "File",
+      "export.colRel": "Relative path",
+      "export.colAbs": "Absolute path",
+      "export.colRead": "R",
+      "export.colWrite": "W",
+      "export.colCreated": "Created",
+      "export.colUpdated": "Updated",
+      "export.colCreatedShort": "Created",
+      "export.colModified": "Modified",
+      "export.currentListWithCount": "Export current list ({n} rows)",
+      "export.markdown": "Copy list (Markdown table)",
+      "export.csv": "Copy list (CSV)",
+      "export.paths": "Copy all paths",
+      "export.summary": "Copy summary",
+
+      "toolbar.title": "Doc ledger",
+      "toolbar.separate": "Group by session",
+      "toolbar.autoDesc": "Auto-refresh every 8s (paused while previewing); click to pause",
+      "toolbar.pausedDesc": "Auto-refresh paused; click to resume",
+      "toolbar.auto": "Auto",
+      "toolbar.paused": "Paused",
+      "toolbar.export": "Export current list",
+      "toolbar.exportShort": "Export",
+      "toolbar.refresh": "Refresh",
+
+      "menu.previewInSidebar": "Preview in sidebar",
+      "menu.quick": "Quick look",
+      "menu.preview": "Preview",
+      "menu.openWith": "Open with",
+      "menu.noApps": "No program registered for this file type",
+      "menu.default": " (default)",
+      "menu.chooseOther": "Choose another program…",
+      "menu.reveal": "Reveal in Explorer",
+      "menu.copyFullPath": "Copy full path",
+      "menu.copySessionName": "Copy session name",
+      "menu.copySessionId": "Copy session ID",
+      "menu.jumpToSession": "Jump to this session",
+      "menu.jumpToParentWith": "Jump to parent: ",
+      "menu.jumpToParent": "Jump to parent",
+      "menu.jumpToChildWith": "Jump to child: ",
+
+      "preview.defaultApp": "Default program",
+      "preview.lines": " {n} lines",
+      "preview.createdAt": "Created ",
+      "preview.updatedAt": "Updated ",
+      "preview.readWrite": "R {reads} W {writes}",
+      "preview.truncated": "Showing first {shown} of {total}; use the buttons above for the full file",
+      "preview.undecodable": " {n} undecodable chars",
+      "preview.aria": "Preview ",
+      "preview.openWith": "Open with {app}",
+      "preview.chooseOther": "Choose another program",
+      "preview.sidebarTitle": "Open in the sidebar preview (host renders images / PDF / Office / Markdown)",
+      "preview.sidebar": "Sidebar",
+      "preview.reloadTitle": "Re-read this file (unchanged files get a 304, no body re-sent)",
+      "preview.copyTruncated": "Copy visible content (file truncated)",
+      "preview.copyContent": "Copy file content",
+      "preview.copy": "Copy",
+      "preview.close": "Close",
+      "preview.loading": "Loading…",
+      "preview.copyPathHint": " (click to copy the full path)",
+      "preview.esc": "  ·  Esc to close",
+
+      "summary.line": "Sessions {sessions} · used {used} · created {created} · R {reads} · W {writes}",
+      "summary.filteredLine": "  ·  filtered {files} files / {sessions} sessions",
+      "summary.onlyRecentLine": "  (latest {shown} sessions of {total})",
+      "summary.loadEarlier": "Load earlier sessions",
+
+      "empty.mergeAll": "Merge all (dedupe by path)",
+      "empty.noCurrent": "No document records for this session yet",
+      "empty.noDocs": "No document records",
+      "empty.noMatch": "No documents matching all of: {terms}",
+      "empty.readFailed": "Read failed: ",
+      "filter.only": "Only {type} ({count} files)",
+      "filter.missingTitle": "Only files that no longer exist on disk",
+      "filter.clearTitle": "Clear type / deleted filters (keeps the search text)",
+      "filter.clearAria": "Clear filters",
+      "filter.clear": "Clear filters",
+      "expand.collapseTitle": "Collapse all session cards",
+      "expand.expandTitle": "Expand all session cards",
+      "expand.collapse": "Collapse all",
+      "expand.expand": "Expand all",
+      "toast.close": "Click to dismiss"
     };
 
     var artwork = {};
@@ -116,17 +509,19 @@ window.__ModuleLoader__.load({
       other: "#94a3b8"
     };
 
+    // Keys, not literals: this table is built at factory-evaluation time, before the
+    // host translator is installed. categoryLabel() resolves through t() at render time.
     var CATEGORY_LABEL = {
-      doc: "文档",
-      sheet: "表格",
-      slide: "演示",
-      image: "图片",
-      code: "代码",
-      web: "网页",
-      config: "配置",
-      data: "数据",
-      archive: "压缩",
-      other: "其他"
+      doc: "category.doc",
+      sheet: "category.sheet",
+      slide: "category.slide",
+      image: "category.image",
+      code: "category.code",
+      web: "category.web",
+      config: "category.config",
+      data: "category.data",
+      archive: "category.archive",
+      other: "category.other"
     };
 
     function categoryColor(category) {
@@ -134,7 +529,8 @@ window.__ModuleLoader__.load({
     }
 
     function categoryLabel(category) {
-      return CATEGORY_LABEL[category] || String(category || "其他");
+      var key = CATEGORY_LABEL[category] || "category.other";
+      return t(key);
     }
 
     function pad(value) {
@@ -164,7 +560,7 @@ window.__ModuleLoader__.load({
 
     /** Short label for how the preview bytes were decoded; null when it is plain UTF-8. */
     function encodingLabel(encoding) {
-      if (encoding === "utf-8+gb18030") return "GB18030 混合解码";
+      if (encoding === "utf-8+gb18030") return t("encoding.gb18030Mixed");
       if (encoding === "utf-16le") return "UTF-16LE";
       if (encoding === "utf-16be") return "UTF-16BE";
       return null;
@@ -505,8 +901,8 @@ window.__ModuleLoader__.load({
       return h("input", {
         ref: props.inputRef,
         style: S.input,
-        placeholder: "搜索文件 / 路径 / 类型 / 会话，空格分隔多个词  (Ctrl+K)",
-        "aria-label": "搜索文档路径、类型或会话",
+        placeholder: t("search.placeholder"),
+        "aria-label": t("search.aria"),
         value: draft,
         onChange: function (event) {
           var value = event.target.value;
@@ -535,7 +931,7 @@ window.__ModuleLoader__.load({
         // attribute they cannot be mistaken for a DOM position by focusRow().
         "data-row-index": props.index >= 0 ? props.index : undefined,
         role: "button",
-        "aria-label": file.name + (missing ? "（文件已不存在）" : "") + "，回车打开预览，Shift+回车快速查看，Shift+F10 打开菜单",
+        "aria-label": file.name + (missing ? t("row.missingSuffix") : "") + t("row.ariaSuffix"),
         onFocus: function () {
           if (typeof props.onFocusIndex === "function") props.onFocusIndex(props.index);
         },
@@ -563,15 +959,15 @@ window.__ModuleLoader__.load({
           event.stopPropagation();
           props.onMenu(event, file);
         },
-        title: file.path + (missing ? "（文件已不存在）" : "")
+        title: file.path + (missing ? t("row.missingSuffix") : "")
       },
         react.createElement("span", { style: Object.assign({}, S.dot, { background: categoryColor(file.category) }) }),
         react.createElement("span", { style: S.name }, highlight(file.name, props.query)),
-        missing ? react.createElement("span", { style: S.tagMissing }, "已删除") : null,
+        missing ? react.createElement("span", { style: S.tagMissing }, t("row.missingTag")) : null,
         file.sessionTitle ? react.createElement("span", { style: S.tag, title: file.sessionId }, file.sessionTitle) : null,
         react.createElement("span", { style: S.dir }, highlight(shortPath(file.rel, 34), props.query)),
-        react.createElement("span", { style: S.io }, "读" + (file.reads || 0) + "/写" + (file.writes || 0)),
-        react.createElement("span", { style: S.times }, "建 " + fmtTime(file.createdAt) + " · 改 " + fmtTime(file.updatedAt))
+        react.createElement("span", { style: S.io }, t("row.read") + (file.reads || 0) + t("row.writeSlash") + (file.writes || 0)),
+        react.createElement("span", { style: S.times }, t("row.createdAt") + fmtTime(file.createdAt) + t("row.updatedAt") + fmtTime(file.updatedAt))
       );
     }, function (prev, next) {
       return prev.file === next.file && prev.query === next.query
@@ -616,7 +1012,7 @@ window.__ModuleLoader__.load({
             type: "button",
             style: S.sectionTitle,
             "aria-expanded": props.open === true,
-            title: props.open ? "收起这个分区" : "展开这个分区",
+            title: props.open ? t("section.collapse") : t("section.expand"),
             onFocus: ringOn,
             onBlur: ringOff,
             onClick: props.onToggle
@@ -625,8 +1021,8 @@ window.__ModuleLoader__.load({
           h("button", {
             type: "button",
             style: S.sortChip,
-            title: "排序方式（再点一次收起）",
-            "aria-label": "排序方式：" + props.sortLabel,
+            title: t("section.sortTitle"),
+            "aria-label": t("section.sortPrefix") + props.sortLabel,
             "aria-haspopup": "menu",
             onFocus: ringOn,
             onBlur: ringOff,
@@ -770,7 +1166,7 @@ window.__ModuleLoader__.load({
             onBlur: ringOff,
             onClick: function (event) { event.stopPropagation(); showMore(prefix); },
             onKeyDown: onActivate(function () { showMore(prefix); })
-          }, "显示更多（还有 " + (sorted.length - limit) + " 行）"));
+          }, t("section.morePrefix") + (sorted.length - limit) + t("section.moreSuffix")));
         }
         return rows;
       };
@@ -782,12 +1178,12 @@ window.__ModuleLoader__.load({
       var splitChip = h("button", {
         type: "button",
         style: S.sortChip,
-        title: split ? "合并「创建 / 修改」" : "把「创建」和「修改」拆成两个分区",
+        title: split ? t("section.mergeTitle") : t("section.splitTitle"),
         "aria-pressed": split === true,
         onFocus: ringOn,
         onBlur: ringOff,
         onClick: function (event) { event.stopPropagation(); props.onToggleSplit(); }
-      }, split ? "合并" : "拆开");
+      }, split ? t("section.merge") : t("section.split"));
 
       rowCountRef.current = rowCursor;
       return react.createElement("div", {
@@ -802,7 +1198,7 @@ window.__ModuleLoader__.load({
           role: "button",
           tabIndex: 0,
           "aria-expanded": props.open === true,
-          "aria-label": (session.title || session.sessionId) + "，文档台账，右键打开会话菜单",
+          "aria-label": (session.title || session.sessionId) + t("section.cardAria"),
           onFocus: ringOn,
           onBlur: ringOff,
           onClick: function () { props.onToggleCard(props.sessionId); },
@@ -817,13 +1213,13 @@ window.__ModuleLoader__.load({
           react.createElement("span", { style: S.cardTitle, title: session.title }, (props.open ? "▾ " : "▸ ") + (session.title || session.sessionId)),
           react.createElement("span", { style: S.cardMeta },
             split
-              ? "使用 " + used.length + " · 创建 " + createdSplit.length + " · 修改 " + modifiedSplit.length
-              : "使用 " + used.length + " · 创建 " + created.length
+              ? t("section.usedShort") + used.length + t("section.createdShort") + createdSplit.length + t("section.modifiedShort") + modifiedSplit.length
+              : t("section.usedShort") + used.length + t("section.createdShort") + created.length
           )
         ),
         showBody ? react.createElement("div", null,
           used.length > 0 ? react.createElement(Section, {
-            title: "使用过", count: used.length, open: props.usedOpen, rows: usedRows,
+            title: t("section.used"), count: used.length, open: props.usedOpen, rows: usedRows,
             sortLabel: props.usedLabel, dir: props.usedSort.dir,
             onToggle: function () { props.onToggleSection(props.sessionId + ":used"); },
             onSort: function (event) { props.onSortMenu(event, "used"); }
@@ -831,21 +1227,21 @@ window.__ModuleLoader__.load({
           split
             ? [
               createdSplit.length > 0 ? react.createElement(Section, {
-                key: "created", title: "创建", count: createdSplit.length, open: props.createdOpen, rows: createdSplitRows,
+                key: "created", title: t("section.created"), count: createdSplit.length, open: props.createdOpen, rows: createdSplitRows,
                 sortLabel: props.createdLabel, dir: props.createdSort.dir,
                 onToggle: function () { props.onToggleSection(props.sessionId + ":created"); },
                 onSort: function (event) { props.onSortMenu(event, "created"); },
                 extra: splitChip
               }) : null,
               modifiedSplit.length > 0 ? react.createElement(Section, {
-                key: "modified", title: "修改（仅改动）", count: modifiedSplit.length, open: props.modifiedOpen, rows: modifiedSplitRows,
+                key: "modified", title: t("section.modifiedOnly"), count: modifiedSplit.length, open: props.modifiedOpen, rows: modifiedSplitRows,
                 sortLabel: props.modifiedLabel, dir: props.modifiedSort.dir,
                 onToggle: function () { props.onToggleSection(props.sessionId + ":modified"); },
                 onSort: function (event) { props.onSortMenu(event, "modified"); }
               }) : null
             ]
             : (created.length > 0 ? react.createElement(Section, {
-              title: "创建 / 修改", count: created.length, open: props.createdOpen, rows: createdRows,
+              title: t("section.createdModified"), count: created.length, open: props.createdOpen, rows: createdRows,
               sortLabel: props.createdLabel, dir: props.createdSort.dir,
               onToggle: function () { props.onToggleSection(props.sessionId + ":created"); },
               onSort: function (event) { props.onSortMenu(event, "created"); },
@@ -926,7 +1322,7 @@ window.__ModuleLoader__.load({
         style: Object.assign({}, S.menu, { left: Math.min(menu.x, Math.max(4, bounds.w - width - 4)) + "px", top: top + "px", maxHeight: maxHeight + "px", overflowY: "auto", width: width + "px" }),
         role: "menu",
         tabIndex: -1,
-        "aria-label": menu.title || "操作菜单",
+        "aria-label": menu.title || t("sort.menu"),
         onClick: function (event) { event.stopPropagation(); },
         onKeyDown: function (event) {
           var node = event.currentTarget;
@@ -958,28 +1354,28 @@ window.__ModuleLoader__.load({
     }
 
     var USED_KEYS = [
-      { key: "lastUsed", label: "最近使用" },
-      { key: "firstUsed", label: "首次使用" },
-      { key: "reads", label: "读取次数" },
-      { key: "exists", label: "存在状态" },
-      { key: "type", label: "类型" },
-      { key: "path", label: "路径" }
+      { key: "lastUsed", label: "sort.lastUsed" },
+      { key: "firstUsed", label: "sort.firstUsed" },
+      { key: "reads", label: "sort.reads" },
+      { key: "exists", label: "sort.exists" },
+      { key: "type", label: "sort.type" },
+      { key: "path", label: "sort.path" }
     ];
     var CREATED_KEYS = [
-      { key: "createdAt", label: "创建时间" },
-      { key: "updatedAt", label: "更新时间" },
-      { key: "writes", label: "写入次数" },
-      { key: "exists", label: "存在状态" },
-      { key: "type", label: "类型" },
-      { key: "path", label: "路径" }
+      { key: "createdAt", label: "sort.createdAt" },
+      { key: "updatedAt", label: "sort.updatedAt" },
+      { key: "writes", label: "sort.writes" },
+      { key: "exists", label: "sort.exists" },
+      { key: "type", label: "sort.type" },
+      { key: "path", label: "sort.path" }
     ];
     var MODIFIED_KEYS = [
-      { key: "updatedAt", label: "更新时间" },
-      { key: "createdAt", label: "创建时间" },
-      { key: "writes", label: "写入次数" },
-      { key: "exists", label: "存在状态" },
-      { key: "type", label: "类型" },
-      { key: "path", label: "路径" }
+      { key: "updatedAt", label: "sort.updatedAt" },
+      { key: "createdAt", label: "sort.createdAt" },
+      { key: "writes", label: "sort.writes" },
+      { key: "exists", label: "sort.exists" },
+      { key: "type", label: "sort.type" },
+      { key: "path", label: "sort.path" }
     ];
 
     /** The panel's own box: popups are absolute inside it, so a clipping sidebar cannot cut them. */
@@ -995,7 +1391,7 @@ window.__ModuleLoader__.load({
 
     function labelOf(keys, spec) {
       for (var i = 0; i < keys.length; i++) {
-        if (keys[i].key === spec.key) return keys[i].label;
+        if (keys[i].key === spec.key) return t(keys[i].label);
       }
       return spec.key;
     }
@@ -1005,7 +1401,7 @@ window.__ModuleLoader__.load({
         return FrameInner(props);
       } catch (error) {
         report("frame-error", (error && error.stack) || error);
-        return react.createElement("div", { style: { padding: "12px", fontSize: "12px", color: "#b91c1c" } }, "文档台账面板出错：" + ((error && error.message) || String(error)));
+        return react.createElement("div", { style: { padding: "12px", fontSize: "12px", color: "#b91c1c" } }, t("frame.errorPrefix") + ((error && error.message) || String(error)));
       }
     }
 
@@ -1209,9 +1605,9 @@ window.__ModuleLoader__.load({
           area.select();
           document.execCommand("copy");
           document.body.removeChild(area);
-          notify(note + "（" + text.length + " 字符）");
+          notify(note + t("toast.copiedChars", { n: text.length }));
         } catch (error) {
-          notify("复制失败：" + String(error), "error");
+          notify(t("toast.copyFailed") + String(error), "error");
         }
       };
 
@@ -1219,7 +1615,7 @@ window.__ModuleLoader__.load({
         try {
           if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
             navigator.clipboard.writeText(text).then(function () {
-              notify(note + "（" + text.length + " 字符）");
+              notify(note + t("toast.copiedChars", { n: text.length }));
             }, function () {
               fallbackCopy(text, note);
             });
@@ -1243,13 +1639,13 @@ window.__ModuleLoader__.load({
         if (format === "summary") {
           var used = rows.filter(function (row) { return (row.file.reads || 0) > 0; }).length;
           var createdRows = rows.filter(function (row) { return row.file.created === "confirmed" || row.file.created === "inferred"; }).length;
-          return "文档台账 · " + (data.scope === "all" ? "全部会话" : "当前会话") +
-            (data.query ? " · 搜索「" + data.query + "」" : "") +
-            "\n行数 " + rows.length + " · 使用过 " + used + " · 创建 " + createdRows;
+          return t("export.titlePrefix") + (data.scope === "all" ? t("export.scopeAll") : t("export.scopeCurrent")) +
+            (data.query ? t("export.query", { q: data.query }) : "") +
+            t("export.lines", { lines: rows.length, used: used, created: createdRows });
         }
         var header = format === "csv"
-          ? ["会话", "文件", "相对路径", "绝对路径", "读", "写", "创建时间", "修改时间"]
-          : ["会话", "文件", "相对路径", "读", "写", "创建", "修改"];
+          ? [t("export.colSession"), t("export.colFile"), t("export.colRel"), t("export.colAbs"), t("export.colRead"), t("export.colWrite"), t("export.colCreated"), t("export.colUpdated")]
+          : [t("export.colSession"), t("export.colFile"), t("export.colRel"), t("export.colRead"), t("export.colWrite"), t("export.colCreatedShort"), t("export.colModified")];
         if (format === "csv") {
           return [header.map(csvCell).join(",")].concat(rows.map(function (row) {
             return [row.sessionTitle, row.file.name, row.file.rel, row.file.path, row.file.reads || 0, row.file.writes || 0, fmtTime(row.file.createdAt), fmtTime(row.file.updatedAt)].map(csvCell).join(",");
@@ -1280,13 +1676,13 @@ window.__ModuleLoader__.load({
           x: rect.left - panel.left,
           y: rect.bottom - panel.top + 4,
           bounds: { w: panel.width, h: panel.height },
-          title: "导出当前清单（" + count + " 行）",
+          title: t("export.currentListWithCount", { n: count }),
           items: [
-            { label: "复制清单（Markdown 表格）", action: { kind: "copyText", format: "md" } },
-            { label: "复制清单（CSV）", action: { kind: "copyText", format: "csv" } },
-            { label: "复制全部路径", action: { kind: "copyText", format: "paths" } },
+            { label: t("export.markdown"), action: { kind: "copyText", format: "md" } },
+            { label: t("export.csv"), action: { kind: "copyText", format: "csv" } },
+            { label: t("export.paths"), action: { kind: "copyText", format: "paths" } },
             { sep: true },
-            { label: "复制摘要", action: { kind: "copyText", format: "summary" } }
+            { label: t("export.summary"), action: { kind: "copyText", format: "summary" } }
           ]
         });
       };
@@ -1378,32 +1774,32 @@ window.__ModuleLoader__.load({
         }
         if (action.kind === "copyText") {
           var text = buildExport(action.format);
-          copyText(text, "已复制" + (action.format === "md" ? " Markdown" : action.format === "csv" ? " CSV" : action.format === "paths" ? "路径" : "摘要"));
+          copyText(text, action.format === "md" ? t("toast.copiedMd") : action.format === "csv" ? t("toast.copiedCsv") : action.format === "paths" ? t("toast.copiedPaths") : t("toast.copiedSummary"));
           return;
         }
         if (action.kind === "copySessionName") {
-          copyText(String((action.session && action.session.title) || ""), "已复制会话名称");
+          copyText(String((action.session && action.session.title) || ""), t("toast.copiedSessionName"));
           return;
         }
         if (action.kind === "copySessionId") {
-          copyText(String((action.session && action.session.sessionId) || ""), "已复制会话 ID");
+          copyText(String((action.session && action.session.sessionId) || ""), t("toast.copiedSessionId"));
           return;
         }
         if (action.kind === "jumpSession") {
           if (jumpToSession(action.session && action.session.sessionId)) {
-            notify("已切换到「" + ((action.session && action.session.title) || "该会话") + "」");
+            notify(t("toast.switchedTo", { name: (action.session && action.session.title) || t("toast.thisSession") }));
           } else {
-            notify("这个环境不支持跳转会话", "error");
+            notify(t("toast.jumpUnsupported"), "error");
           }
           return;
         }
         if (action.kind === "preview") { openDefault(file); return; }
         if (action.kind === "quick") { openPreview(file); return; }
-        if (action.kind === "copy") { copyText(file.path, "已复制路径"); return; }
+        if (action.kind === "copy") { copyText(file.path, t("toast.copiedPath")); return; }
         var mode = action.kind === "reveal" ? "reveal" : (action.kind === "choose" ? "choose" : "open");
         var suffix = action.app ? "&app=" + encodeURIComponent(action.app) : "";
         postJson("/api/open?mode=" + mode + "&path=" + encodeURIComponent(file.path) + suffix).then(function () {
-          notify(mode === "reveal" ? "已在资源管理器中定位" : (mode === "choose" ? "已打开「打开方式」对话框" : "已交给系统打开"));
+          notify(mode === "reveal" ? t("toast.located") : (mode === "choose" ? t("toast.openWith") : t("toast.opened")));
         }).catch(function (error) {
           notify(String((error && error.message) || error), "error");
         });
@@ -1418,8 +1814,8 @@ window.__ModuleLoader__.load({
         return target === "created" ? createdSort : usedSort;
       };
       var sortTitleOf = function (target) {
-        if (target === "modified") return "修改排序";
-        return target === "created" ? "创建 / 修改排序" : "使用过排序";
+        if (target === "modified") return t("sort.modified");
+        return target === "created" ? t("sort.createdModified") : t("sort.used");
       };
 
       var openSortMenu = function (event, target) {
@@ -1439,7 +1835,7 @@ window.__ModuleLoader__.load({
           y: rect.bottom - panel.top + 4,
           bounds: { w: panel.width, h: panel.height },
           returnFocus: event.currentTarget,
-          title: sortTitleOf(target) + " · 点当前项切方向",
+          title: sortTitleOf(target) + t("sort.directionHint"),
           items: keys.map(function (key) {
             return {
               label: key.label,
@@ -1455,25 +1851,25 @@ window.__ModuleLoader__.load({
         // modal (which explains why) and the menu does not offer a dead action.
         var canHost = hostPreviewReady() && file !== null && file !== undefined && file.exists !== false;
         var items = [];
-        if (canHost) items.push({ label: "在侧边栏预览", action: { kind: "preview", file: file } });
-        items.push({ label: canHost ? "快速查看" : "预览", action: { kind: "quick", file: file } });
+        if (canHost) items.push({ label: t("menu.previewInSidebar"), action: { kind: "preview", file: file } });
+        items.push({ label: canHost ? t("menu.quick") : t("menu.preview"), action: { kind: "quick", file: file } });
         items.push({ sep: true });
-        items.push({ label: "打开方式", labelOnly: true });
+        items.push({ label: t("menu.openWith"), labelOnly: true });
         if (list.length === 0) {
-          items.push({ label: "没有找到为这个类型注册的程序", labelOnly: true });
+          items.push({ label: t("menu.noApps"), labelOnly: true });
         }
         list.forEach(function (app) {
           items.push({
-            label: app.label + (app.isDefault ? "（默认）" : ""),
+            label: app.label + (app.isDefault ? t("menu.default") : ""),
             iconLabel: app.label,
             iconExe: app.exe,
             action: { kind: "open", file: file, app: app.exe }
           });
         });
         items.push({ sep: true });
-        items.push({ label: "选择其他程序…", action: { kind: "choose", file: file } });
-        items.push({ label: "在资源管理器中显示", action: { kind: "reveal", file: file } });
-        items.push({ label: "复制完整路径", action: { kind: "copy", file: file } });
+        items.push({ label: t("menu.chooseOther"), action: { kind: "choose", file: file } });
+        items.push({ label: t("menu.reveal"), action: { kind: "reveal", file: file } });
+        items.push({ label: t("menu.copyFullPath"), action: { kind: "copy", file: file } });
         return items;
       };
 
@@ -1522,24 +1918,24 @@ window.__ModuleLoader__.load({
 
       var buildSessionItems = function (session) {
         var items = [
-          { label: "复制会话名称", action: { kind: "copySessionName", session: session } },
-          { label: "复制会话 ID", action: { kind: "copySessionId", session: session } }
+          { label: t("menu.copySessionName"), action: { kind: "copySessionName", session: session } },
+          { label: t("menu.copySessionId"), action: { kind: "copySessionId", session: session } }
         ];
         if (canJumpToSession()) {
           items.push({ sep: true });
-          items.push({ label: "跳转到这个会话", action: { kind: "jumpSession", session: session } });
+          items.push({ label: t("menu.jumpToSession"), action: { kind: "jumpSession", session: session } });
           // Subagent lineage: the parent id rides on the session payload, the children are
           // whatever else is loaded and names this session as its parent.
           var parent = sessionById(session.parentSessionId);
           if (typeof session.parentSessionId === "string" && session.parentSessionId !== "") {
             items.push({
-              label: parent !== null ? "跳到父会话：" + (parent.title || parent.sessionId) : "跳到父会话",
+              label: parent !== null ? t("menu.jumpToParentWith") + (parent.title || parent.sessionId) : t("menu.jumpToParent"),
               action: { kind: "jumpSession", session: parent !== null ? parent : { sessionId: session.parentSessionId, title: session.parentSessionId } }
             });
           }
           childSessionsOf(session.sessionId).slice(0, 5).forEach(function (child) {
             items.push({
-              label: "跳到子会话：" + (child.title || child.sessionId),
+              label: t("menu.jumpToChildWith") + (child.title || child.sessionId),
               action: { kind: "jumpSession", session: child }
             });
           });
@@ -1672,28 +2068,28 @@ window.__ModuleLoader__.load({
       }, [menu, preview, previewMenu]);
 
       var header = h("div", { style: S.bar },
-        h("span", { style: S.title }, "文档台账"),
-        h("button", { style: scope === "current" ? S.buttonOn : S.button, onClick: function () { setScope("current"); } }, "当前会话"),
-        h("button", { style: scope === "all" ? S.buttonOn : S.button, onClick: function () { setScope("all"); } }, "全部会话"),
+        h("span", { style: S.title }, t("toolbar.title")),
+        h("button", { style: scope === "current" ? S.buttonOn : S.button, onClick: function () { setScope("current"); } }, t("export.scopeCurrent")),
+        h("button", { style: scope === "all" ? S.buttonOn : S.button, onClick: function () { setScope("all"); } }, t("export.scopeAll")),
         h(SearchBox, { inputRef: searchRef, onQuery: setQuery }),
-        h("button", { style: separate ? S.buttonOn : S.button, onClick: function () { setSeparate(!separate); } }, "区分会话"),
+        h("button", { style: separate ? S.buttonOn : S.button, onClick: function () { setSeparate(!separate); } }, t("toolbar.separate")),
         h("button", {
           style: autoRefresh ? S.buttonOn : S.button,
-          title: autoRefresh ? "每 8 秒自动刷新（预览打开时暂停），点击暂停" : "已暂停自动刷新，点击恢复",
+          title: autoRefresh ? t("toolbar.autoDesc") : t("toolbar.pausedDesc"),
           onClick: function () { setAutoRefresh(!autoRefresh); }
-        }, autoRefresh ? "自动刷新" : "已暂停"),
+        }, autoRefresh ? t("toolbar.auto") : t("toolbar.paused")),
         h("button", {
           style: menu !== null && menu.kind === "export" ? S.buttonOn : S.button,
-          title: "导出当前清单",
+          title: t("toolbar.export"),
           onClick: function (event) { event.stopPropagation(); openExportMenu(event); }
-        }, "导出"),
+        }, t("toolbar.exportShort")),
         h("button", {
           style: S.button,
           onClick: function () {
             fetchScope(scope === "all" ? "all" : "current", function () { return true; }, { force: true, silent: true });
-            notify("已刷新");
+            notify(t("toast.refreshed"));
           }
-        }, "刷新")
+        }, t("toolbar.refresh"))
       );
 
       /**
@@ -1706,22 +2102,22 @@ window.__ModuleLoader__.load({
         for (var appIndex = 0; appIndex < previewApps.length; appIndex++) {
           if (previewApps[appIndex].isDefault) { defaultApp = previewApps[appIndex]; break; }
         }
-        var defaultLabel = defaultApp !== null ? defaultApp.label : "默认程序";
+        var defaultLabel = defaultApp !== null ? defaultApp.label : t("preview.defaultApp");
 
         // One line of context above the body. File facts come first: in a narrow window
         // the row ellipsizes, and "how big / how decoded" matters more than the counters.
         var metaBits = [];
         if (typeof preview.bytes === "number") metaBits.push(fmtBytes(preview.bytes));
-        if (preview.lines > 0) metaBits.push(preview.lines + " 行");
+        if (preview.lines > 0) metaBits.push(t("preview.lines", { n: preview.lines }));
         var decodedAs = encodingLabel(preview.encoding);
         if (decodedAs !== null) metaBits.push(decodedAs);
         var known = preview.file || null;
         if (known !== null) {
-          if (known.createdAt) metaBits.push("创建于 " + fmtTime(known.createdAt));
-          if (known.updatedAt) metaBits.push("改于 " + fmtTime(known.updatedAt));
+          if (known.createdAt) metaBits.push(t("preview.createdAt") + fmtTime(known.createdAt));
+          if (known.updatedAt) metaBits.push(t("preview.updatedAt") + fmtTime(known.updatedAt));
           var reads = known.reads || 0;
           var writes = known.writes || 0;
-          if (reads > 0 || writes > 0) metaBits.push("读 " + reads + " 写 " + writes);
+          if (reads > 0 || writes > 0) metaBits.push(t("preview.readWrite", { reads: reads, writes: writes }));
         }
         var previewMeta = metaBits.length === 0 ? null : h("div", { style: S.modalMeta }, metaBits.join("　·　"));
 
@@ -1729,9 +2125,9 @@ window.__ModuleLoader__.load({
         // appended to the body, where they were easy to miss and got copied along.
         var notices = [];
         if (preview.truncated === true) {
-          notices.push("只显示前 " + fmtBytes(preview.shown) + "（共 " + fmtBytes(preview.bytes) + "），完整内容请用上面的按钮打开");
+          notices.push(t("preview.truncated", { shown: fmtBytes(preview.shown), total: fmtBytes(preview.bytes) }));
         }
-        if (preview.replacements > 0) notices.push(preview.replacements + " 个字符无法解码");
+        if (preview.replacements > 0) notices.push(t("preview.undecodable", { n: preview.replacements }));
         var previewNotice = notices.length === 0 ? null : h("div", { style: S.modalWarn }, notices.join("　·　"));
 
         return h("div", { style: S.modal, onClick: function () { setPreview(null); } },
@@ -1740,7 +2136,7 @@ window.__ModuleLoader__.load({
             style: S.modalBox,
             role: "dialog",
             "aria-modal": "true",
-            "aria-label": "预览 " + preview.name,
+            "aria-label": t("preview.aria") + preview.name,
             tabIndex: -1,
             onClick: function (event) { event.stopPropagation(); },
             onKeyDown: function (event) {
@@ -1766,20 +2162,20 @@ window.__ModuleLoader__.load({
                 h("div", { style: S.split },
                   h("button", {
                     style: S.splitMain,
-                    title: "用 " + defaultLabel + " 打开",
-                    "aria-label": "用 " + defaultLabel + " 打开",
+                    title: t("preview.openWith", { app: defaultLabel }),
+                    "aria-label": t("preview.openWith", { app: defaultLabel }),
                     onClick: function () { act({ kind: "open", file: preview, app: "" }); }
                   },
                     defaultApp !== null ? h(AppIcon, { label: defaultApp.label, exe: defaultApp.exe }) : null,
-                    narrow === true ? null : h("span", null, "用 " + defaultLabel + " 打开")
+                    narrow === true ? null : h("span", null, t("preview.openWith", { app: defaultLabel }))
                   ),
                   h("button", {
                     style: S.splitArrow,
-                    title: "选择其他程序",
+                    title: t("preview.chooseOther"),
                     onClick: function (event) { event.stopPropagation(); setPreviewMenu(!previewMenu); }
                   }, "▾"),
                   previewMenu === true ? h("div", { style: S.dropdown },
-                    previewApps.length === 0 ? h("div", { style: S.menuLabel }, "没有找到为这个类型注册的程序") : null,
+                    previewApps.length === 0 ? h("div", { style: S.menuLabel }, t("menu.noApps")) : null,
                     previewApps.map(function (app) {
                       return h("div", {
                         key: app.exe,
@@ -1793,7 +2189,7 @@ window.__ModuleLoader__.load({
                         onClick: function () { setPreviewMenu(false); act({ kind: "open", file: preview, app: app.exe }); }
                       },
                         h(AppIcon, { label: app.label, exe: app.exe }),
-                        h("span", { style: { flex: 1 } }, app.label + (app.isDefault ? "（默认）" : ""))
+                        h("span", { style: { flex: 1 } }, app.label + (app.isDefault ? t("menu.default") : ""))
                       );
                     }),
                     h("div", { style: S.menuSep }),
@@ -1805,7 +2201,7 @@ window.__ModuleLoader__.load({
                       onBlur: ringOff,
                       onKeyDown: onActivate(function () { setPreviewMenu(false); act({ kind: "choose", file: preview }); }),
                       onClick: function () { setPreviewMenu(false); act({ kind: "choose", file: preview }); }
-                    }, "选择其他程序…"),
+                    }, t("menu.chooseOther")),
                     h("div", {
                       style: S.menuItem,
                       role: "menuitem",
@@ -1814,40 +2210,40 @@ window.__ModuleLoader__.load({
                       onBlur: ringOff,
                       onKeyDown: onActivate(function () { setPreviewMenu(false); act({ kind: "reveal", file: preview }); }),
                       onClick: function () { setPreviewMenu(false); act({ kind: "reveal", file: preview }); }
-                    }, "在资源管理器中显示")
+                    }, t("menu.reveal"))
                   ) : null
                 ),
                 // Escape hatch from the modal into the host's full preview (images,
                 // PDFs, Office, rendered markdown) — never offered for a deleted file.
                 hostPreviewReady() && preview.file !== null && preview.file !== undefined && preview.file.exists !== false ? h("button", {
                   style: S.button,
-                  title: "在侧边栏的文档预览中打开（图片 / PDF / Office / Markdown 都由宿主渲染）",
+                  title: t("preview.sidebarTitle"),
                   onClick: function () {
                     if (hostPreviewOpen(preview.file, sessionId)) setPreview(null);
                   }
-                }, "侧边栏") : null,
+                }, t("preview.sidebar")) : null,
                 h("button", {
                   style: S.button,
-                  title: "重新读取这个文件（没变时宿主只回 304，不重传正文）",
+                  title: t("preview.reloadTitle"),
                   onClick: refreshPreview
-                }, "刷新"),
+                }, t("toolbar.refresh")),
                 h("button", {
                   style: S.button,
-                  title: preview.truncated === true ? "复制可见内容（文件已截断）" : "复制文件内容",
-                  onClick: function () { copyText(preview.text || "", "已复制内容"); }
-                }, "复制"),
-                h("button", { style: S.button, onClick: function () { setPreview(null); } }, "关闭")
+                  title: preview.truncated === true ? t("preview.copyTruncated") : t("preview.copyContent"),
+                  onClick: function () { copyText(preview.text || "", t("toast.copiedContent")); }
+                }, t("preview.copy")),
+                h("button", { style: S.button, onClick: function () { setPreview(null); } }, t("preview.close"))
               )
             ),
             previewMeta,
             previewNotice,
             h("pre", { ref: preRef, style: S.pre, tabIndex: 0 },
-              preview.status === "loading" ? "加载中…" : (preview.text || "")),
+              preview.status === "loading" ? t("preview.loading") : (preview.text || "")),
             h("div", {
               style: Object.assign({}, S.modalFoot, { cursor: "pointer" }),
-              title: preview.path + "（点击复制完整路径）",
-              onClick: function () { copyText(preview.path, "已复制路径"); }
-            }, preview.path + "　·　Esc 关闭")
+              title: preview.path + t("preview.copyPathHint"),
+              onClick: function () { copyText(preview.path, t("toast.copiedPath")); }
+            }, preview.path + t("preview.esc"))
           )
         );
       };
@@ -1907,14 +2303,14 @@ window.__ModuleLoader__.load({
       });
 
       var summaryLine = ready ? h("div", { style: S.summary },
-        "会话 " + (summary.sessions || 0) + " · 使用 " + (summary.used || 0) + " · 创建 " + (summary.created || 0) + " · 读 " + (summary.reads || 0) + " 次 · 写 " + (summary.writes || 0) + " 次" +
-        (filterActive ? "　·　筛选后 " + visible.files + " 个文件 / " + visible.sessions + " 个会话" : "") +
-        (payload.truncated === true ? "　（仅最近 " + payload.maxSessions + " 个会话，共 " + payload.totalSessions + "）" : ""),
+        t("summary.line", { sessions: summary.sessions || 0, used: summary.used || 0, created: summary.created || 0, reads: summary.reads || 0, writes: summary.writes || 0 }) +
+        (filterActive ? t("summary.filteredLine", { files: visible.files, sessions: visible.sessions }) : "") +
+        (payload.truncated === true ? t("summary.onlyRecentLine", { shown: payload.maxSessions, total: payload.totalSessions }) : ""),
         payload.truncated === true && scope === "all" ? h("button", {
           type: "button",
           style: Object.assign({}, S.button, { marginLeft: "8px", padding: "1px 8px", fontSize: "11px" }),
           onClick: function () { loadEarlier(payload.maxSessions || 40); }
-        }, "加载更早的会话") : null
+        }, t("summary.loadEarlier")) : null
       ) : null;
 
       // What the export actions copy: the rows currently visible after scope + search.
@@ -2167,7 +2563,7 @@ window.__ModuleLoader__.load({
           .map(function (session, index) { return h(SessionCard, cardProps(session, index)); });
       } else if (sessions.length > 0) {
         var merged = mergeSessions(sessions);
-        var flatProps = cardProps({ sessionId: "__flat__", title: "全部合并（按路径去重）", files: merged });
+        var flatProps = cardProps({ sessionId: "__flat__", title: t("empty.mergeAll"), files: merged });
         flatProps.usedSort = usedSort;
         flatProps.createdSort = createdSort;
         flatProps.open = cardOpen.__flat__ !== false;
@@ -2181,10 +2577,10 @@ window.__ModuleLoader__.load({
         cards = hasVisibleRow(merged) ? [h(SessionCard, flatProps)] : [];
       }
 
-      var emptyText = missingCurrent ? "本会话还没有文档记录" : (query === "" ? "没有文档记录" : "没有同时匹配「" + query.trim().split(/\s+/).join("」「") + "」的文档");
+      var emptyText = missingCurrent ? t("empty.noCurrent") : (query === "" ? t("empty.noDocs") : t("empty.noMatch", { terms: query.trim().split(/\s+/).join(" ") }));
       var placeholder = activeState.status === "error"
-        ? "读取失败：" + activeState.message
-        : "加载中…";
+        ? t("empty.readFailed") + activeState.message
+        : t("preview.loading");
       var body = !ready
         ? h("div", { style: S.empty }, placeholder)
         : (cards.length > 0 ? cards : h("div", { style: S.empty }, emptyText));
@@ -2195,18 +2591,18 @@ window.__ModuleLoader__.load({
         ? h("div", {
           style: S.notice,
           role: "status",
-          title: "后台刷新失败，显示的是上次成功的数据",
+          title: t("toast.backgroundFailed"),
           onClick: function () {
             setOffline(null);
             fetchScope(scopeRef.current, function () { return true; }, { force: true, silent: true });
           }
-        }, "刷新失败：" + offline + "　点击重试")
+        }, t("toast.refreshFailed") + offline + t("toast.clickRetry"))
         : null;
 
       // Kept in the tree even when hidden: a new child index would remount the list.
       var showFilterBar = categoryChips.length >= 2 || (scope === "all" && separate);
       var filterBar = h("div", { style: showFilterBar ? S.filterBar : Object.assign({}, S.filterBar, { display: "none" }) },
-        h("span", { style: S.filterLabel }, "类型"),
+        h("span", { style: S.filterLabel }, t("sort.type")),
         categoryChips.map(function (chip) {
           var on = typeSet !== null && typeSet[chip.key] === true;
           return h("button", {
@@ -2214,7 +2610,7 @@ window.__ModuleLoader__.load({
             type: "button",
             style: on ? S.filterChipOn : S.filterChip,
             "aria-pressed": on,
-            title: "只看 " + categoryLabel(chip.key) + "（" + chip.count + " 个文件）",
+            title: t("filter.only", { type: categoryLabel(chip.key), count: chip.count }),
             onFocus: ringOn,
             onBlur: ringOff,
             onClick: function () { toggleType(chip.key); }
@@ -2227,12 +2623,12 @@ window.__ModuleLoader__.load({
           type: "button",
           style: deletedOnly === true ? S.filterChipOn : S.filterChip,
           "aria-pressed": deletedOnly === true,
-          title: "只看磁盘上已经不存在的文件",
+          title: t("filter.missingTitle"),
           onFocus: ringOn,
           onBlur: ringOff,
           onClick: function () { setDeletedOnly(function (previous) { return previous !== true; }); }
         },
-          h("span", null, "已删除"),
+          h("span", null, t("row.missingTag")),
           h("span", { style: deletedOnly === true ? S.chipCountOn : S.chipCount }, String(visible.deleted))
         ),
         // A reset is an action, not a filter: a hairline divider plus a ghost button.
@@ -2240,8 +2636,8 @@ window.__ModuleLoader__.load({
         typeSet !== null || deletedOnly === true ? h("button", {
           type: "button",
           style: S.filterAction,
-          title: "清除类型与「已删除」筛选（搜索框里的词保留）",
-          "aria-label": "清除筛选条件",
+          title: t("filter.clearTitle"),
+          "aria-label": t("filter.clearAria"),
           onMouseEnter: hoverOn,
           onMouseLeave: hoverOff,
           onFocus: ringOn,
@@ -2251,18 +2647,18 @@ window.__ModuleLoader__.load({
             savePref("typeFilter", []);
             setDeletedOnly(false);
           }
-        }, h("span", { style: S.filterActionGlyph, "aria-hidden": "true" }, "✕"), "清除筛选") : null,
+        }, h("span", { style: S.filterActionGlyph, "aria-hidden": "true" }, "✕"), t("filter.clear")) : null,
         scope === "all" && separate ? h("button", {
           type: "button",
           style: Object.assign({}, S.filterAction, { marginLeft: "auto" }),
-          title: everyOpen === true || bulkBusy === true ? "收起所有会话卡片" : "展开所有会话卡片",
+          title: everyOpen === true || bulkBusy === true ? t("expand.collapseTitle") : t("expand.expandTitle"),
           "aria-busy": bulkBusy === true,
           onMouseEnter: hoverOn,
           onMouseLeave: hoverOff,
           onFocus: ringOn,
           onBlur: ringOff,
           onClick: toggleAllCards
-        }, everyOpen === true || bulkBusy === true ? "全部折叠" : "全部展开") : null
+        }, everyOpen === true || bulkBusy === true ? t("expand.collapse") : t("expand.expand")) : null
       );
 
       return h("div", { "data-doc-ledger-root": "1", style: S.root, onClick: function () { if (menu !== null) setMenu(null); } },
@@ -2277,7 +2673,7 @@ window.__ModuleLoader__.load({
           style: Object.assign({}, S.toast, toast.kind === "error" ? S.toastError : S.toastOk),
           role: "status",
           "aria-live": "polite",
-          title: "点击关闭",
+          title: t("toast.close"),
           onClick: function () { setToast(null); }
         }, (toast.kind === "error" ? "! " : "✓ ") + toast.text)
       );
@@ -2285,7 +2681,7 @@ window.__ModuleLoader__.load({
 
     function TabTitle() {
       try {
-        return react.createElement("span", null, "文档台账");
+        return react.createElement("span", null, t("tab.title"));
       } catch (error) {
         return null;
       }
@@ -2302,7 +2698,10 @@ window.__ModuleLoader__.load({
     }
 
     function applyInner(ctx) {
-      var t = ctx.locale.bind(NS);
+      // Install the host translator BEFORE any dictionary registration / render, so
+      // evaluation-time constants (category labels, sort labels) and TabTitle all see it.
+      setFallback(zh);
+      setTranslator(ctx.locale.bind(NS));
       ctx.effect(function () {
         return ctx.locale.register(NS, { zh: zh, en: en });
       }, "doc-ledger: dictionaries");

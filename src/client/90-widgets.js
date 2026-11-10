@@ -64,8 +64,8 @@
       return h("input", {
         ref: props.inputRef,
         style: S.input,
-        placeholder: "搜索文件 / 路径 / 类型 / 会话，空格分隔多个词  (Ctrl+K)",
-        "aria-label": "搜索文档路径、类型或会话",
+        placeholder: t("search.placeholder"),
+        "aria-label": t("search.aria"),
         value: draft,
         onChange: function (event) {
           var value = event.target.value;
@@ -94,7 +94,7 @@
         // attribute they cannot be mistaken for a DOM position by focusRow().
         "data-row-index": props.index >= 0 ? props.index : undefined,
         role: "button",
-        "aria-label": file.name + (missing ? "（文件已不存在）" : "") + "，回车打开预览，Shift+回车快速查看，Shift+F10 打开菜单",
+        "aria-label": file.name + (missing ? t("row.missingSuffix") : "") + t("row.ariaSuffix"),
         onFocus: function () {
           if (typeof props.onFocusIndex === "function") props.onFocusIndex(props.index);
         },
@@ -122,15 +122,15 @@
           event.stopPropagation();
           props.onMenu(event, file);
         },
-        title: file.path + (missing ? "（文件已不存在）" : "")
+        title: file.path + (missing ? t("row.missingSuffix") : "")
       },
         react.createElement("span", { style: Object.assign({}, S.dot, { background: categoryColor(file.category) }) }),
         react.createElement("span", { style: S.name }, highlight(file.name, props.query)),
-        missing ? react.createElement("span", { style: S.tagMissing }, "已删除") : null,
+        missing ? react.createElement("span", { style: S.tagMissing }, t("row.missingTag")) : null,
         file.sessionTitle ? react.createElement("span", { style: S.tag, title: file.sessionId }, file.sessionTitle) : null,
         react.createElement("span", { style: S.dir }, highlight(shortPath(file.rel, 34), props.query)),
-        react.createElement("span", { style: S.io }, "读" + (file.reads || 0) + "/写" + (file.writes || 0)),
-        react.createElement("span", { style: S.times }, "建 " + fmtTime(file.createdAt) + " · 改 " + fmtTime(file.updatedAt))
+        react.createElement("span", { style: S.io }, t("row.read") + (file.reads || 0) + t("row.writeSlash") + (file.writes || 0)),
+        react.createElement("span", { style: S.times }, t("row.createdAt") + fmtTime(file.createdAt) + t("row.updatedAt") + fmtTime(file.updatedAt))
       );
     }, function (prev, next) {
       return prev.file === next.file && prev.query === next.query

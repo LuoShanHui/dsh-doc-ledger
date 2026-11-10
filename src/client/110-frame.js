@@ -3,7 +3,7 @@
         return FrameInner(props);
       } catch (error) {
         report("frame-error", (error && error.stack) || error);
-        return react.createElement("div", { style: { padding: "12px", fontSize: "12px", color: "#b91c1c" } }, "文档台账面板出错：" + ((error && error.message) || String(error)));
+        return react.createElement("div", { style: { padding: "12px", fontSize: "12px", color: "#b91c1c" } }, t("frame.errorPrefix") + ((error && error.message) || String(error)));
       }
     }
 
