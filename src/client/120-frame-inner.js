@@ -1,5 +1,9 @@
     function FrameInner(props) {
       var h = react.createElement;
+      // Subscribe to the style theme: setStyleTheme swaps S, and this hook re-renders
+      // every mounted component that reads S. The hook also pins the current S on each
+      // render so a theme switch does not need a reload.
+      useStyles();
       var sessionId = readSessionId(props);
       report("session", String(sessionId));
 
@@ -53,6 +57,15 @@
         window.addEventListener("resize", onResize);
         return function () { window.removeEventListener("resize", onResize); };
       }, []);
+
+      // Visual theme: compact (original) / airy / table / card. Persisted like the
+      // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
+      var themeState = react.useState(function () { return loadPref("styleTheme", "compact"); });
+      var theme = themeState[0];
+      var setTheme = themeState[1];
+      react.useEffect(function () {
+        setStyleTheme(theme);
+      }, [theme]);
 
       // Active type chips: an empty object means "no type filter".
       var typeSelState = react.useState(function () {
@@ -662,7 +675,18 @@
             fetchScope(scope === "all" ? "all" : "current", function () { return true; }, { force: true, silent: true });
             notify(t("toast.refreshed"));
           }
-        }, t("toolbar.refresh"))
+        }, t("toolbar.refresh")),
+        h("button", {
+          style: S.button,
+          title: t("theme.title") + t("theme." + theme),
+          onClick: function () {
+            var order = ["compact", "airy", "table", "card"];
+            var index = order.indexOf(theme);
+            var next = order[(index + 1) % order.length];
+            setTheme(next);
+            savePref("styleTheme", next);
+          }
+        }, t("theme.next"))
       );
 
       /**

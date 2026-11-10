@@ -7,6 +7,11 @@
 
 ### Added
 
+- **四套可切换的视觉主题**：`compact`（原版，默认）/ `airy`（留白分层）/ `table`（表格化对齐）/
+  `card`（浮起卡片 + 阴影）。工具栏新增「主题」按钮循环切换，选择写入 `localStorage`。
+  `70-styles.js` 从一张常量表重构成 `buildStyles(theme)` 工厂，58 个 key / ~330 处引用不变，
+  颜色全部改用宿主主题 token（`--dsw-alias-*`），深浅色都跟随。memo 组件通过 `useStyles()`
+  订阅主题，切换时不再需要刷新。
 - **两套完整截图**：英文 README 用 `docs/en-*.png`（7 张，`?locale=en` 实拍），中文 README 用
   `docs/zh-*.png`（7 张）；`screenshots.json` 同时列出 14 张。
 - `tools/readme-check.mjs` 再加两条（共 9 项）：两版引用的图片必须真实存在、

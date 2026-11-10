@@ -67,6 +67,13 @@ const categoryText = readFileSync(join(dir, "40-format.js"), "utf8");
 for (const m of categoryText.matchAll(/"(category\.\w+)"/g)) referenced.add(m[1]);
 const sectionsText = readFileSync(join(dir, "100-sections.js"), "utf8");
 for (const m of sectionsText.matchAll(/label: "(sort\.\w+)"/g)) referenced.add(m[1]);
+// A key prefix joined with a variable at runtime (e.g. t("theme." + theme)) is not a
+// literal key; record its concrete children instead.
+for (const key of [...referenced]) {
+  if (!key.endsWith(".")) continue;
+  referenced.delete(key);
+  for (const full of zhKeys) if (full.startsWith(key)) referenced.add(full);
+}
 
 // Plural variants (`key_one`, `key_other`, ...) are reached through the base key by t().
 const VARIANT = /_(one|other|zero|two|few|many)$/;

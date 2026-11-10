@@ -137,6 +137,12 @@
       "toolbar.export": "导出当前清单",
       "toolbar.exportShort": "导出",
       "toolbar.refresh": "刷新",
+      "theme.title": "主题：",
+      "theme.compact": "紧凑",
+      "theme.airy": "留白",
+      "theme.table": "表格",
+      "theme.card": "卡片",
+      "theme.next": "主题",
 
       // file menu
       "menu.previewInSidebar": "在侧边栏预览",
@@ -337,6 +343,12 @@
       "toolbar.export": "Export current list",
       "toolbar.exportShort": "Export",
       "toolbar.refresh": "Refresh",
+      "theme.title": "Theme: ",
+      "theme.compact": "Compact",
+      "theme.airy": "Airy",
+      "theme.table": "Table",
+      "theme.card": "Card",
+      "theme.next": "Theme",
 
       "menu.previewInSidebar": "Preview in sidebar",
       "menu.quick": "Quick look",

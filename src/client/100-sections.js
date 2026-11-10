@@ -39,6 +39,11 @@
      */
     var SessionCard = react.memo(function SessionCard(props) {
       var h = react.createElement;
+      // Subscribe to the style theme so a memoised card re-renders when S is swapped.
+      // The hook also returns the current S; the component reads it through the local
+      // binding below instead of the module global, so the memo gate cannot freeze an
+      // old theme in place.
+      useStyles();
       var session = props.session;
       var files = session.files || [];
       // Every hook runs before the early return: a card that starts out empty and later

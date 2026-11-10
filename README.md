@@ -244,6 +244,10 @@ trimmed by `slimFile()`, because `uses` alone was 30% of the payload and the cli
 - **All sessions**: "Group by session" is on by default (one card per session, split into created/used
   inside the card); turn it off to merge everything into two cross-session lists where each row carries a
   session tag.
+- **Visual themes**: a "Theme" button in the toolbar cycles through four looks — **Compact** (the original),
+  **Airy** (whitespace and weight instead of hairlines), **Table** (grid rows and tabular numbers) and
+  **Card** (floating cards with soft shadows). The choice is remembered across reloads, and every theme
+  reads the host's color tokens so it follows light/dark mode.
 - **Type filter**: a row of type chips under the summary (docs / sheets / slides / images / code / web /
   config / data / archives / other) showing the actual counts in the current data. Click to filter to one
   type, click again to clear; types with a count of 0 are not shown, and the selection is remembered.
@@ -689,14 +693,15 @@ tools/harness/                 UI verification: real client.js + fake ctx + synt
 tools/route-check.mjs          host route and security regression: 14 assertions
 tools/cache-check.mjs          cache decision regression: 8 assertions
 tools/client-core-check.mjs    client pure functions: 43 assertions (search, sorting, merge, format, plurals, locale snapshot)
+tools/theme-check.mjs          theme factory: 6 assertions (four themes, identical key sets, host tokens)
 tools/readme-check.mjs         bilingual README parity: sections, links, anchors, image files, language prefixes
 tools/release-notes-check.mjs  release-note parity: English twin, structure, tag-pinned images
 ```
 
-`npm test` runs eight check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 8 +
-client 43 + i18n's 179-key integrity check + README parity 10 + release notes 9 = **101 checks**, no external
-dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to prove that the
-committed `client.js` matches `src/client/*.js` byte for byte.
+`npm test` runs nine check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 8 +
+client 43 + theme 6 + i18n's 179-key integrity check + README parity 10 + release notes 9 = **107 checks**,
+no external dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to
+prove that the committed `client.js` matches `src/client/*.js` byte for byte.
 
 For UI changes, look at the panel in a browser with `npm run harness`: it serves the real `client.js` against
 a fake cordis context and a synthetic ledger, and its fixture deliberately contains "a multi-word search that

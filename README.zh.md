@@ -211,6 +211,9 @@
 
 - **当前会话**：创建/修改 + 使用过两个清单。
 - **全部会话**：默认开启「区分会话」（每个会话一张卡片，卡片内再分创建/使用）；关掉则合并成两个跨会话清单，每行带会话标签。
+- **视觉主题**：工具栏的「主题」按钮循环切换四套外观——**紧凑**（原版）/ **留白**（用留白和字重替代分隔线）/
+  **表格**（网格行 + 等宽数字）/ **卡片**（浮起卡片 + 柔和阴影）。选择跨刷新记住，每套都读宿主的颜色 token，
+  深浅色自动跟随。
 - **类型过滤**：摘要行下方的类型 chip（文档 / 表格 / 演示 / 图片 / 代码 / 网页 / 配置 / 数据 / 压缩包 / 其他），
   按当前数据的实际分布显示数量，点一下只看该类型，再点取消；计数为 0 的类型不出现，选择会记住。
   chip 用「文字 + 小号计数」两级排版（计数 `tabular-nums`，选中时跟着变蓝），有底色和 120 ms 过渡，
@@ -662,11 +665,12 @@ tools/harness/                  UI 验证工具：真 client.js + 假 ctx + 合�
 tools/route-check.mjs          宿主路由与安全回归：14 项（同源 403、台账白名单、POST-only、400/404/405）
 tools/cache-check.mjs          缓存决策回归：8 项（精确 stamp、TTL 回退、live 重放下限）
 tools/client-core-check.mjs    客户端纯函数回归：43 项（分词 AND、排序、合并、格式化、高亮、复数、语言快照、资源地址）
+tools/theme-check.mjs          主题工厂回归：6 项（四套主题、key 集合一致、宿主 token）
 tools/readme-check.mjs         双语 README 一致性：小节、互链、锚点、图片存在性、语言前缀
 tools/release-notes-check.mjs  Release notes 一致性：英文孪生、结构、配图钉 tag
 ```
 
-`npm test` 依次跑八支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 + 客户端 43 + i18n 179 个 key 的完整性 + 双语 README 一致性 10 + Release notes 一致性 9 = **101 项**，无外部依赖），CI 里三套 Node 各跑一遍。
+`npm test` 依次跑九支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 + 客户端 43 + 主题 6 + i18n 179 个 key 的完整性 + 双语 README 一致性 10 + Release notes 一致性 9 = **107 项**，无外部依赖），CI 里三套 Node 各跑一遍。
 CI 还会执行 `npm run check:client`，确保提交的 `client.js` 与 `src/client/*.js` 逐字节一致。
 
 面板本身的 UI 变更用 `npm run harness` 在浏览器里看：它会用真实的 `client.js` + 假 cordis 上下文 + 合成台账起一个本地页，

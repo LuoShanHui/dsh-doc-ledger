@@ -28,8 +28,8 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node tools/ledger-scan-check.mjs && node tools/preview-decode-check.mjs && node tools/route-check.mjs && node tools/cache-check.mjs && node tools/client-core-check.mjs && node tools/i18n-check.mjs && node tools/readme-check.mjs && node tools/release-notes-check.mjs",
-    "check": "node --check index.js && node --check client.js && node --check lib/ledger.js && node --check lib/preview-text.js && node --check lib/ui.js && node --check lib/ui.client.js && node --check tools/report.mjs && node --check tools/ledger-scan-check.mjs && node --check tools/preview-decode-check.mjs && node --check tools/route-check.mjs && node --check tools/cache-check.mjs && node --check tools/build-client.mjs && node --check tools/client-core-check.mjs && node --check tools/i18n-check.mjs && node --check tools/i18n-extract.mjs && node --check tools/harness/server.mjs && node --check tools/readme-check.mjs && node --check tools/release-notes-check.mjs",
+    "test": "node tools/ledger-scan-check.mjs && node tools/preview-decode-check.mjs && node tools/route-check.mjs && node tools/cache-check.mjs && node tools/client-core-check.mjs && node tools/theme-check.mjs && node tools/i18n-check.mjs && node tools/readme-check.mjs && node tools/release-notes-check.mjs",
+    "check": "node --check index.js && node --check client.js && node --check lib/ledger.js && node --check lib/preview-text.js && node --check lib/ui.js && node --check lib/ui.client.js && node --check tools/report.mjs && node --check tools/ledger-scan-check.mjs && node --check tools/preview-decode-check.mjs && node --check tools/route-check.mjs && node --check tools/cache-check.mjs && node --check tools/build-client.mjs && node --check tools/client-core-check.mjs && node --check tools/theme-check.mjs && node --check tools/i18n-check.mjs && node --check tools/i18n-extract.mjs && node --check tools/harness/server.mjs && node --check tools/readme-check.mjs && node --check tools/release-notes-check.mjs",
     "check:client": "node tools/build-client.mjs --check",
     "build:client": "node tools/build-client.mjs",
     "report": "node tools/report.mjs",

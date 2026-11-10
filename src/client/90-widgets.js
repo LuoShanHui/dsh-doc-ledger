@@ -82,6 +82,9 @@
      * callbacks are stable wrappers (see useHandlers) so they never invalidate the memo.
      */
     var FileRow = react.memo(function FileRow(props) {
+      // Theme-aware: the row is memoised, so without this hook a theme switch would
+      // leave it frozen on the previous style table.
+      useStyles();
       var file = props.file;
       var open = function () { props.onOpen(file); };
       var missing = file.exists === false;
