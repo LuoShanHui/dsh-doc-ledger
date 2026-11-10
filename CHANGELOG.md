@@ -22,6 +22,15 @@
   `npm test` 现共 **71 项断言**。
 - 多语言现状与完整补齐路线写入 `docs/i18n-plan.md`；`tools/i18n-extract.mjs` 自动生成
   `docs/i18n-strings.md`（209 处中文串 / 165 条唯一，含首次出现位置）。
+- **界面完整双语（zh / en）**：面板全部文案收敛进 `src/client/10-locale.js` 的字典
+  （159 个 key，zh/en 一一对应），渲染处统一走 `t("key", params)`；组合句改成整句 +
+  `{占位符}`，不依赖宿主是否支持插值。新增 `src/client/05-runtime.js`（`t` 兜底 +
+  `setTranslator`）——`apply()` 之前回退中文、绝不显示裸 key。
+- 求值期常量表（`CATEGORY_LABEL`、排序键数组）改存 **key** 而非中文，渲染时经 `t()` 解析，
+  避免语言切换后中文被冻死。
+- 新增 `tools/i18n-check.mjs`（在 `npm test` 与 CI 中）：zh/en 键集合一致、无空值/TODO、
+  所有 `t()` 引用有 key、字典无死条目、占位符集合一致。
+- `tools/harness/` 支持 `?locale=zh`（默认）/ `?locale=en`，用真实字典渲染，便于双语验收。
 
 ## [0.3.0] - 2026-11-09
 

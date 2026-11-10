@@ -6,7 +6,7 @@
 
 **每个会话一份文档台账**：这个会话用过哪些文档、创建 / 修改了哪些，带时间排序、类型分组、搜索、跨会话汇总，以及两种预览入口。
 
-A DSH sidebar plugin that keeps a per-session document ledger — which documents a session read, created or modified — with time ordering, type grouping, search, two preview modes and a cross-session view. Windows only, Chinese UI.
+A DSH sidebar plugin that keeps a per-session document ledger — which documents a session read, created or modified — with time ordering, type grouping, search, two preview modes and a cross-session view. Windows only, UI in Chinese and English.
 
 ![overview](docs/overview.png)
 
@@ -413,8 +413,8 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
 - **卡片懒挂载**：离视口很远的卡片只有标题，行要等滚动/聚焦上来才构建。
   拖滚动条瞬移时，会先看到几帧标题、随后补齐；这是用「按需构建」换 43 张卡全展开的首帧。
 - **`exists` 有 20 秒缓存**：刚在磁盘上删掉的文件，最多 20 秒后才会显示成「已删除」。
-- **UI 文案只有中文**：`locale` 字典只覆盖 tab 标题与引导页 3 条，面板正文约 160 条是硬编码中文，
-  英文用户能看到条目但读不到英文；补齐计划见 [`docs/i18n.md`](docs/i18n.md)。
+- **界面双语（zh / en）**：`locale` 字典覆盖面板全部文案（159 个 key），跟随宿主的界面语言；数据本身
+  （会话标题、文件名、路径、程序名）按原样显示、不翻译。实现与校验见 [`docs/i18n.md`](docs/i18n.md)。
 - **shell 产生的文件不算创建**：PTC 程序里用 `git diff > x.diff`、PowerShell 重定向、解压等命令写出的文件，
   没有路径参数可抓，只会因为后续被读而出现在「使用过」。要覆盖得让运行时把 Shell 的文件写入也报上来。
 - **整文件写入即视为创建**：如果某个程序不读就直接覆盖一个已存在的文件（PTC 的 `fs.writeFileSync` 允许），
@@ -583,14 +583,15 @@ PTC 会话的日志里没有逐个 `read`/`write` 的 `tool/call`，只有一段
 ```
 index.js             host 插件：路由、快照与缓存、注册表枚举、图标抽取
 client.js            客户端插件：Sidebar tab（由 src/client/*.js 拼接生成，勿直接编辑）
-src/client/*.js      客户端源码分片（14 个，按职责切分；改这里再 npm run build:client）
+src/client/*.js      客户端源码分片（15 个，按职责切分；改这里再 npm run build:client）
 lib/ledger.js        引擎：事件折叠 -> 文件台账（纯函数，无依赖）
 lib/ui.js            仅静态报告用：把数据拼成自包含 HTML
 lib/ui.css           仅静态报告用
 lib/ui.client.js     仅静态报告用：浏览器端清单/排序/搜索
 lib/preview-text.js  预览解码：BOM / UTF-8 / 按行 GB18030 回退（纯函数，无依赖）
 tools/build-client.mjs      确定性拼接 src/client/*.js -> client.js（--check 校验产物未漂移）
-tools/i18n-extract.mjs      抽取 UI 中文串，生成 docs/i18n-strings.md
+tools/i18n-check.mjs        i18n 完整性回归：键集合 / 引用 / 占位符
+tools/i18n-extract.mjs      抽取残留的硬编码中文串，生成 docs/i18n-strings.md
 tools/report.mjs     静态报告生成器（复用同一引擎）
 tools/ledger-scan-check.mjs    引擎回归：7 个 PTC 写文件场景
 tools/preview-decode-check.mjs 解码回归：10 个编码场景
@@ -600,7 +601,7 @@ tools/cache-check.mjs          缓存决策回归：8 项（精确 stamp、TTL �
 tools/client-core-check.mjs    客户端纯函数回归：32 项（分词 AND、排序、合并、格式化、高亮、资源地址）
 ```
 
-`npm test` 依次跑五支回归脚本（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 + 客户端 32 = **71 项断言**，无外部依赖），CI 里三套 Node 各跑一遍。
+`npm test` 依次跑六支回归脚本（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 + 客户端 32 + i18n 159 个 key = **71 项断言 + 字典完整性校验**，无外部依赖），CI 里三套 Node 各跑一遍。
 CI 还会执行 `npm run check:client`，确保提交的 `client.js` 与 `src/client/*.js` 逐字节一致。
 
 面板本身的 UI 变更用 `npm run harness` 在浏览器里看：它会用真实的 `client.js` + 假 cordis 上下文 + 合成台账起一个本地页，
@@ -608,4 +609,4 @@ fixture 里故意放了「多词搜索只该命中一个文件」「已删除文
 
 引擎不依赖任何 `@deepseek-ai/*` 包，host 与 client 都只用 Node 内置模块和 `ctx` 服务；客户端 bundle 是手写的，
 **分片只是为了可读性与可测性**：宿主只加载一个 `factory` 闭包（`require` 仅注入 react），所以源码按固定顺序拼接成单个
-`client.js`，不引入打包器。多语言现状与补齐路线见 `docs/i18n.md` / `docs/i18n-plan.md`。
+`client.js`，不引入打包器。界面文案全部走 `t("key")`，字典与校验方式见 `docs/i18n.md`。
