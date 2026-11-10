@@ -53,6 +53,7 @@ HTTP 响应会按 `slimFile()` 瘦身——`uses` 一项就占原响应的 30%�
 | `docs/filter.png` | 类型筛选生效：选中的 chip 变蓝，右侧出现 `✕ 清除筛选` 与「全部展开」 |
 | `docs/session.png` | 会话卡片右键菜单：复制会话名称 / 会话 ID、跳转到这个会话 |
 | `docs/sort.png` | 分区排序菜单：每个分区独立排序、再点一次切方向 |
+| `docs/en-overview.png` | **英文界面**（`?locale=en`）：同一份代码、同一份数据，只换语言 |
 
 截图里的工作区（`C:\work\demo-workspace`）、文档名和程序列表都是示例数据，
 不是任何人的真实项目。
