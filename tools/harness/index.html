@@ -33,10 +33,19 @@
 <script src="/client.js"></script>
 <script>
 (function () {
+  var activeLocale = new URLSearchParams(location.search).get("locale") || "zh";
+  var dictionaries = null;
   var ctx = {
     locale: {
-      bind: function () { return function (key) { return key; }; },
-      register: function () { return function () {}; }
+      // Real bind() resolves against the registered dictionaries; this lets the
+      // harness render either language with ?locale=zh (default) or ?locale=en.
+      bind: function () {
+        return function (key) {
+          var dict = dictionaries && dictionaries[activeLocale];
+          return dict && dict[key] !== undefined ? dict[key] : key;
+        };
+      },
+      register: function (ns, dicts) { dictionaries = dicts; return function () {}; }
     },
     effect: function (fn) { try { fn(); } catch (error) { console.error("effect", error); } },
     slots: {

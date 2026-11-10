@@ -28,7 +28,8 @@ const out = join(root, "client.js");
 // Ordered. Numbers are only for readability in a directory listing; this list is authoritative.
 const manifest = [
   "00-head.js",          // loader registration, namespace/base constants, react
-  "10-locale.js",        // zh / en dictionaries (see docs/i18n.md)
+  "05-runtime.js",       // t() translator + setTranslator / setFallback
+  "10-locale.js",        // zh / en dictionaries (see docs/i18n-plan.md)
   "20-assets.js",        // host artwork + app icon id map
   "30-network.js",       // report / decodeJson / getJson / postJson / readSessionId
   "40-format.js",        // category tables, fmtTime, fmtBytes, encodingLabel

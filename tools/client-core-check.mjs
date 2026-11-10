@@ -17,7 +17,7 @@ import vm from "node:vm";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const dir = join(root, "src", "client");
-const SOURCES = ["40-format.js", "50-host.js", "60-search.js", "80-core.js"];
+const SOURCES = ["05-runtime.js", "10-locale.js", "40-format.js", "50-host.js", "60-search.js", "80-core.js"];
 
 // Minimal stand-ins for what the factory closure supplies.
 const reactStub = {
@@ -45,6 +45,8 @@ const sandbox = {
 vm.createContext(sandbox);
 const source = SOURCES.map((name) => readFileSync(join(dir, name), "utf8")).join("\n");
 vm.runInContext(source, sandbox, { filename: "client-core-fragments.js" });
+// Install the Chinese fallback so format helpers resolve through real dictionary values.
+vm.runInContext("setFallback(zh)", sandbox);
 
 const f = (name) => sandbox[name];
 for (const name of [
@@ -198,7 +200,9 @@ check("categoryColor / categoryLabel: 已知值与回退", () => {
   assert.equal(f("categoryColor")("doc"), "#4f7cf7");
   assert.equal(f("categoryColor")("nope"), "#94a3b8");
   assert.equal(f("categoryLabel")("doc"), "文档");
-  assert.equal(f("categoryLabel")("nope"), "nope");
+  // Unknown categories fall back to the localized "other" label rather than
+  // echoing the raw key to the user.
+  assert.equal(f("categoryLabel")("nope"), "其他");
   assert.equal(f("categoryLabel")(null), "其他");
 });
 check("shortPath: 短路径原样，长路径截尾加省略号", () => {
