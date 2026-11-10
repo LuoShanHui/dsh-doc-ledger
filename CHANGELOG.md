@@ -31,6 +31,13 @@
 - 新增 `tools/i18n-check.mjs`（在 `npm test` 与 CI 中）：zh/en 键集合一致、无空值/TODO、
   所有 `t()` 引用有 key、字典无死条目、占位符集合一致。
 - `tools/harness/` 支持 `?locale=zh`（默认）/ `?locale=en`，用真实字典渲染，便于双语验收。
+- **复数支持**：`t()` 接入 `Intl.PluralRules`，按数字参数选 `<key>_one` / `<key>_other`；
+  英文得到 `1 file` / `2 files`，中文两种形态同值、行为不变。多计数句（"filtered N files / M
+  sessions"）拆成两个可独立复数的片段，避免一个 count 只驱动一处形态。
+- **README 全量双语**：`README.md`（英文，默认）与 `README.zh.md`（中文）互相链接；
+  新增 `tools/readme-check.mjs` 断言两版小节数量一致、语言互链、英文版无中文残留、都引用当前版本号。
+- **英文界面截图** `docs/en-overview.png`（`?locale=en`），已加入 `screenshots.json`。
+- 求值期常量表 `CATEGORY_LABEL`、排序键数组改存 key（见上），未知分类回退到本地化的「其他 / Other」。
 
 ## [0.3.0] - 2026-11-09
 
