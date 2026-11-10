@@ -19,19 +19,26 @@
     function applyInner(ctx) {
       // Install the host translator BEFORE any dictionary registration / render, so
       // evaluation-time constants (category labels, sort labels) and TabTitle all see it.
-      setFallback(zh);
-      // The active language drives Intl.PluralRules; without a host hint we stay on zh,
-      // whose dictionary has a single form, so plurals degrade gracefully.
-      var activeLocale = "zh";
-      try {
-        if (typeof ctx.locale.getLocale === "function") activeLocale = String(ctx.locale.getLocale() || "zh");
-      } catch (error) {
-        activeLocale = "zh";
-      }
-      setTranslator(ctx.locale.bind(NS), activeLocale);
+      setFallback({ zh: zh, en: en });
+      setTranslator(ctx.locale.bind(NS), readActiveLocale(ctx));
       ctx.effect(function () {
         return ctx.locale.register(NS, { zh: zh, en: en });
       }, "doc-ledger: dictionaries");
+
+      // Follow language switches at runtime. Registering dictionaries does NOT emit
+      // locale/change (boot does that once per package), so listening here only reacts to a
+      // real switch; Intl.PluralRules is rebuilt for the new tag on the next t() call.
+      ctx.effect(function () {
+        if (typeof ctx.on !== "function") return undefined;
+        return ctx.on("locale/change", function (snapshot) {
+          try {
+            var next = snapshot !== null && typeof snapshot === "object" ? snapshot.active : snapshot;
+            setTranslator(ctx.locale.bind(NS), typeof next === "string" ? next : readActiveLocale(ctx));
+          } catch (error) {
+            report("locale-change-error", (error && error.message) || error);
+          }
+        });
+      }, "doc-ledger: locale change");
 
       function registerTab() {
         var base = { id: TAB_ID, kind: KIND, title: function () { return t("tab.title"); } };

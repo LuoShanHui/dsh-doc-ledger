@@ -34,14 +34,33 @@ window.__ModuleLoader__.load({
      * knowing which language is active.
      */
     var ZH_FALLBACK = {};
+    var EN_FALLBACK = {};
     var rawT = null;
     var currentLocale = "zh";
     var pluralRules = null;
 
+    /**
+     * Which dictionary our own strings actually come from.
+     *
+     * The host walks `<active> → its fallback chain → common` and only then shows the key,
+     * so a language we do not translate (ja, ko, ru…) resolves to **English** — every
+     * `addLanguage` fallback chain has to terminate there. The plural form must agree with
+     * the language the *text* is in, not with the language the user picked: otherwise a
+     * Japanese user gets English sentences with Japanese plural rules ("1 files").
+     *
+     * zh and en are the only dictionaries we ship, so everything else behaves like en.
+     */
+    function pluralLocale() {
+      return currentLocale === "zh" ? "zh" : "en";
+    }
+
     function lookup(key) {
       var text = rawT !== null ? rawT(key) : undefined;
       if (text === undefined || text === null || text === "" || text === key) {
-        text = ZH_FALLBACK[key];
+        // The host answered with the key itself, so it has no entry for the active
+        // language and no fallback hit: use our own dictionary for the same language
+        // rather than dropping to Chinese under an English/Japanese UI.
+        text = fallbackDict()[key];
       }
       return text;
     }
@@ -49,7 +68,7 @@ window.__ModuleLoader__.load({
     function pluralForm(count) {
       try {
         if (pluralRules === null && typeof Intl !== "undefined" && Intl.PluralRules) {
-          pluralRules = new Intl.PluralRules(currentLocale);
+          pluralRules = new Intl.PluralRules(pluralLocale());
         }
         if (pluralRules !== null) return pluralRules.select(Number(count));
       } catch (error) {
@@ -98,8 +117,51 @@ window.__ModuleLoader__.load({
         pluralRules = null;
       }
     }
-    function setFallback(dict) { ZH_FALLBACK = dict || {}; }
+    /**
+     * Offline fallbacks, used when the host translator cannot answer (no locale service,
+     * a key we never registered, or a dictionary that has not arrived yet).
+     *
+     * `zh` backs `currentLocale === "zh"`; everything else falls back to `en`, matching
+     * the host's own fallback chain. Passing both keeps the degraded path in the same
+     * language as the sentences it sits next to.
+     */
+    function setFallback(dicts) {
+      if (dicts !== null && typeof dicts === "object" && dicts.zh !== undefined) {
+        ZH_FALLBACK = dicts.zh || {};
+        EN_FALLBACK = dicts.en || {};
+        return;
+      }
+      ZH_FALLBACK = dicts || {};
+      EN_FALLBACK = {};
+    }
 
+    function fallbackDict() {
+      return currentLocale === "zh" ? ZH_FALLBACK : EN_FALLBACK;
+    }
+
+    /**
+     * The active language tag, read from the host's locale service.
+     *
+     * `getLocale()` returns a LocaleSnapshot — `{ active, locales, revision }` — not a
+     * string, so it must be unwrapped through `.active`. (Passing the object straight to
+     * Intl.PluralRules throws RangeError, which silently degrades every English plural to
+     * the `_other` form: "1 files".) Anything unexpected falls back to zh, whose
+     * dictionary has a single form.
+     */
+    function readActiveLocale(ctx) {
+      try {
+        if (ctx === null || ctx === undefined || ctx.locale === null || ctx.locale === undefined) return "en";
+        if (typeof ctx.locale.getLocale !== "function") return "en";
+        var snapshot = ctx.locale.getLocale();
+        if (typeof snapshot === "string" && snapshot !== "") return snapshot;
+        if (snapshot !== null && typeof snapshot === "object" && typeof snapshot.active === "string" && snapshot.active !== "") {
+          return snapshot.active;
+        }
+        return "en";
+      } catch (error) {
+        return "en";
+      }
+    }
     /**
      * UI dictionaries. Every user-visible string in the panel goes through t().
      * Grouped by surface; `docs/i18n-strings.md` lists the original literals and
@@ -2795,19 +2857,26 @@ window.__ModuleLoader__.load({
     function applyInner(ctx) {
       // Install the host translator BEFORE any dictionary registration / render, so
       // evaluation-time constants (category labels, sort labels) and TabTitle all see it.
-      setFallback(zh);
-      // The active language drives Intl.PluralRules; without a host hint we stay on zh,
-      // whose dictionary has a single form, so plurals degrade gracefully.
-      var activeLocale = "zh";
-      try {
-        if (typeof ctx.locale.getLocale === "function") activeLocale = String(ctx.locale.getLocale() || "zh");
-      } catch (error) {
-        activeLocale = "zh";
-      }
-      setTranslator(ctx.locale.bind(NS), activeLocale);
+      setFallback({ zh: zh, en: en });
+      setTranslator(ctx.locale.bind(NS), readActiveLocale(ctx));
       ctx.effect(function () {
         return ctx.locale.register(NS, { zh: zh, en: en });
       }, "doc-ledger: dictionaries");
+
+      // Follow language switches at runtime. Registering dictionaries does NOT emit
+      // locale/change (boot does that once per package), so listening here only reacts to a
+      // real switch; Intl.PluralRules is rebuilt for the new tag on the next t() call.
+      ctx.effect(function () {
+        if (typeof ctx.on !== "function") return undefined;
+        return ctx.on("locale/change", function (snapshot) {
+          try {
+            var next = snapshot !== null && typeof snapshot === "object" ? snapshot.active : snapshot;
+            setTranslator(ctx.locale.bind(NS), typeof next === "string" ? next : readActiveLocale(ctx));
+          } catch (error) {
+            report("locale-change-error", (error && error.message) || error);
+          }
+        });
+      }, "doc-ledger: locale change");
 
       function registerTab() {
         var base = { id: TAB_ID, kind: KIND, title: function () { return t("tab.title"); } };

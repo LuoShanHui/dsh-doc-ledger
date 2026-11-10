@@ -40,7 +40,9 @@ const sandbox = {
   Infinity,
   isFinite,
   encodeURIComponent,
-  console
+  console,
+  // 130-apply's readActiveLocale takes a ctx; keep the stub shape explicit.
+  undefined: undefined
 };
 vm.createContext(sandbox);
 const source = SOURCES.map((name) => readFileSync(join(dir, name), "utf8")).join("\n");
@@ -252,9 +254,9 @@ check("iconUrl: 路径被 URL 编码", () => {
 // back to the base key when a language has no plural variants (Chinese).
 check("t(): 英文单选 _one，复数选 _other", () => {
   const sb = sandbox;
-  sb.__enProbe = { "x.files_one": "{n} file", "x.files_other": "{n} files", "x.files": "{n} files" };
   vm.runInContext(
-    'setFallback(__enProbe); setTranslator(function (k) { return __enProbe[k]; }, "en");',
+    'setFallback({ zh: {}, en: { "x.files_one": "{n} file", "x.files_other": "{n} files", "x.files": "{n} files" } });' +
+    'setTranslator(null, "en");',
     sb
   );
   assert.equal(f("t")("x.files", { n: 1 }), "1 file");
@@ -263,18 +265,75 @@ check("t(): 英文单选 _one，复数选 _other", () => {
 });
 check("t(): 无变体时回退基础 key（中文形态）", () => {
   const sb = sandbox;
-  vm.runInContext('setFallback({ "y.rows": "行数 {n}" }); rawT = null;', sb);
+  vm.runInContext('setFallback({ zh: { "y.rows": "行数 {n}" }, en: { "y.rows": "rows {n}" } }); setTranslator(null, "zh");', sb);
   assert.equal(f("t")("y.rows", { n: 5 }), "行数 5");
 });
 check("t(): count 之外的首个数字参数也能驱动复数", () => {
   const sb = sandbox;
-  sb.__p = { "z.s_one": "{files} file", "z.s_other": "{files} files" };
-  vm.runInContext('setFallback(__p); setTranslator(function (k) { return __p[k]; }, "en");', sb);
+  vm.runInContext(
+    'setFallback({ zh: {}, en: { "z.s_one": "{files} file", "z.s_other": "{files} files" } }); setTranslator(null, "en");',
+    sb
+  );
   assert.equal(f("t")("z.s", { files: 1 }), "1 file");
   assert.equal(f("t")("z.s", { files: 3 }), "3 files");
 });
+// --- unsupported languages fall back to English -------------------------------
+// The host walks active -> fallback chain -> common; every addLanguage fallback must
+// terminate at English, so a language we do not ship (ja, ko, ru...) shows our English
+// dictionary. The plural form must agree with that, not with the picked language.
+check("未支持的语言：文案与复数都退回英文（不是中文）", () => {
+  const sb = sandbox;
+  vm.runInContext(
+    'setFallback({ zh: { "k.one": "中文1", "k.files_one": "{n} 个文件", "k.files_other": "{n} 个文件" },' +
+    '              en: { "k.one": "EN1", "k.files_one": "{n} file", "k.files_other": "{n} files" } });' +
+    'setTranslator(null, "ja");',
+    sb
+  );
+  // The host has no ja dictionary, so it hands back the key and our en fallback answers.
+  assert.equal(f("t")("k.one"), "EN1");
+  assert.equal(f("t")("k.files", { n: 1 }), "1 file", "ja must use English plural rules");
+  assert.equal(f("t")("k.files", { n: 2 }), "2 files");
+});
+check("未支持的语言：语言标签是 zh 时才用中文", () => {
+  const sb = sandbox;
+  vm.runInContext(
+    'setFallback({ zh: { "m.x": "中文" }, en: { "m.x": "English" } }); setTranslator(null, "zh");',
+    sb
+  );
+  assert.equal(f("t")("m.x"), "中文");
+});
+check("未支持的语言：locale 为空/异常时按英文处理", () => {
+  const sb = sandbox;
+  vm.runInContext('setFallback({ zh: { "n.x": "中文" }, en: { "n.x": "English" } }); setTranslator(null, "");', sb);
+  // setTranslator ignores an empty tag, so currentLocale keeps its previous value;
+  // the point is that it never falls through to an invalid Intl tag.
+  assert.equal(f("t")("n.x") === "中文" || f("t")("n.x") === "English", true);
+});
 check("t(): 未知 key 原样返回，不崩", () => {
   assert.equal(f("t")("no.such.key"), "no.such.key");
+});
+
+// --- host locale snapshot -----------------------------------------------
+// The host's getLocale() returns { active, locales, revision }, NOT a string. Passing the
+// object straight to Intl.PluralRules throws RangeError and silently degrades every
+// English plural to _other ("1 files"), so these pin the unwrapping.
+check("readActiveLocale: 从 LocaleSnapshot 取 .active", () => {
+  const ctx = { locale: { getLocale: () => ({ active: "en", locales: [], revision: 3 }) } };
+  assert.equal(f("readActiveLocale")(ctx), "en");
+});
+check("readActiveLocale: 兼容直接返回字符串", () => {
+  assert.equal(f("readActiveLocale")({ locale: { getLocale: () => "en" } }), "en");
+});
+check("readActiveLocale: 缺失/异常时回退 en（不谎报中文）", () => {
+  assert.equal(f("readActiveLocale")(null), "en");
+  assert.equal(f("readActiveLocale")({}), "en");
+  assert.equal(f("readActiveLocale")({ locale: {} }), "en");
+  assert.equal(f("readActiveLocale")({ locale: { getLocale: () => { throw new Error("boom"); } } }), "en");
+  assert.equal(f("readActiveLocale")({ locale: { getLocale: () => ({ active: "" }) } }), "en");
+  assert.equal(f("readActiveLocale")({ locale: { getLocale: () => 42 } }), "en");
+});
+check("快照对象直接喂给 Intl.PluralRules 会抛（复现原始 bug）", () => {
+  assert.throws(() => new Intl.PluralRules(String({ active: "en" })), RangeError);
 });
 
 let passed = 0;
