@@ -36,6 +36,9 @@
   sessions"）拆成两个可独立复数的片段，避免一个 count 只驱动一处形态。
 - **README 全量双语**：`README.md`（英文，默认）与 `README.zh.md`（中文）互相链接；
   新增 `tools/readme-check.mjs` 断言两版小节数量一致、语言互链、英文版无中文残留、都引用当前版本号。
+- **「踩过的坑」按统一骨架重写**（两版一致，4 个三级小节：宿主 API 契约 / 运行时与平台 /
+  前端渲染 / 缓存测试其它），每条按**现象 → 根因 → 修法**组织；`readme-check` 增加两条：
+  四小节在两版中的位置必须一致、两版所有内部锚点必须能解析。
 - **英文界面截图** `docs/en-overview.png`（`?locale=en`），已加入 `screenshots.json`。
 - 求值期常量表 `CATEGORY_LABEL`、排序键数组改存 key（见上），未知分类回退到本地化的「其他 / Other」。
 

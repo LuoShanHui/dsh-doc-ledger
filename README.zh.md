@@ -333,6 +333,19 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
 垂直翻转与滚动，所以窄侧栏里不会再被裁掉；两个分区各自绑定自己的 target，
 「创建 / 修改」的排序不会再弹出「使用过」的菜单。
 
+
+### 刷新不打断阅读
+
+早期版本每次轮询都先把状态置成 `loading`，渲染函数随之 early-return，于是**预览弹窗和列表被卸载**，
+`<pre>` 重新挂载后滚动位置回到顶部——看起来就是「自动刷新影响了预览」。现在三层保证：
+
+1. 轮询一律 `silent`：拿到新数据才替换 `payload`，中间不出现加载态；
+2. 预览打开期间**完全不轮询**（`previewRef`）；关闭时补一次静默刷新，所以不会漏更新；
+3. 预览弹窗由 `renderModal()` 在数据分支**之外**渲染，即使真的进了 `loading`/`error` 分支也不会被卸载。
+
+实测：预览打开后滚动到 260 px，等 10 秒（本该触发轮询）→ 同一 DOM 节点、`scrollTop` 仍是 260、0 次加载态闪烁、
+0 次请求；关闭预览 → 恰好 1 次静默刷新。列表滚动位置在轮询中同样保持不变。
+
 ## 安全模型
 
 插件挂在宿主提供的回环端口上（`127.0.0.1`），但回环不等于安全：用户浏览的任何网页都能向
@@ -430,14 +443,54 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
 
 ## 踩过的坑
 
-- `ctx.sessionQuery.listSessions()` 返回的记录形状是 `{ header: { id, createdAt, cwd, agentPreset }, live, persisted }`，不是扁平对象；
-- 实时会话的 header 事件被折叠进 `data`，且可能根本不在事件流里，所以 `buildLedger` 允许用 `options.header` 从列表记录播种，否则相对路径没有 cwd 可拼，`/api/file` 会 ENOENT；
-- `readTitleSnapshots` 返回 `[{ status, value: { session, title } }]`，`title` 可能是字符串也可能是快照对象，两种都要认；
-- 桌面版把前端 `file://` 加载，`/plugins/*` 这类客户端资源路由不生效，所以客户端 tab 只能靠浏览器刷新后由 boot 清单注入，HTTP 探测不到。
-- 弹窗里的**信息行 / 提示行必须 `flex: 0 0 auto`**：`maxHeight` 的 flex 列会把总缺口分摊给**所有**子项，
-  11px 的小行会被压到 12px、字被裁掉一半（看起来像被正文盖住），而该吸收收缩的正文反而没吸满。
-  现在正文 `flex: 1 1 auto; minHeight: 0` 吃掉全部收缩并自己滚动，其余行固定自然高度（实测 520×320 窗口下
-  信息行 / 提示行 / 脚注仍是 27 / 27 / 29 px，无裁切）。
+每条按**现象 → 根因 → 修法**写；长篇复现步骤留在正文对应小节，这里用链接指过去。
+
+### 宿主 API 契约
+
+- **`listSessions()` 返回嵌套记录，不是扁平对象。** 现象：读 `record.id` / `record.cwd` 拿到 `undefined`。
+  根因：形状是 `{ header: { id, createdAt, cwd, agentPreset }, live, persisted }`。修法：一律经 `header` 读。
+- **实时会话可能根本没有 header 事件。** 现象：相对路径拼不出来，`/api/file` 回 ENOENT。
+  根因：header 事件被折叠进 `data`，且可能不在事件流里。修法：`buildLedger` 接受 `options.header`，
+  由调用方从会话列表播种。
+- **`readTitleSnapshots()` 的值有两种形态。** 现象：标题渲染成 `[object Object]`。
+  根因：返回 `[{ status, value: { session, title } }]`，而 `title` 可能是字符串也可能是快照对象。修法：两种都认。
+- **桌面版用 `file://` 加载前端。** 现象：`/plugins/*` 这类客户端资源路由不生效，HTTP 探测不到 tab 是否注册。
+  根因：桌面壳不提供那些路由。修法：客户端 bundle 靠刷新后由 boot 清单注入，要在页面里验证，不要靠 HTTP。
+
+### 运行时与平台
+
+- **`windowsHide: true` 会把刚启动的窗口藏起来。** 现象：进程正常启动、退出码 0、API 回 200，屏幕上什么都没有。
+  根因：它设置 `STARTUPINFO.wShowWindow = SW_HIDE`，于是 `explorer.exe` 和 GUI 程序都创建隐藏窗口。
+  修法：凡是用户该看得见的启动都不能传 `windowsHide` —— 见
+  [启动器被 windowsHide 隐藏了](#启动器被-windowshide-隐藏了重要)。
+- **`ELECTRON_RUN_AS_NODE` 会被 GUI 程序继承。** 现象：第一次点 VS Code 能开，关掉后再点毫无反应。
+  根因：宿主环境带 `ELECTRON_RUN_AS_NODE=1`，被继承后 `Code.exe doc.md` 被当成 `node doc.md` 执行，
+  报 SyntaxError 退出。修法：启动 GUI 程序时传一份剥掉 `^ELECTRON_` 的环境 —— 见
+  [启动器继承了 ELECTRON_RUN_AS_NODE](#启动器继承了-electron_run_as_node更隐蔽重要)。
+
+### 前端渲染
+
+- **`maxHeight` 的 flex 列会挤压小行。** 现象：预览弹窗里 11px 的信息行 / 提示行被压到 12px、字被裁掉一半，
+  看起来像被正文盖住。根因：高度缺口会分摊给**所有**子项，小行跟着缩，而该吸收收缩的正文没吸满。
+  修法：非正文行 `flex: 0 0 auto` + 显式 `lineHeight`，正文 `flex: 1 1 auto; minHeight: 0`。
+  实测 520×320 下信息行 / 提示行 / 脚注仍是 27 / 27 / 29 px，无裁切。
+- **非合成页里 `requestAnimationFrame` 被节流到 ~1 秒**（实测 594/1000/1000 ms）。现象：分片展开看起来是卡住的。
+  修法：分片用 `setTimeout(…, 0)`；用 rAF 会让「全部展开」显得坏掉。
+- **roving 索引只能数真正渲染出来的行。** 现象：折叠第一个分区后整张卡没有可 Tab 的行，方向键跳到错误的行。
+  根因：索引在所有分区上编号，而折叠分区根本不建 DOM。修法：只给已渲染且展开的行编号。
+
+### 缓存、测试与其它
+
+- **轮询 live 会话曾经会重放整个日志。** 现象：忙的会话每 8 秒一次 CPU 尖峰。
+  根因：每流一个 token 都会改 `size:mtime` 指纹，精确 stamp 缓存永不命中。修法：静默轮询加 15 秒重放下限
+  （`force=1` 与 `timing=1` 仍全量重放）。实测 290 KB 日志：真实重放 `replay` 26–42 ms、wall 51–67 ms ——
+  性能分析里那个 ~1 s 是 32 个会话冷启动重放，不是单次轮询。
+- **过时的断言会掩盖真实的行为变化。** 现象：测试通过了，但它描述的行为已经不是代码的行为。
+  根因：i18n 改造后 `categoryLabel("unknown")` 返回本地化的「其他」而不是回显原始分类，旧断言仍因错误原因通过。
+  修法：让断言写成新的契约。
+- **字典不能在求值期就被固化。** 现象：切换语言后分类名和排序标签仍是中文。
+  根因：`CATEGORY_LABEL` 和排序键表在工厂求值时就建好了，早于 `apply()` 安装翻译器。
+  修法：这些表存 key，渲染时经 `t()` 解析。
 
 ## 路由
 
@@ -484,18 +537,6 @@ spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false, env 
 冷启动后第一次全量请求只重放**指纹变了**的会话（通常就是正在用的这个），本机实测 0.9 s；
 之后都在 15–300 ms 级。`exists` 不再烘进台账缓存：它在生成响应时按文件 `stat`（20 s 缓存，20 µs/文件），
 所以「已删除」标记永远反映磁盘现状（实测 1008 / 122）。
-
-### 刷新不打断阅读
-
-早期版本每次轮询都先把状态置成 `loading`，渲染函数随之 early-return，于是**预览弹窗和列表被卸载**，
-`<pre>` 重新挂载后滚动位置回到顶部——看起来就是「自动刷新影响了预览」。现在三层保证：
-
-1. 轮询一律 `silent`：拿到新数据才替换 `payload`，中间不出现加载态；
-2. 预览打开期间**完全不轮询**（`previewRef`）；关闭时补一次静默刷新，所以不会漏更新；
-3. 预览弹窗由 `renderModal()` 在数据分支**之外**渲染，即使真的进了 `loading`/`error` 分支也不会被卸载。
-
-实测：预览打开后滚动到 260 px，等 10 秒（本该触发轮询）→ 同一 DOM 节点、`scrollTop` 仍是 260、0 次加载态闪烁、
-0 次请求；关闭预览 → 恰好 1 次静默刷新。列表滚动位置在轮询中同样保持不变。
 
 ## 已验证 / 未验证
 
@@ -602,7 +643,7 @@ tools/cache-check.mjs          缓存决策回归：8 项（精确 stamp、TTL �
 tools/client-core-check.mjs    客户端纯函数回归：32 项（分词 AND、排序、合并、格式化、高亮、资源地址）
 ```
 
-`npm test` 依次跑七支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 + 客户端 36 + i18n 字典完整性 + 双语 README 一致性 5 = **80 项**，无外部依赖），CI 里三套 Node 各跑一遍。
+`npm test` 依次跑七支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 8 + 客户端 36 + i18n 字典完整性 + 双语 README 一致性 7 = **82 项**，无外部依赖），CI 里三套 Node 各跑一遍。
 CI 还会执行 `npm run check:client`，确保提交的 `client.js` 与 `src/client/*.js` 逐字节一致。
 
 面板本身的 UI 变更用 `npm run harness` 在浏览器里看：它会用真实的 `client.js` + 假 cordis 上下文 + 合成台账起一个本地页，

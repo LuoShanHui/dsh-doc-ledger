@@ -517,24 +517,67 @@ The same three steps with `desktop` replaced by the target profile name.
 
 ## Traps we hit
 
-- **`windowsHide: true` hides the window you just launched** — see
-  [the section above](#the-launcher-was-hidden-by-windowshide-important).
-- **`ELECTRON_RUN_AS_NODE` leaks into spawned GUI apps** — see
-  [the section above](#the-launcher-inherited-electron_run_as_node-subtler-important).
-- **Polling a live session used to replay the whole log**: every streamed token changes the log's
-  `size:mtime` fingerprint, so the exact-stamp cache never hit and every silent poll re-read and re-folded the
-  log. There is now a 15-second replay floor for silent polls (`force=1` from the refresh button and
-  `timing=1` still replay fully). Measured on a 290 KB session log: a real replay is 26–42 ms of `replay` and
-  51–67 ms wall clock — the ~1 s figure that showed up in profiling was 32 sessions replaying cold, not one
-  poll.
-- **A flex column with `maxHeight` squeezed the small rows**: the 11px rows in the preview dialog shrank below
-  their text and clipped mid-glyph while the body kept its height. Fixed with `flex: 0 0 auto` plus an explicit
-  `lineHeight` on every non-body row, and `flex: 1 1 auto; minHeight: 0` on the body.
-- **`requestAnimationFrame` is throttled to ~1 s** in a non-composited page (measured 594/1000/1000 ms), so
-  chunked work uses `setTimeout(…, 0)`; rAF would have made "Expand all" feel broken.
-- **A negative or stale test expectation hides a real behaviour change**: after the i18n pass,
-  `categoryLabel("unknown")` returns the localized "Other" rather than echoing the raw category, and the
-  assertion had to say so.
+Each entry follows **symptom → cause → fix**. The long reproductions stay in the body sections
+linked from here.
+
+### Host API contracts
+
+- **`listSessions()` returns nested records, not flat ones.** Symptom: reading `record.id` or
+  `record.cwd` gives `undefined`. Cause: the shape is
+  `{ header: { id, createdAt, cwd, agentPreset }, live, persisted }`. Fix: read through `header`.
+- **A live session may have no header event at all.** Symptom: relative paths cannot be resolved and
+  `/api/file` answers ENOENT. Cause: the header event is folded into `data`, and sometimes never appears
+  in the stream. Fix: `buildLedger` accepts `options.header` so the caller can seed it from the session
+  listing.
+- **`readTitleSnapshots()` has two value shapes.** Symptom: titles render as `[object Object]`. Cause:
+  it returns `[{ status, value: { session, title } }]`, and `title` is either a string or a snapshot
+  object. Fix: accept both.
+- **Desktop loads the front end over `file://`.** Symptom: `/plugins/*` client-asset routes never
+  resolve, so an HTTP probe cannot tell whether the tab registered. Cause: the desktop shell does not
+  serve those routes. Fix: the client bundle is injected from the boot manifest after a browser reload;
+  verify in the page, not over HTTP.
+
+### Runtime and platform
+
+- **`windowsHide: true` hides the window you just launched.** Symptom: the process starts, exits 0, the
+  API returns 200, and nothing appears. Cause: it sets `STARTUPINFO.wShowWindow = SW_HIDE`, so
+  `explorer.exe` and GUI apps create a hidden window. Fix: never pass `windowsHide` for a launch the user
+  should see — see [the launcher section](#the-launcher-was-hidden-by-windowshide-important).
+- **`ELECTRON_RUN_AS_NODE` leaks into spawned GUI apps.** Symptom: the first click opens VS Code, and
+  after closing it, later clicks do nothing. Cause: the host's environment carries
+  `ELECTRON_RUN_AS_NODE=1`, so `Code.exe doc.md` runs as `node doc.md` and dies with a SyntaxError. Fix:
+  spawn GUI programs with an environment stripped of `^ELECTRON_` — see
+  [the launcher section](#the-launcher-inherited-electron_run_as_node-subtler-important).
+
+### Front-end rendering
+
+- **A flex column with `maxHeight` squeezes the small rows.** Symptom: the 11px rows in the preview
+  dialog clip mid-glyph and look like they are covered by the body. Cause: a height deficit is distributed
+  over *every* child, so the rows shrink while the body keeps its height. Fix: `flex: 0 0 auto` plus an
+  explicit `lineHeight` on every non-body row, and `flex: 1 1 auto; minHeight: 0` on the body. Measured in
+  a 520×320 window: the meta / notice / footer rows stay 27 / 27 / 29 px, nothing clipped.
+- **`requestAnimationFrame` is throttled to ~1 s** in a non-composited page (measured 594/1000/1000 ms).
+  Symptom: chunked expansion appears frozen. Fix: chunk with `setTimeout(…, 0)`; rAF would make
+  "Expand all" feel broken.
+- **A roving index must count only rows that actually render.** Symptom: collapsing the first section
+  leaves the card with no Tab-reachable row, and arrow keys land on the wrong row. Cause: indices were
+  assigned over all sections while collapsed ones build no DOM. Fix: number only rendered, expanded rows.
+
+### Caching, tests and other
+
+- **Polling a live session used to replay the whole log.** Symptom: a CPU spike on every 8 s poll of a
+  busy session. Cause: every streamed token changes the log's `size:mtime` fingerprint, so the
+  exact-stamp cache never hit. Fix: a 15-second replay floor for silent polls (`force=1` and `timing=1`
+  still replay fully). Measured on a 290 KB log: a real replay is 26–42 ms of `replay`, 51–67 ms wall
+  clock — the ~1 s figure from profiling was 32 sessions replaying cold, not one poll.
+- **A stale assertion hides a real behaviour change.** Symptom: a passing test that no longer describes
+  the code. Cause: after the i18n pass, `categoryLabel("unknown")` returns the localized "Other" instead
+  of echoing the raw category, and the old expectation still passed for the wrong reason. Fix: make the
+  assertion state the new contract.
+- **The dictionary must not be frozen at evaluation time.** Symptom: switching language leaves category
+  and sort labels in Chinese. Cause: `CATEGORY_LABEL` and the sort-key tables are built when the factory
+  is evaluated, before `apply()` installs the translator. Fix: store keys in those tables and resolve
+  them through `t()` at render time.
 
 ## Routes
 
@@ -630,7 +673,7 @@ tools/client-core-check.mjs    client pure functions: 36 assertions
 ```
 
 `npm test` runs six regression scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 8 +
-client 36 + i18n's 159-key integrity check + README parity = **80 checks**, no external
+client 36 + i18n's 159-key integrity check + README parity 7 = **82 checks**, no external
 dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to prove that the
 committed `client.js` matches `src/client/*.js` byte for byte.
 

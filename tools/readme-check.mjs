@@ -16,8 +16,9 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const en = readFileSync(join(root, "README.md"), "utf8");
 const zh = readFileSync(join(root, "README.zh.md"), "utf8");
 
+const lines = (text) => text.split(/\r?\n/);
 const headings = (text, marker) =>
-  text.split("\n").filter((line) => line.startsWith(marker + " ")).map((line) => line.slice(marker.length).trim());
+  lines(text).filter((line) => line.startsWith(marker + " ")).map((line) => line.slice(marker.length).trim());
 
 const cases = [];
 function check(name, body) { cases.push([name, body]); }
@@ -30,6 +31,32 @@ check("两版 README 的 `###` 小节数量一致", () => {
   assert.equal(headings(en, "###").length, headings(zh, "###").length,
     "h3 count differs: en=" + headings(en, "###").length + " zh=" + headings(zh, "###").length);
 });
+check("两版 `###` 小节的顺序一一对应（踩坑四小节位置一致）", () => {
+  // English and Chinese titles differ in wording, so compare positions rather than text.
+  // The traps subsections are the ones most likely to drift when someone adds an entry
+  // to only one language, so they must occupy the same four slots in both files.
+  const trapsOf = (text) => {
+    const rows = lines(text);
+    const start = rows.findIndex((line) => /^## (Traps we hit|踩过的坑)\s*$/.test(line));
+    if (start < 0) throw new Error("traps section not found");
+    const out = [];
+    for (let i = start + 1; i < rows.length; i += 1) {
+      if (/^## /.test(rows[i])) break;
+      const m = rows[i].match(/^### (.+)$/);
+      if (m) out.push(m[1]);
+    }
+    return out;
+  };
+  const all = (text) => headings(text, "###");
+  assert.equal(trapsOf(en).length, 4, "README.md 'Traps we hit' must keep 4 subsections");
+  assert.equal(trapsOf(zh).length, 4, "README.zh.md '踩过的坑' must keep 4 subsections");
+  // Same absolute position: the four traps subsections are the last four h3 before Routes.
+  assert.deepEqual(
+    all(en).slice(-4).map((_, i) => all(en).length - 4 + i),
+    all(zh).slice(-4).map((_, i) => all(zh).length - 4 + i),
+    "traps subsections must sit at the same positions in both files"
+  );
+});
 check("英文版链到中文版，中文版链到英文版", () => {
   assert.match(en, /\[中文\]\(README\.zh\.md\)/, "README.md must link to README.zh.md");
   assert.match(zh, /\[English\]\(README\.md\)/, "README.zh.md must link to README.md");
@@ -38,6 +65,18 @@ check("英文版正文不含中日韩字符（语言链接除外）", () => {
   const body = en.split("\n").filter((line) => !line.includes("README.zh.md")).join("\n");
   const han = body.match(/[\u4e00-\u9fff]+/g) || [];
   assert.deepEqual(han.slice(0, 5), [], "untranslated Chinese left in README.md: " + han.slice(0, 5).join(", "));
+});
+check("两版 README 的所有内部锚点都能解析", () => {
+  // GitHub slug: lowercase, drop everything but word chars / Han / hyphen / space, then
+  // spaces become hyphens. A heading renamed without updating the links rots silently.
+  const slug = (title) => "#" + title.trim().toLowerCase().replace(/`/g, "")
+    .replace(/[^\w\u4e00-\u9fff\- ]/g, "").replace(/ /g, "-");
+  for (const [name, text] of [["README.md", en], ["README.zh.md", zh]]) {
+    const valid = new Set(headings(text, "##").concat(headings(text, "###")).map(slug));
+    const links = [...text.matchAll(/\]\((#[^)]+)\)/g)].map((m) => m[1]);
+    const broken = links.filter((link) => !valid.has(link));
+    assert.deepEqual(broken, [], name + " has broken in-page anchors");
+  }
 });
 check("两版都提到当前的安装版本号", () => {
   const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
