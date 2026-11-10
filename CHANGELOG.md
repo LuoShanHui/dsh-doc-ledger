@@ -7,6 +7,18 @@
 
 ### Added
 
+- **两套完整截图**：英文 README 用 `docs/en-*.png`（7 张，`?locale=en` 实拍），中文 README 用
+  `docs/zh-*.png`（7 张）；`screenshots.json` 同时列出 14 张。
+- `tools/readme-check.mjs` 再加两条（共 9 项）：两版引用的图片必须真实存在、
+  英文版只用 `en-*`、中文版不用 `en-*` —— 改名忘了改引用会立刻被 CI 抓到。
+
+### Fixed
+
+- 英文界面里三处中文全角标点：分区标题的 `（{count}）`、预览信息行与提示行的 `　·　` 分隔符。
+  前两处改成字典项 `section.titleWithCount` / `ui.sep`（中文全角、英文半角）。
+
+### Added
+
 - `docs/release-v0.4.0.md` / `.en.md`：本版 Release 正文双语版；
   `tools/release-notes-check.mjs`（并入 `npm test`）断言每个 release note 都有英文孪生、
   两版 `##` / `###` 数量一致、配图 URL 钉在同一 tag、英文版无中文残留。

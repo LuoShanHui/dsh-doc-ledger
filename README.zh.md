@@ -8,7 +8,7 @@
 
 **每个会话一份文档台账**：这个会话用过哪些文档、创建 / 修改了哪些，带时间排序、类型分组、搜索、跨会话汇总，以及两种预览入口。
 
-![overview](docs/overview.png)
+![overview](docs/zh-overview.png)
 
 ## 30 秒上手
 
@@ -46,13 +46,13 @@ HTTP 响应会按 `slimFile()` 瘦身——`uses` 一项就占原响应的 30%�
 
 | 文件 | 内容 |
 |---|---|
-| `docs/overview.png` | 全部会话：摘要行、类型 chip、展开后的「使用过 / 创建 / 修改」 |
-| `docs/current.png` | 当前会话视图（只折叠当前会话，打开面板不用等全量重放） |
-| `docs/preview.png` | 快速查看弹窗：文件信息行、截断/解码提示、正文、完整路径、Esc 关闭 |
-| `docs/menu.png` | 右键菜单：「在侧边栏预览」/「快速查看」在前，「打开方式」列出为扩展名注册的程序（带真实图标） |
-| `docs/filter.png` | 类型筛选生效：选中的 chip 变蓝，右侧出现 `✕ 清除筛选` 与「全部展开」 |
-| `docs/session.png` | 会话卡片右键菜单：复制会话名称 / 会话 ID、跳转到这个会话 |
-| `docs/sort.png` | 分区排序菜单：每个分区独立排序、再点一次切方向 |
+| `docs/zh-overview.png` | 全部会话：摘要行、类型 chip、展开后的「使用过 / 创建 / 修改」 |
+| `docs/zh-current.png` | 当前会话视图（只折叠当前会话，打开面板不用等全量重放） |
+| `docs/zh-preview.png` | 快速查看弹窗：文件信息行、截断/解码提示、正文、完整路径、Esc 关闭 |
+| `docs/zh-menu.png` | 右键菜单：「在侧边栏预览」/「快速查看」在前，「打开方式」列出为扩展名注册的程序（带真实图标） |
+| `docs/zh-filter.png` | 类型筛选生效：选中的 chip 变蓝，右侧出现 `✕ 清除筛选` 与「全部展开」 |
+| `docs/zh-session.png` | 会话卡片右键菜单：复制会话名称 / 会话 ID、跳转到这个会话 |
+| `docs/zh-sort.png` | 分区排序菜单：每个分区独立排序、再点一次切方向 |
 | `docs/en-overview.png` | **英文界面**（`?locale=en`）：同一份代码、同一份数据，只换语言 |
 
 截图里的工作区（`C:\work\demo-workspace`）、文档名和程序列表都是示例数据，

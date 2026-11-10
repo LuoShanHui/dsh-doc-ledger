@@ -10,7 +10,7 @@
 
 A DSH sidebar plugin that keeps a per-session document ledger — which documents a session read, created or modified — with time ordering, type grouping, search, two preview modes and a cross-session view. Windows only, UI in Chinese and English.
 
-![overview](docs/overview.png)
+![overview](docs/en-overview.png)
 
 ## 30-second setup
 
@@ -53,16 +53,19 @@ client never renders it.
 
 ## Screenshots
 
+All screenshots below are the **English UI** (`?locale=en`); the Chinese edition of each image lives beside
+it as `docs/zh-*.png` and is used by [`README.zh.md`](README.zh.md). Same code, same synthetic data — only the
+language differs.
+
 | File | Content |
 |---|---|
-| `docs/overview.png` | All sessions: summary line, type chips, expanded Used / Created / Modified |
-| `docs/current.png` | Current-session view (folds only this session, so opening the panel never waits for a full replay) |
-| `docs/preview.png` | Quick-look dialog: file facts row, truncation/decode notice, body, full path, Esc to close |
-| `docs/menu.png` | Context menu: "Preview in sidebar" / "Quick look" first, then "Open with" listing the programs registered for the extension (real icons) |
-| `docs/filter.png` | A type filter in effect: the selected chip turns blue and `✕ Clear filters` plus "Expand all" appear on the right |
-| `docs/session.png` | Session-card context menu: copy session name / session ID, jump to this session |
-| `docs/sort.png` | Per-section sort menu: each section sorts independently, clicking again reverses direction |
-| `docs/en-overview.png` | **English UI** (`?locale=en`): same code, same data, different language only |
+| `docs/en-overview.png` | All sessions: summary line, type chips, expanded Used / Created / Modified |
+| `docs/en-current.png` | Current-session view (folds only this session, so opening the panel never waits for a full replay) |
+| `docs/en-preview.png` | Quick-look dialog: file facts row, truncation/decode notice, body, full path, Esc to close |
+| `docs/en-menu.png` | Context menu: "Preview in sidebar" / "Quick look" first, then "Open with" listing the programs registered for the extension (real icons) |
+| `docs/en-filter.png` | A type filter in effect: the selected chip turns blue and `✕ Clear filters` plus "Expand all" appear on the right |
+| `docs/en-session.png` | Session-card context menu: copy session name / session ID, jump to this session |
+| `docs/en-sort.png` | Per-section sort menu: each section sorts independently, clicking again reverses direction |
 
 The workspace in the screenshots (`C:\work\demo-workspace`), the document names and the program list are
 all synthetic sample data, not anyone's real project.

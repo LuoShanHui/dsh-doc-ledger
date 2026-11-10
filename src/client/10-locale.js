@@ -56,6 +56,7 @@
       "section.created": "创建",
       "section.modifiedOnly": "修改（仅改动）",
       "section.createdModified": "创建 / 修改",
+      "section.titleWithCount": "{title}（{count}）",
 
       // sort menu
       "sort.menu": "操作菜单",
@@ -96,6 +97,7 @@
       "toast.opened": "已交给系统打开",
       "toast.refreshed": "已刷新",
       "toast.refreshFailed": "刷新失败：",
+      "ui.sep": "　·　",
       "toast.clickRetry": "　点击重试",
       "toast.backgroundFailed": "后台刷新失败，显示的是上次成功的数据",
       "toast.copiedContent": "已复制内容",
@@ -260,6 +262,7 @@
       "section.created": "Created",
       "section.modifiedOnly": "Modified (only)",
       "section.createdModified": "Created / Modified",
+      "section.titleWithCount": "{title} ({count})",
 
       "sort.menu": "Actions",
       "sort.lastUsed": "Recently used",
@@ -297,6 +300,7 @@
       "toast.opened": "Handed to the system",
       "toast.refreshed": "Refreshed",
       "toast.refreshFailed": "Refresh failed: ",
+      "ui.sep": "  ·  ",
       "toast.clickRetry": "  click to retry",
       "toast.backgroundFailed": "Background refresh failed; showing last successful data",
       "toast.copiedContent": "Content copied",

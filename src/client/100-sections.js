@@ -10,7 +10,7 @@
             onFocus: ringOn,
             onBlur: ringOff,
             onClick: props.onToggle
-          }, (props.open ? "▾ " : "▸ ") + props.title + "（" + props.count + "）"),
+          }, (props.open ? "▾ " : "▸ ") + t("section.titleWithCount", { title: props.title, count: props.count })),
           props.extra ? props.extra : null,
           h("button", {
             type: "button",

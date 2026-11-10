@@ -8,7 +8,7 @@
  * catches "someone added a section to one language".
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -77,6 +77,21 @@ check("两版 README 的所有内部锚点都能解析", () => {
     const broken = links.filter((link) => !valid.has(link));
     assert.deepEqual(broken, [], name + " has broken in-page anchors");
   }
+});
+check("两版 README 引用的图片文件都存在", () => {
+  // A renamed or deleted screenshot must not leave a broken <img> in either edition.
+  for (const [name, text] of [["README.md", en], ["README.zh.md", zh]]) {
+    const refs = [...text.matchAll(/\]\((docs\/[^)\s]+\.png)\)/g)].map((m) => m[1]);
+    assert.ok(refs.length > 0, name + " references no screenshots");
+    for (const ref of refs) {
+      assert.ok(existsSync(join(root, ref)), name + " references a missing image: " + ref);
+    }
+  }
+});
+check("英文版只用 en-* 截图，中文版用 zh-*（首图除外）", () => {
+  const pngs = (text) => [...text.matchAll(/\]\((docs\/[^)\s]+\.png)\)/g)].map((m) => m[1]);
+  assert.deepEqual(pngs(en).filter((p) => !p.includes("en-")), [], "README.md must use en-* screenshots only");
+  assert.deepEqual(pngs(zh).filter((p) => p.includes("en-")), [], "README.zh.md must not use en-* screenshots");
 });
 check("两版都提到当前的安装版本号", () => {
   const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;

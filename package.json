@@ -55,7 +55,8 @@
     "CHANGELOG.md",
     "SECURITY.md",
     "LICENSE",
-    "docs/overview.png",
+    "docs/en-overview.png",
+    "docs/zh-overview.png",
     "docs/i18n.md"
   ],
   "publishConfig": {

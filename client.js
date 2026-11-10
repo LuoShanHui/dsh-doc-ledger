@@ -158,6 +158,7 @@ window.__ModuleLoader__.load({
       "section.created": "创建",
       "section.modifiedOnly": "修改（仅改动）",
       "section.createdModified": "创建 / 修改",
+      "section.titleWithCount": "{title}（{count}）",
 
       // sort menu
       "sort.menu": "操作菜单",
@@ -198,6 +199,7 @@ window.__ModuleLoader__.load({
       "toast.opened": "已交给系统打开",
       "toast.refreshed": "已刷新",
       "toast.refreshFailed": "刷新失败：",
+      "ui.sep": "　·　",
       "toast.clickRetry": "　点击重试",
       "toast.backgroundFailed": "后台刷新失败，显示的是上次成功的数据",
       "toast.copiedContent": "已复制内容",
@@ -362,6 +364,7 @@ window.__ModuleLoader__.load({
       "section.created": "Created",
       "section.modifiedOnly": "Modified (only)",
       "section.createdModified": "Created / Modified",
+      "section.titleWithCount": "{title} ({count})",
 
       "sort.menu": "Actions",
       "sort.lastUsed": "Recently used",
@@ -399,6 +402,7 @@ window.__ModuleLoader__.load({
       "toast.opened": "Handed to the system",
       "toast.refreshed": "Refreshed",
       "toast.refreshFailed": "Refresh failed: ",
+      "ui.sep": "  ·  ",
       "toast.clickRetry": "  click to retry",
       "toast.backgroundFailed": "Background refresh failed; showing last successful data",
       "toast.copiedContent": "Content copied",
@@ -1107,7 +1111,7 @@ window.__ModuleLoader__.load({
             onFocus: ringOn,
             onBlur: ringOff,
             onClick: props.onToggle
-          }, (props.open ? "▾ " : "▸ ") + props.title + "（" + props.count + "）"),
+          }, (props.open ? "▾ " : "▸ ") + t("section.titleWithCount", { title: props.title, count: props.count })),
           props.extra ? props.extra : null,
           h("button", {
             type: "button",
@@ -2210,7 +2214,7 @@ window.__ModuleLoader__.load({
           var writes = known.writes || 0;
           if (reads > 0 || writes > 0) metaBits.push(t("preview.readWrite", { reads: reads, writes: writes }));
         }
-        var previewMeta = metaBits.length === 0 ? null : h("div", { style: S.modalMeta }, metaBits.join("　·　"));
+        var previewMeta = metaBits.length === 0 ? null : h("div", { style: S.modalMeta }, metaBits.join(t("ui.sep")));
 
         // Truncation and undecodable bytes are shown as a notice row instead of being
         // appended to the body, where they were easy to miss and got copied along.
@@ -2219,7 +2223,7 @@ window.__ModuleLoader__.load({
           notices.push(t("preview.truncated", { shown: fmtBytes(preview.shown), total: fmtBytes(preview.bytes) }));
         }
         if (preview.replacements > 0) notices.push(t("preview.undecodable", { n: preview.replacements }));
-        var previewNotice = notices.length === 0 ? null : h("div", { style: S.modalWarn }, notices.join("　·　"));
+        var previewNotice = notices.length === 0 ? null : h("div", { style: S.modalWarn }, notices.join(t("ui.sep")));
 
         return h("div", { style: S.modal, onClick: function () { setPreview(null); } },
           h("div", {

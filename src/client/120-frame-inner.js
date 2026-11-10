@@ -692,7 +692,7 @@
           var writes = known.writes || 0;
           if (reads > 0 || writes > 0) metaBits.push(t("preview.readWrite", { reads: reads, writes: writes }));
         }
-        var previewMeta = metaBits.length === 0 ? null : h("div", { style: S.modalMeta }, metaBits.join("　·　"));
+        var previewMeta = metaBits.length === 0 ? null : h("div", { style: S.modalMeta }, metaBits.join(t("ui.sep")));
 
         // Truncation and undecodable bytes are shown as a notice row instead of being
         // appended to the body, where they were easy to miss and got copied along.
@@ -701,7 +701,7 @@
           notices.push(t("preview.truncated", { shown: fmtBytes(preview.shown), total: fmtBytes(preview.bytes) }));
         }
         if (preview.replacements > 0) notices.push(t("preview.undecodable", { n: preview.replacements }));
-        var previewNotice = notices.length === 0 ? null : h("div", { style: S.modalWarn }, notices.join("　·　"));
+        var previewNotice = notices.length === 0 ? null : h("div", { style: S.modalWarn }, notices.join(t("ui.sep")));
 
         return h("div", { style: S.modal, onClick: function () { setPreview(null); } },
           h("div", {

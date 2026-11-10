@@ -1,10 +1,16 @@
 [
-  "docs/overview.png",
-  "docs/current.png",
-  "docs/filter.png",
-  "docs/session.png",
-  "docs/preview.png",
-  "docs/menu.png",
-  "docs/sort.png",
-  "docs/en-overview.png"
+  "docs/en-overview.png",
+  "docs/en-current.png",
+  "docs/en-filter.png",
+  "docs/en-session.png",
+  "docs/en-preview.png",
+  "docs/en-menu.png",
+  "docs/en-sort.png",
+  "docs/zh-overview.png",
+  "docs/zh-current.png",
+  "docs/zh-filter.png",
+  "docs/zh-session.png",
+  "docs/zh-preview.png",
+  "docs/zh-menu.png",
+  "docs/zh-sort.png"
 ]
