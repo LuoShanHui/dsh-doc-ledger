@@ -585,97 +585,127 @@ export function apply(ctx, config = {}) {
     return hash.digest("hex").slice(0, 12);
   }
 
-  /** Every session with at least one document, newest first. */
-  async function snapshot(preferredId, options = {}) {
-    const scope = options.scope === "current" ? "current" : "all";
-    const requestedLimit = Number(options.limit);
-    const limit = requestedLimit > 0 ? Math.min(300, Math.max(1, Math.floor(requestedLimit))) : maxSessions;
-    const timing = options.timing === true ? {} : null;
-    const started = Date.now();
-    loadLedgerCache();
-    const query = ctx.get("sessionQuery");
-    if (query === undefined) {
-      return { generatedAt: Date.now(), currentSessionId: null, sessions: [], partial: false, warning: "sessionQuery is unavailable in this profile" };
+    /**
+     * `listSessions()` rows -> flat records with a guaranteed non-empty id.
+     *
+     * The host returns `{ header: { id, createdAt, cwd, agentPreset }, live, persisted }`, but
+     * older shapes put those fields at the top level, so every field is read from both. Records
+     * without an id are dropped: they cannot be replayed or addressed.
+     */
+    function normalizeRecords(listed, limit) {
+      return (Array.isArray(listed) ? listed : []).slice(0, limit).map((item) => {
+        const header = item?.header ?? item ?? {};
+        const id = header.id ?? item?.id ?? item?.sessionId ?? "";
+        const createdAt = header.createdAt ?? item?.createdAt ?? null;
+        const cwd = header.cwd ?? item?.cwd ?? "";
+        const agentPreset = header.agentPreset ?? item?.agentPreset ?? null;
+        return {
+          header: { id, createdAt, cwd, agentPreset },
+          id,
+          createdAt,
+          cwd,
+          agentPreset,
+          live: item?.live === true,
+          // A subagent names its parent here; the panel turns it into "jump to parent".
+          parentSession: typeof header.parentSession === "string" ? header.parentSession : null,
+        };
+      }).filter((record) => record.id !== "");
     }
-    const listed = await query.listSessions();
-    const listedCount = Array.isArray(listed) ? listed.length : 0;
-    if (timing !== null) timing.listSessions = Date.now() - started;
-    const records = (Array.isArray(listed) ? listed : []).slice(0, limit).map((item) => {
-      const header = item?.header ?? item ?? {};
-      return {
-        header: {
-          id: header.id ?? item?.id ?? item?.sessionId ?? "",
-          createdAt: header.createdAt ?? item?.createdAt ?? null,
-          cwd: header.cwd ?? item?.cwd ?? "",
-          agentPreset: header.agentPreset ?? item?.agentPreset ?? null,
-        },
-        id: header.id ?? item?.id ?? item?.sessionId ?? "",
-        createdAt: header.createdAt ?? item?.createdAt ?? null,
-        cwd: header.cwd ?? item?.cwd ?? "",
-        agentPreset: header.agentPreset ?? item?.agentPreset ?? null,
-        live: item?.live === true,
-      };
-    }).filter((record) => record.id !== "");
 
-    // One session asked for: replay only it, so opening the panel does not pay for
-    // every other conversation in the profile.
-    const preferred = preferredId !== null && preferredId !== undefined && preferredId !== "";
-    const wanted = scope === "current" && preferred ? records.filter((record) => record.id === preferredId) : records;
-    const ids = wanted.map((record) => record.id);
-    const liveIds = new Set(wanted.filter((record) => record.live === true).map((record) => record.id));
-    let titles = new Map();
-    try {
-      titles = await titlesFor(query, ids, liveIds);
-    } catch {
-      titles = new Map();
-    }
-    if (timing !== null) timing.titles = Date.now() - started - timing.listSessions;
-
-    const sessions = [];
-    const logs = sessionLogIndex();
-    const ledgers = await mapPool(wanted, REPLAY_CONCURRENCY, async (record) => {
-      try {
-        return await replay(query, record, { fresh: record.id === preferredId, stamp: logs?.get(record.id) ?? null, floor: options.floor ?? 0 });
-      } catch {
-        return null;
-      }
-    });
-    for (let index = 0; index < wanted.length; index += 1) {
-      const record = wanted[index];
-      const ledger = ledgers[index];
-      if (ledger === null || ledger === undefined) continue;
-      // Keep the session the client asked about even when it has no documents yet, so
-      // the panel can say so instead of silently showing a different conversation.
-      if (ledger.counts.files === 0 && record.id !== preferredId) continue;
-      sessions.push({
-        sessionId: ledger.sessionId || record.id,
-        title: titles.get(record.id) ?? record.id,
-        createdAt: ledger.createdAt ?? record.createdAt,
-        cwd: ledger.cwd || record.cwd,
-        agentPreset: ledger.agentPreset ?? record.agentPreset,
-        live: record.live,
-        // Parent id, when this session is a subagent: the panel offers "跳到父会话" from it.
-        parentSessionId: typeof record.header?.parentSession === "string" ? record.header.parentSession : null,
-        counts: ledger.counts,
-        files: ledger.files.map((file) => slimFile(file, existsOf(file.path))),
+    /**
+     * Replay the wanted sessions and build the panel's `sessions[]`.
+     *
+     * Replaying is the expensive half, so it happens through `mapPool` (bounded concurrency) and
+     * a failed session is skipped rather than failing the whole response.
+     */
+    async function foldSessions(query, wanted, options) {
+      const preferredId = options.preferredId;
+      const titles = options.titles ?? new Map();
+      const logs = sessionLogIndex();
+      const ledgers = await mapPool(wanted, REPLAY_CONCURRENCY, async (record) => {
+        try {
+          return await replay(query, record, { fresh: record.id === preferredId, stamp: logs?.get(record.id) ?? null, floor: options.floor ?? 0 });
+        } catch {
+          return null;
+        }
       });
+      const sessions = [];
+      for (let index = 0; index < wanted.length; index += 1) {
+        const record = wanted[index];
+        const ledger = ledgers[index];
+        if (ledger === null || ledger === undefined) continue;
+        // Keep the session the client asked about even when it has no documents yet, so the
+        // panel can say so instead of silently showing a different conversation.
+        if (ledger.counts.files === 0 && record.id !== preferredId) continue;
+        sessions.push({
+          sessionId: ledger.sessionId || record.id,
+          title: titles.get(record.id) ?? record.id,
+          createdAt: ledger.createdAt ?? record.createdAt,
+          cwd: ledger.cwd || record.cwd,
+          agentPreset: ledger.agentPreset ?? record.agentPreset,
+          live: record.live,
+          parentSessionId: record.parentSession,
+          counts: ledger.counts,
+          files: ledger.files.map((file) => slimFile(file, existsOf(file.path))),
+        });
+      }
+      sessions.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      return sessions;
     }
-    if (timing !== null) timing.replay = Date.now() - started - timing.listSessions - timing.titles;
-    sessions.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    const payload = {
-      generatedAt: Date.now(),
-      rev: snapshotRev(sessions),
-      currentSessionId: preferred ? preferredId : (sessions[0]?.sessionId ?? null),
-      sessions,
-      partial: scope === "current" && preferred,
-      totalSessions: listedCount,
-      truncated: listedCount > limit,
-      maxSessions: limit,
-    };
-    if (timing !== null) payload.timings = Object.assign({}, timing, { total: Date.now() - started });
-    saveLedgerCacheSoon();
-    return payload;
-  }
+
+    /** The response body: revision, scope flags and the truncation notice. */
+    function shapePayload(sessions, ctxInfo) {
+      const { preferred, preferredId, listedCount, limit, scope } = ctxInfo;
+      return {
+        generatedAt: Date.now(),
+        rev: snapshotRev(sessions),
+        currentSessionId: preferred ? preferredId : (sessions[0]?.sessionId ?? null),
+        sessions,
+        partial: scope === "current" && preferred,
+        totalSessions: listedCount,
+        truncated: listedCount > limit,
+        maxSessions: limit,
+      };
+    }
+
+    /** Every session with at least one document, newest first. */
+    async function snapshot(preferredId, options = {}) {
+      const scope = options.scope === "current" ? "current" : "all";
+      const requestedLimit = Number(options.limit);
+      const limit = requestedLimit > 0 ? Math.min(300, Math.max(1, Math.floor(requestedLimit))) : maxSessions;
+      const timing = options.timing === true ? {} : null;
+      const started = Date.now();
+      loadLedgerCache();
+      const query = ctx.get("sessionQuery");
+      if (query === undefined) {
+        return { generatedAt: Date.now(), currentSessionId: null, sessions: [], partial: false, warning: "sessionQuery is unavailable in this profile" };
+      }
+      const listed = await query.listSessions();
+      const listedCount = Array.isArray(listed) ? listed.length : 0;
+      if (timing !== null) timing.listSessions = Date.now() - started;
+      const records = normalizeRecords(listed, limit);
+
+      // One session asked for: replay only it, so opening the panel does not pay for
+      // every other conversation in the profile.
+      const preferred = preferredId !== null && preferredId !== undefined && preferredId !== "";
+      const wanted = scope === "current" && preferred ? records.filter((record) => record.id === preferredId) : records;
+      const ids = wanted.map((record) => record.id);
+      const liveIds = new Set(wanted.filter((record) => record.live === true).map((record) => record.id));
+      let titles = new Map();
+      try {
+        titles = await titlesFor(query, ids, liveIds);
+      } catch {
+        titles = new Map();
+      }
+      if (timing !== null) timing.titles = Date.now() - started - timing.listSessions;
+
+      const sessions = await foldSessions(query, wanted, { preferredId, titles, floor: options.floor ?? 0 });
+      if (timing !== null) timing.replay = Date.now() - started - timing.listSessions - timing.titles;
+      const payload = shapePayload(sessions, { preferred, preferredId, listedCount, limit, scope });
+      if (timing !== null) payload.timings = Object.assign({}, timing, { total: Date.now() - started });
+      saveLedgerCacheSoon();
+      return payload;
+    }
 
   /** Absolute Windows launcher paths: the host PATH can be scrubbed, so never trust a bare name. */
   const WINDIR = process.env.WINDIR || process.env.SystemRoot || "C:\\Windows";
