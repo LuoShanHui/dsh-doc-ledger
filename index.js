@@ -1688,6 +1688,13 @@ export function apply(ctx, config = {}) {
       if (url.pathname === base + "/api/file") return handleFile(res, url);
       if (url.pathname === base + "/icon") return handleIcon(res, url);
       if (url.pathname === base + "/fileicon") return handleFileIcon(res, url);
+      // The client has no other way to learn the plugin config: it is evaluated in the browser
+      // against a bundle that cannot see the host's Loader entry. Without this the client's
+      // whole diagnostics channel is dead, because report() gates on a flag nobody set.
+      if (url.pathname === base + "/api/config") {
+        sendJson(res, 200, { ok: true, data: { debug: config.debug === true, maxSessions: maxSessions } });
+        return;
+      }
       res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       res.end("doc-ledger: not found");
     },

@@ -245,13 +245,17 @@ trimmed by `slimFile()`, because `uses` alone was 30% of the payload and the cli
   inside the card); turn it off to merge everything into two cross-session lists where each row carries a
   session tag.
 - **File glyphs with a three-tier fallback**: each row shows a real icon, resolved A → B → C.
-  **A** is DSH's own `FileTypeIcon` (probed through `require`, the same opportunistic way the tab
-  artwork is loaded); **B** is the actual Windows association icon, which the host extracts per
-  extension via shell32's `SHGetFileInfo` — `app.getFileIcon` is unreachable from the plugin
-  process, so this is the honest substitute, and it is what renders today (IntelliJ's Java icon,
-  the JSON braces, Markdown's M); **C** is a drawn badge with the extension on a per-type tint,
-  always available and also the loading placeholder and the 404 fallback. Icons are cached per
-  extension in `~/.dsh/doc-ledger-fileicons/` — one extraction covers every `.md` in the ledger.
+  **A** is DSH's own `FileTypeIcon`, which the panel gets from the platform seed table via
+  `require("@deepseek-ai/dsh-client-ui-primitives")` — the package is one of the ten modules
+  every client bundle can require by name, so the glyph is identical to the one the rest of the
+  DSH UI draws. Confirmed working in the real window.
+  **B** is the actual Windows association icon, extracted per extension by the host through
+  shell32's `SHGetFileInfo`: `app.getFileIcon` is unreachable from the plugin process, so this is
+  the honest substitute. It only renders when tier A is missing, and it is what you get on a host
+  build that stops seeding the primitives package.
+  **C** is a drawn badge with the extension on a per-type tint — always available, and it sits
+  under the tier-B image so it doubles as the loading placeholder and the 404 fallback. Icons are
+  cached per extension in `~/.dsh/doc-ledger-fileicons/`, so one extraction covers every `.md`.
 - **Visual themes**: a "Theme" dropdown in the toolbar switches between four looks — **Compact** (the default),
   **Airy** (whitespace and weight instead of hairlines), **Table** (zebra rows and tabular numbers) and
   **Card** (floating cards with soft shadows). Pick any theme directly — the active one is ticked. The

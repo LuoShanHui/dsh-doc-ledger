@@ -34,6 +34,25 @@
 
 ### Fixed
 
+- **客户端诊断通道整条是死的**：`report()` 以 `window.__DOC_LEDGER_DEBUG__ === true` 为前提，
+  但整个代码库没有任何地方设置这个全局，因此 17 处 `report()` 调用全部静默返回，宿主日志
+  从 11-04 起就没再更新，把 `config.debug` 设成 true 也没用。
+  现在宿主新增 `GET /api/config` 暴露 `{ debug, maxSessions }`，客户端在 `applyInner` 最前面
+  读取并设置标志。因为 config 是异步拿的，早期报告（`eval`、`apply: enter`、`tab-ok` 这些
+  恰恰最有用）会先进入 pending 队列，拿到答案后要么补发（debug 开）要么丢弃（debug 关）。
+  修完立刻可用，日志确认了 `apply: tab-ok`、`host-preview:yes`、`session-nav:yes`。
+- **上一轮对 A 档的判断是错的**，这里更正：`@deepseek-ai/dsh-client-ui-primitives` 不是
+  「构建期内联、插件取不到」，而是**平台 seed 表里的十个模块之一**。模块系统的 require 是
+  `if (this.seed.has(spec)) return this.seed.get(spec)`，seed 表由 `function YZ()` 返回，
+  里面明确列着 `"@deepseek-ai/dsh-client-ui-primitives": FU`，且 DSH 自己的打包代码直接读
+  `_deepseek_ai_dsh_client_ui_primitives.FileTypeIcon`（具名导出、名字未压缩）。
+  真机日志已验证 `tier-A: ok`，也就是说文件图标**现在走的就是 DSH 自己那一套**，
+  视觉与其他界面完全一致；B 档（shell32 系统图标）只在 A 缺位时才会渲染。
+- **FileGlyph 的条件 hook 顺序**：A 命中时提前 return，而 `useState` 原先在那之后，
+  两次渲染之间 hook 数量会变（React 会拒绝）。现在所有 hook 都在分支之前无条件调用。
+
+### Fixed
+
 - **未支持语言的兜底**：宿主的 fallback 链终点是英文，所以日/韩/俄等没有字典的语言会显示
   **英文**。此前 `t()` 一律退回中文、复数规则仍按用户所选语言算，会出现「英文句子 +
   中文/日文复数形态」的不一致（如 `1 files`）。现在 `setFallback({ zh, en })` 同时接两份

@@ -1,13 +1,45 @@
-    function report(step, detail) {
-      // Opt-in only: the host ignores these posts unless its config sets debug: true,
-      // and a normal session should not pay a POST per lifecycle step.
-      if (typeof window === "undefined" || window.__DOC_LEDGER_DEBUG__ !== true) return;
+    /**
+     * Client diagnostics.
+     *
+     * Everything is opt-in through the host's `debug: true`, because a normal session should not
+     * pay a POST per lifecycle step. The flag arrives asynchronously (see enableDiagnostics in
+     * 130-apply), so reports are queued while it is still unknown and flushed once it resolves:
+     * the most interesting ones — bundle evaluation, apply, tab registration — happen before the
+     * answer arrives, and dropping them made the log look empty even with debug on.
+     */
+    var REPORT_QUEUE = [];
+    var REPORT_QUEUE_MAX = 200;
+
+    function reportFlush() {
+      var queued = REPORT_QUEUE.splice(0, REPORT_QUEUE.length);
+      for (var i = 0; i < queued.length; i += 1) reportSend(queued[i][0], queued[i][1]);
+    }
+
+    function reportSend(step, detail) {
       try {
         var body = JSON.stringify({ step: step, detail: String(detail === undefined ? "" : detail), href: String(location.href).slice(0, 200) });
         if (typeof fetch === "function") fetch(BASE + "/api/_clienterror", { method: "POST", body: body, keepalive: true }).catch(function () {});
       } catch (error) {
         /* diagnostics must never throw */
       }
+    }
+
+    /** Called once the host answers /api/config: true enables, false discards the queue. */
+    function reportEnable(enabled) {
+      if (enabled === true) {
+        if (typeof window !== "undefined") window.__DOC_LEDGER_DEBUG__ = true;
+        reportFlush();
+        return;
+      }
+      REPORT_QUEUE.length = 0;
+    }
+
+    function report(step, detail) {
+      if (typeof window === "undefined") return;
+      if (window.__DOC_LEDGER_DEBUG__ === true) { reportSend(step, detail); return; }
+      if (window.__DOC_LEDGER_DEBUG__ === false) return;
+      // Undecided: buffer until the flag resolves.
+      if (REPORT_QUEUE.length < REPORT_QUEUE_MAX) REPORT_QUEUE.push([step, detail]);
     }
 
     function decodeJson(response) {

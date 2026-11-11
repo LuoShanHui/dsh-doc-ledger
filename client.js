@@ -603,16 +603,48 @@ window.__ModuleLoader__.load({
     /** Shell icon ids differ from our own: the host serves "intellij" and "gitbash". */
     var APP_ICON = { explorer: "explorer", vscode: "vscode", idea: "intellij", "git-bash": "gitbash", finder: "finder" };
 
-    function report(step, detail) {
-      // Opt-in only: the host ignores these posts unless its config sets debug: true,
-      // and a normal session should not pay a POST per lifecycle step.
-      if (typeof window === "undefined" || window.__DOC_LEDGER_DEBUG__ !== true) return;
+    /**
+     * Client diagnostics.
+     *
+     * Everything is opt-in through the host's `debug: true`, because a normal session should not
+     * pay a POST per lifecycle step. The flag arrives asynchronously (see enableDiagnostics in
+     * 130-apply), so reports are queued while it is still unknown and flushed once it resolves:
+     * the most interesting ones — bundle evaluation, apply, tab registration — happen before the
+     * answer arrives, and dropping them made the log look empty even with debug on.
+     */
+    var REPORT_QUEUE = [];
+    var REPORT_QUEUE_MAX = 200;
+
+    function reportFlush() {
+      var queued = REPORT_QUEUE.splice(0, REPORT_QUEUE.length);
+      for (var i = 0; i < queued.length; i += 1) reportSend(queued[i][0], queued[i][1]);
+    }
+
+    function reportSend(step, detail) {
       try {
         var body = JSON.stringify({ step: step, detail: String(detail === undefined ? "" : detail), href: String(location.href).slice(0, 200) });
         if (typeof fetch === "function") fetch(BASE + "/api/_clienterror", { method: "POST", body: body, keepalive: true }).catch(function () {});
       } catch (error) {
         /* diagnostics must never throw */
       }
+    }
+
+    /** Called once the host answers /api/config: true enables, false discards the queue. */
+    function reportEnable(enabled) {
+      if (enabled === true) {
+        if (typeof window !== "undefined") window.__DOC_LEDGER_DEBUG__ = true;
+        reportFlush();
+        return;
+      }
+      REPORT_QUEUE.length = 0;
+    }
+
+    function report(step, detail) {
+      if (typeof window === "undefined") return;
+      if (window.__DOC_LEDGER_DEBUG__ === true) { reportSend(step, detail); return; }
+      if (window.__DOC_LEDGER_DEBUG__ === false) return;
+      // Undecided: buffer until the flag resolves.
+      if (REPORT_QUEUE.length < REPORT_QUEUE_MAX) REPORT_QUEUE.push([step, detail]);
     }
 
     function decodeJson(response) {
@@ -1467,12 +1499,19 @@ window.__ModuleLoader__.load({
       if (primitivesProbed === true) return primitivesModule;
       primitivesProbed = true;
       primitivesModule = null;
+      var failure = "";
       try {
         var loaded = require("@deepseek-ai/dsh-client-ui-primitives");
-        if (loaded && typeof loaded.FileTypeIcon === "function") primitivesModule = loaded;
+        // Accept the icon under any name the package might use: the bundle's own call sites read
+        // `FileTypeIcon`, but a future build could rename it and the others cost one OR each.
+        var icon = loaded ? (loaded.FileTypeIcon || loaded.FileIcon || loaded.FileGlyph) : null;
+        if (typeof icon === "function") primitivesModule = { FileTypeIcon: icon };
+        else failure = loaded ? "no icon export" : "empty module";
       } catch (error) {
-        /* not bundled in this build: tier B/C take over */
+        failure = String((error && error.message) || error).slice(0, 200);
       }
+      // One line per page load, so a real session can be diagnosed from the host log alone.
+      report("primitives", failure === "" ? "tier-A: ok" : "tier-A: miss (" + failure + ")");
       return primitivesModule;
     }
 
@@ -1488,8 +1527,13 @@ window.__ModuleLoader__.load({
       useStyles();
       var ext = String(props.ext || "").toLowerCase();
       var size = props.size || 16;
-      // Tier A: the host's own icon.
       var primitives = dshPrimitives();
+      // Every hook runs before the tier branch. Returning early on tier A while useState sat
+      // further down would change the hook count between renders, which React rejects.
+      var state = react.useState(ext === "" ? "fallback" : "image");
+      var mode = state[0];
+      var setMode = state[1];
+      // Tier A: the host's own icon. Nothing else is evaluated or fetched for it.
       if (primitives !== null) {
         return react.createElement(primitives.FileTypeIcon, {
           path: props.path || props.name || "",
@@ -1497,9 +1541,6 @@ window.__ModuleLoader__.load({
         });
       }
       // Tier B renders the host-extracted image; on error it hides itself and reveals tier C.
-      var state = react.useState(ext === "" ? "fallback" : "image");
-      var mode = state[0];
-      var setMode = state[1];
       if (mode === "fallback") {
         return react.createElement("span", {
           style: Object.assign({}, S.fileBadge, { background: categoryColor(props.category), width: size + "px", height: size + "px", fontSize: Math.max(8, Math.round(size * 0.56)) + "px", lineHeight: size + "px" }),
@@ -3443,7 +3484,38 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /**
+     * Turn on the client diagnostics channel when the plugin runs with `debug: true`.
+     *
+     * `report()` gates on `window.__DOC_LEDGER_DEBUG__`, but nothing in the bundle can read the
+     * host config: the client is evaluated in the browser against a Loader entry it cannot see.
+     * Before this, all seventeen report() call sites were dead and the host's client log only
+     * ever held stale lines. The host now answers `/api/config`, and this is the one place that
+     * sets the flag, early enough for the startup reports that follow.
+     *
+     * Fire-and-forget on purpose: diagnostics must not delay (or be able to block) mounting.
+     */
+    function enableDiagnostics() {
+      if (typeof window === "undefined" || typeof fetch !== "function") return;
+      try {
+        fetch(BASE + "/api/config").then(function (response) {
+          return response.ok ? response.json() : null;
+        }).then(function (payload) {
+          var data = payload && payload.data ? payload.data : null;
+          // Resolves the queue either way: true flushes it, false discards it. Leaving the
+          // flag undefined would keep buffering forever.
+          reportEnable(data !== null && data.debug === true);
+        }).catch(function () {
+          /* a missing endpoint only costs the diagnostics channel */
+          reportEnable(false);
+        });
+      } catch (error) {
+        /* diagnostics must never break apply */
+      }
+    }
+
     function applyInner(ctx) {
+      enableDiagnostics();
       // Install the host translator BEFORE any dictionary registration / render, so
       // evaluation-time constants (category labels, sort labels) and TabTitle all see it.
       setFallback({ zh: zh, en: en });

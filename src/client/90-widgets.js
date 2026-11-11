@@ -107,12 +107,19 @@
       if (primitivesProbed === true) return primitivesModule;
       primitivesProbed = true;
       primitivesModule = null;
+      var failure = "";
       try {
         var loaded = require("@deepseek-ai/dsh-client-ui-primitives");
-        if (loaded && typeof loaded.FileTypeIcon === "function") primitivesModule = loaded;
+        // Accept the icon under any name the package might use: the bundle's own call sites read
+        // `FileTypeIcon`, but a future build could rename it and the others cost one OR each.
+        var icon = loaded ? (loaded.FileTypeIcon || loaded.FileIcon || loaded.FileGlyph) : null;
+        if (typeof icon === "function") primitivesModule = { FileTypeIcon: icon };
+        else failure = loaded ? "no icon export" : "empty module";
       } catch (error) {
-        /* not bundled in this build: tier B/C take over */
+        failure = String((error && error.message) || error).slice(0, 200);
       }
+      // One line per page load, so a real session can be diagnosed from the host log alone.
+      report("primitives", failure === "" ? "tier-A: ok" : "tier-A: miss (" + failure + ")");
       return primitivesModule;
     }
 
@@ -128,8 +135,13 @@
       useStyles();
       var ext = String(props.ext || "").toLowerCase();
       var size = props.size || 16;
-      // Tier A: the host's own icon.
       var primitives = dshPrimitives();
+      // Every hook runs before the tier branch. Returning early on tier A while useState sat
+      // further down would change the hook count between renders, which React rejects.
+      var state = react.useState(ext === "" ? "fallback" : "image");
+      var mode = state[0];
+      var setMode = state[1];
+      // Tier A: the host's own icon. Nothing else is evaluated or fetched for it.
       if (primitives !== null) {
         return react.createElement(primitives.FileTypeIcon, {
           path: props.path || props.name || "",
@@ -137,9 +149,6 @@
         });
       }
       // Tier B renders the host-extracted image; on error it hides itself and reveals tier C.
-      var state = react.useState(ext === "" ? "fallback" : "image");
-      var mode = state[0];
-      var setMode = state[1];
       if (mode === "fallback") {
         return react.createElement("span", {
           style: Object.assign({}, S.fileBadge, { background: categoryColor(props.category), width: size + "px", height: size + "px", fontSize: Math.max(8, Math.round(size * 0.56)) + "px", lineHeight: size + "px" }),

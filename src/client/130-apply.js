@@ -16,7 +16,38 @@
       }
     }
 
+    /**
+     * Turn on the client diagnostics channel when the plugin runs with `debug: true`.
+     *
+     * `report()` gates on `window.__DOC_LEDGER_DEBUG__`, but nothing in the bundle can read the
+     * host config: the client is evaluated in the browser against a Loader entry it cannot see.
+     * Before this, all seventeen report() call sites were dead and the host's client log only
+     * ever held stale lines. The host now answers `/api/config`, and this is the one place that
+     * sets the flag, early enough for the startup reports that follow.
+     *
+     * Fire-and-forget on purpose: diagnostics must not delay (or be able to block) mounting.
+     */
+    function enableDiagnostics() {
+      if (typeof window === "undefined" || typeof fetch !== "function") return;
+      try {
+        fetch(BASE + "/api/config").then(function (response) {
+          return response.ok ? response.json() : null;
+        }).then(function (payload) {
+          var data = payload && payload.data ? payload.data : null;
+          // Resolves the queue either way: true flushes it, false discards it. Leaving the
+          // flag undefined would keep buffering forever.
+          reportEnable(data !== null && data.debug === true);
+        }).catch(function () {
+          /* a missing endpoint only costs the diagnostics channel */
+          reportEnable(false);
+        });
+      } catch (error) {
+        /* diagnostics must never break apply */
+      }
+    }
+
     function applyInner(ctx) {
+      enableDiagnostics();
       // Install the host translator BEFORE any dictionary registration / render, so
       // evaluation-time constants (category labels, sort labels) and TabTitle all see it.
       setFallback({ zh: zh, en: en });
