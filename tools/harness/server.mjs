@@ -79,6 +79,12 @@ function reactDir() {
   return null;
 }
 
+/** Sizes that make the rendered suffix visibly different row to row. */
+const SIZE_BY_EXT = {
+  md: 4301, java: 18264, yml: 892, json: 2048, png: 148532, pdf: 983040,
+  xlsx: 24576, sql: 15360, txt: 640
+};
+
 function file(rel, category, extra) {
   const name = rel.split("\\").pop();
   return Object.assign({
@@ -93,7 +99,10 @@ function file(rel, category, extra) {
     firstUsedAt: NOW - 3600000,
     lastUsedAt: NOW - 1800000,
     created: "inferred",
-    exists: true
+    exists: true,
+    // A plausible size per extension so the row's size suffix has something to render and
+    // the fixture exercises the "no size on disk" path when `exists: false`.
+    bytes: SIZE_BY_EXT[rel.slice(rel.lastIndexOf(".") + 1).toLowerCase()] ?? 1536
   }, extra ?? {});
 }
 
@@ -114,7 +123,7 @@ const SESSIONS = [
       file("docs\\order-notes.md", "doc"),
       file("docs\\2026-11-06-订单服务重构说明.md", "doc"),
       file("config\\application.yml", "config"),
-      file("docs\\archive\\旧版设计稿.md", "doc", { exists: false, reads: 1, writes: 0 })
+      file("docs\\archive\\旧版设计稿.md", "doc", { exists: false, reads: 1, writes: 0, bytes: null })
     ]
   },
   {

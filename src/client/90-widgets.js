@@ -231,7 +231,10 @@
         missing ? react.createElement("span", { style: S.tagMissing }, t("row.missingTag")) : null,
         file.sessionTitle ? react.createElement("span", { style: S.tag, title: file.sessionId }, file.sessionTitle) : null,
         react.createElement("span", { style: S.dir }, highlight(shortPath(file.rel, 34), props.query)),
-        react.createElement("span", { style: S.io }, t("row.read") + (file.reads || 0) + t("row.writeSlash") + (file.writes || 0)),
+        // Size rides in the same cell as the counters instead of taking a column of its own:
+        // at 380px the row is already at its width budget, and "R2/W1 \u00b7 4.2 KB" is one fact
+        // about the file's footprint rather than two unrelated ones.
+        react.createElement("span", { style: S.io }, t("row.read") + (file.reads || 0) + t("row.writeSlash") + (file.writes || 0) + rowSize(file)),
         react.createElement("span", { style: S.times }, rowTime(file, props.mode))
       );
     }, function (prev, next) {
@@ -258,6 +261,21 @@
         return file.updatedAt ? t("row.onlyUpdated", { time: fmtTime(file.updatedAt) }) : "";
       }
       return t("row.onlyUsed", { time: fmtTime(file.lastUsedAt || file.updatedAt) });
+    }
+
+    /**
+     * The size suffix for a row, or "" when there is nothing honest to show.
+     *
+     * A deleted file has no size on disk, and printing the last known one would invite the
+     * reader to trust a number about a file that no longer exists. The separator is the same
+     * middot the time cells use, so the two metadata cells read as one family.
+     */
+    function rowSize(file, enabled) {
+      if (enabled === false) return "";
+      var bytes = file.bytes;
+      if (typeof bytes !== "number" || !isFinite(bytes) || bytes < 0) return "";
+      var text = fmtBytes(bytes);
+      return text === "" ? "" : t("ui.sep") + text;
     }
 
     /**

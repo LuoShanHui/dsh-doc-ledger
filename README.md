@@ -707,12 +707,12 @@ tools/route-check.mjs          host route and security regression: 14 assertions
 tools/cache-check.mjs          cache decisions + obsolete-file cleanup: 10 assertions
 tools/client-core-check.mjs    client pure functions: 53 assertions (search, sort, merge, format, plurals, locale, sections, glyph URLs)
 tools/theme-check.mjs          theme factory: 7 assertions (four themes, key parity, pairwise distinct)
-tools/row-time-check.mjs       one timestamp per row, chosen by section: 5 assertions
+tools/row-time-check.mjs       one timestamp per row and the size suffix: 6 assertions
 tools/readme-check.mjs         bilingual README parity: sections, links, anchors, image files, language prefixes
 tools/release-notes-check.mjs  release-note parity: English twin, structure, tag-pinned images
 ```
 
-`npm test` runs ten check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 10 + client 53 + theme 9 + row time 5 + i18n's 187-key + plural integrity check + README parity 10 + release notes 9 = **127 checks**, no external dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to
+`npm test` runs ten check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 10 + client 53 + theme 9 + row time 6 + i18n's 187-key + plural integrity check + README parity 10 + release notes 9 = **128 checks**, no external dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to
 prove that the committed `client.js` matches `src/client/*.js` byte for byte.
 
 For UI changes, look at the panel in a browser with `npm run harness`: it serves the real `client.js` against

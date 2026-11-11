@@ -75,7 +75,7 @@ const OPENWITH_TTL_MS = 10 * 60 * 1000;
  * The per-file fields the panel renders. `uses` alone is ~30% of the payload and
  * nothing on the client reads it, so it never leaves the host.
  */
-function slimFile(file, exists) {
+function slimFile(file, stat) {
   return {
     name: file.name,
     path: file.path,
@@ -88,7 +88,11 @@ function slimFile(file, exists) {
     firstUsedAt: file.firstUsedAt,
     lastUsedAt: file.lastUsedAt,
     created: file.created,
-    exists: exists === undefined ? (file.exists ?? null) : exists
+    exists: stat === undefined ? (file.exists ?? null) : stat.exists,
+    // Current size on disk, or null when the file is gone. Part of the payload rather than
+    // of the cached ledger: a file that grows does not change the log, so a cached size would
+    // be wrong the moment the next write lands.
+    bytes: stat === undefined ? (file.bytes ?? null) : stat.bytes
   };
 }
 
@@ -294,26 +298,32 @@ export function apply(ctx, config = {}) {
   }
 
   /**
-   * `exists` is a property of the disk right now, not of the log, so it is resolved per
-   * snapshot (and cached for a few seconds) instead of being baked into the cached ledger.
+   * `exists` and `bytes` are properties of the disk right now, not of the log, so they are
+   * resolved per snapshot (and cached for a few seconds) instead of being baked into the
+   * cached ledger. One `statSync` answers both — asking twice for the same file would double
+   * the syscall count on a 900-row table for no reason.
    */
   const existsCache = new Map();
   const EXISTS_TTL_MS = 20 * 1000;
   const EXISTS_CACHE_MAX = 4000;
 
-  function existsOf(path) {
+  /** `{ exists, bytes }`; `bytes` is null for a missing file or a stat failure. */
+  function statOf(path) {
     const hit = existsCache.get(path);
     const now = Date.now();
-    if (hit !== undefined && now - hit.at < EXISTS_TTL_MS) return hit.exists;
-    let exists = false;
+    if (hit !== undefined && now - hit.at < EXISTS_TTL_MS) return hit;
+    let entry = { at: now, exists: false, bytes: null };
     try {
-      exists = statSync(path).isFile();
+      const info = statSync(path);
+      if (info.isFile()) {
+        entry = { at: now, exists: true, bytes: info.size };
+      }
     } catch {
-      exists = false;
+      /* missing, unreadable or gone: the row shows as deleted */
     }
     if (existsCache.size >= EXISTS_CACHE_MAX) existsCache.clear();
-    existsCache.set(path, { at: now, exists });
-    return exists;
+    existsCache.set(path, entry);
+    return entry;
   }
 
 
@@ -646,7 +656,7 @@ export function apply(ctx, config = {}) {
           live: record.live,
           parentSessionId: record.parentSession,
           counts: ledger.counts,
-          files: ledger.files.map((file) => slimFile(file, existsOf(file.path))),
+          files: ledger.files.map((file) => slimFile(file, statOf(file.path))),
         });
       }
       sessions.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));

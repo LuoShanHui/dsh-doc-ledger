@@ -79,6 +79,17 @@ check("每行只输出一个时间戳", () => {
   }
 });
 
+check("rowSize: 有字节就显示，缺失或已删除则不显示", () => {
+  // A deleted file has no size on disk; showing the last known one would be a lie.
+  assert.match(sandbox.rowSize({ bytes: 2048 }), /2\.0 KB/);
+  assert.match(sandbox.rowSize({ bytes: 512 }), /512 B/);
+  assert.equal(sandbox.rowSize({ bytes: null }), "", "no size on disk renders nothing");
+  assert.equal(sandbox.rowSize({}), "");
+  assert.equal(sandbox.rowSize({ bytes: -1 }), "", "a negative size is nonsense");
+  assert.equal(sandbox.rowSize({ bytes: Number.NaN }), "");
+  assert.equal(sandbox.rowSize({ bytes: 2048 }, false), "", "the caller can turn the size off");
+});
+
 check("缺字段时降级而不是渲染 null", () => {
   assert.equal(rowTime(file({ createdAt: null }), "created"), "", "no createdAt must render empty");
   assert.equal(rowTime(file({ updatedAt: null }), "modified"), "", "no updatedAt must render empty");
