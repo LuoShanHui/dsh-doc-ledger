@@ -14,7 +14,7 @@
  * program, so their logs record only that program's text and their ledger stays
  * empty; see README for the fs-interception follow-up.
  */
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join } from "node:path";
 import { execFile, spawn } from "node:child_process";
@@ -114,6 +114,33 @@ export function ledgerReusable(hit, options = {}) {
   if (stamp === null && hit.live === live && hit.ttl !== undefined && age < hit.ttl) return true;
   if (floor > 0 && live === true && age < floor) return true;
   return false;
+}
+
+/**
+ * Remove cache files that earlier versions wrote and nothing reads now.
+ *
+ * `doc-ledger-snapshot.json.gz` cached the whole `/api/all` response before per-session
+ * ledgers replaced it: 32 KB of dead weight that would otherwise sit in `~/.dsh` forever.
+ * (The icon directory has its own TTL pruning in `pruneIcons`, so it is not repeated here.)
+ *
+ * Exported with an explicit `dir` so `tools/cache-check.mjs` can prove the deletion against a
+ * temporary directory. Returns the names it actually removed.
+ */
+export function cleanObsoleteFiles(dir) {
+  const target = dir ?? join(homedir(), ".dsh");
+  const gone = [];
+  for (const name of ["doc-ledger-snapshot.json.gz", "doc-ledger-snapshot.json"]) {
+    try {
+      const file = join(target, name);
+      if (existsSync(file)) {
+        rmSync(file, { force: true });
+        gone.push(name);
+      }
+    } catch {
+      /* an undeletable leftover is not worth a warning */
+    }
+  }
+  return gone;
 }
 export function apply(ctx, config = {}) {
   const maxSessions = Number(config.maxSessions ?? 40);
@@ -493,6 +520,17 @@ export function apply(ctx, config = {}) {
     }, LEDGER_SAVE_DELAY_MS);
     if (typeof ledgerSaveTimer.unref === "function") ledgerSaveTimer.unref();
   }
+
+  /**
+   * Remove cache files that earlier versions of this plugin wrote and nothing reads now.
+   *
+   * `doc-ledger-snapshot.json.gz` cached the whole `/api/all` response before per-session
+   * ledgers replaced it. It is 32 KB of dead weight that would otherwise sit in `~/.dsh`
+   * forever. (The icon directory has its own pruning in `pruneIcons`, keyed by TTL, so it is
+   * deliberately not repeated here.)
+   *
+   * Best effort: a permission error must never stop the plugin from loading.
+   */
 
   /**
    * @param liveIds ids of sessions that are still running (their title may change)
@@ -1378,6 +1416,13 @@ export function apply(ctx, config = {}) {
       sendJson(res, 500, { ok: false, error: "读取失败：" + (error instanceof Error ? error.message : String(error)) });
     }
   }
+
+  // Clear leftovers from earlier versions once, off the startup path.
+  ctx.effect(() => {
+    const timer = setTimeout(cleanObsoleteFiles, 0);
+    if (typeof timer.unref === "function") timer.unref();
+    return () => clearTimeout(timer);
+  });
 
   ctx.effect(() => ctx.webServer.register({
     kind: "prefix",
