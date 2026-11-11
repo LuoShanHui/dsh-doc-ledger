@@ -656,7 +656,7 @@ lib/ui.css           仅静态报告用
 lib/ui.client.js     仅静态报告用：浏览器端清单/排序/搜索
 lib/preview-text.js  预览解码：BOM / UTF-8 / 按行 GB18030 回退（纯函数，无依赖）
 tools/build-client.mjs      确定性拼接 src/client/*.js -> client.js（--check 校验产物未漂移）
-tools/i18n-check.mjs        i18n 完整性回归：键集合 / 引用 / 占位符
+tools/i18n-check.mjs        i18n 完整性回归：键集合 / 引用 / 占位符 / 复数覆盖
 tools/i18n-extract.mjs      抽取残留的硬编码中文串，生成 docs/i18n-strings.md
 tools/report.mjs     静态报告生成器（复用同一引擎）
 tools/ledger-scan-check.mjs    引擎回归：7 个 PTC 写文件场景
@@ -671,7 +671,7 @@ tools/readme-check.mjs         双语 README 一致性：小节、互链、锚�
 tools/release-notes-check.mjs  Release notes 一致性：英文孪生、结构、配图钉 tag
 ```
 
-`npm test` 依次跑十支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 10 + 客户端 51 + 主题 9 + 行时间 5 + i18n 187 个 key 的完整性 + 双语 README 一致性 10 + Release notes 一致性 9 = **125 项**，无外部依赖），CI 里三套 Node 各跑一遍。
+`npm test` 依次跑十支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 10 + 客户端 51 + 主题 9 + 行时间 5 + i18n 187 个 key + 复数完整性 + 双语 README 一致性 10 + Release notes 一致性 9 = **125 项**，无外部依赖），CI 里三套 Node 各跑一遍。
 CI 还会执行 `npm run check:client`，确保提交的 `client.js` 与 `src/client/*.js` 逐字节一致。
 
 面板本身的 UI 变更用 `npm run harness` 在浏览器里看：它会用真实的 `client.js` + 假 cordis 上下文 + 合成台账起一个本地页，

@@ -89,4 +89,33 @@ const unused = zhKeys.filter((k) => {
 assert.deepEqual(dangling, [], "t() references keys missing from the dictionaries");
 assert.deepEqual(unused, [], "dictionary keys never referenced (add to DYNAMIC if reached through a table)");
 
+// --- plural coverage ------------------------------------------------------
+// A string with a count in it must offer `_one` / `_other`, or English shows "1 files".
+// `count` and `n` are the parameters the runtime feeds to Intl.PluralRules, so those are the
+// only fields that can be pluralised — a template with several counters (summary.line) uses
+// label + number instead, which reads fine in both languages.
+const COUNT_PARAM = /\{(n|count)\}/;
+/**
+ * A parenthesis that only wraps the number is not a quantity phrase: "{title} ({count})"
+ * reads the same at 1 and 3. Only a count followed by a noun needs `_one` / `_other`.
+ */
+const BARE_COUNT = /[（(]\s*\{(n|count)\}\s*[)）]/;
+const missingPlurals = [];
+for (const key of zhKeys) {
+  if (VARIANT.test(key) || DYNAMIC.has(key)) continue;
+  const zhText = zh[key] ?? "";
+  const enText = en[key] ?? "";
+  const counted = (COUNT_PARAM.test(zhText) || COUNT_PARAM.test(enText))
+    && !(BARE_COUNT.test(zhText) && BARE_COUNT.test(enText));
+  if (!counted) continue;
+  for (const form of ["_one", "_other"]) {
+    if (!zhKeys.includes(key + form)) missingPlurals.push(key + form);
+  }
+}
+assert.deepEqual(missingPlurals, [], "counted strings must define _one and _other");
+
+// A plural variant that no base string uses is dead weight.
+const orphanVariants = zhKeys.filter((key) => VARIANT.test(key) && !zhKeys.includes(baseOf(key)));
+assert.deepEqual(orphanVariants, [], "plural variants without a base key");
+
 console.log("ok - " + zhKeys.length + " i18n keys, " + referenced.size + " referenced, zh/en + placeholders match");

@@ -685,7 +685,7 @@ lib/ui.css           static report only
 lib/ui.client.js     static report only: list / sort / search in the browser
 lib/preview-text.js  preview decoding: BOM / UTF-8 / per-line GB18030 fallback (pure functions, no dependencies)
 tools/build-client.mjs      deterministic concatenation of src/client/*.js into client.js (--check verifies)
-tools/i18n-check.mjs        i18n integrity: key sets, references, placeholders
+tools/i18n-check.mjs        i18n integrity: key sets, references, placeholders, plural coverage
 tools/i18n-extract.mjs      extracts remaining hard-coded Chinese strings into docs/i18n-strings.md
 tools/report.mjs     static report generator (reuses the same engine)
 tools/ledger-scan-check.mjs    engine regression: 7 PTC write scenarios
@@ -700,7 +700,7 @@ tools/readme-check.mjs         bilingual README parity: sections, links, anchors
 tools/release-notes-check.mjs  release-note parity: English twin, structure, tag-pinned images
 ```
 
-`npm test` runs ten check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 10 + client 51 + theme 9 + row time 5 + i18n's 187-key integrity check + README parity 10 + release notes 9 = **125 checks**, no external dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to
+`npm test` runs ten check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 10 + client 51 + theme 9 + row time 5 + i18n's 187-key + plural integrity check + README parity 10 + release notes 9 = **125 checks**, no external dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to
 prove that the committed `client.js` matches `src/client/*.js` byte for byte.
 
 For UI changes, look at the panel in a browser with `npm run harness`: it serves the real `client.js` against
