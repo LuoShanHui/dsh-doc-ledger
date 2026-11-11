@@ -7,6 +7,17 @@
 
 ### Added
 
+- **文件图标三级降级 A > B > C**：文件行前的小色块换成真实图标。
+  **A** 是 DSH 自己的 `FileTypeIcon`（`@deepseek-ai/dsh-client-ui-primitives` 导出，用 `require`
+  探测，和 20-assets.js 加载 tab 插画同一套机会式写法）。实测 DSH 0.2.2-rc.1 里该包在构建期被内联、
+  未注册为 client 模块，所以这一档通常落空——但探测零成本，将来宿主一旦暴露就自动生效。
+  **B** 是 Windows 真实的关联图标：宿主新增 `GET /doc-ledger/fileicon?ext=<ext>`，用 shell32 的
+  `SHGetFileInfo` 按扩展名提取，缓存在 `~/.dsh/doc-ledger-fileicons/`（一个 `.md` 提取一次）。
+  插件进程拿不到 Electron 的 `app.getFileIcon`（`process.versions.electron` 为 undefined，也没有
+  `electron` 模块），这是等效替代。实测已能取到 IntelliJ 的 Java 图标、JSON 大括号、Markdown 的 M。
+  **C** 是自绘徽标（扩展名前几位 + 类型色），永远可用，同时兼任 B 的加载占位与 404 兜底。
+  踩坑两处：`Add-Type -TypeDefinition` 必须显式 `-ReferencedAssemblies System.Drawing`，
+  且 here-string 脚本必须用真实换行拼接——用 `"; "` 拼成一行会让 `@'...'@` 编译失败，而且不留痕迹。
 - **四套可切换的视觉主题**：`compact`（原版，默认）/ `airy`（留白分层）/ `table`（表格化对齐）/
   `card`（浮起卡片 + 阴影）。工具栏新增「主题」按钮循环切换，选择写入 `localStorage`。
   `70-styles.js` 从一张常量表重构成 `buildStyles(theme)` 工厂，58 个 key / ~330 处引用不变，

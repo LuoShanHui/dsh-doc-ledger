@@ -16,11 +16,56 @@ import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { crc32, deflateSync } from "node:zlib";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = dirname(dirname(HERE));
 const PORT = Number(process.env.DOC_LEDGER_HARNESS_PORT || 8899);
 const NOW = Date.UTC(2026, 10, 6, 9, 0, 0);
+
+/**
+ * A 16x16 PNG of a solid tint, built with zlib only.
+ *
+ * The harness serves tier B of the file glyph (the plugin extracts real shell icons; there is
+ * no shell here), so it needs *some* image bytes. A solid square is enough: what the test cares
+ * about is that the <img> loads, that a 404 falls back to tier C, and that both occupy the same
+ * 16px box without shifting the row.
+ */
+function glyphPng(/* label, tint are unused by the solid fill but kept for call-site clarity */) {
+  const size = 16;
+  const rgba = Buffer.alloc(size * (1 + size * 4));
+  const [r, g, b] = [0x4f, 0x7c, 0xf7];
+  for (let y = 0; y < size; y += 1) {
+    const rowStart = y * (1 + size * 4);
+    rgba[rowStart] = 0; // filter: none
+    for (let x = 0; x < size; x += 1) {
+      const at = rowStart + 1 + x * 4;
+      rgba[at] = r;
+      rgba[at + 1] = g;
+      rgba[at + 2] = b;
+      rgba[at + 3] = 255;
+    }
+  }
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body) >>> 0);
+    return Buffer.concat([length, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // colour type: RGBA
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(rgba)),
+    chunk("IEND", Buffer.alloc(0))
+  ]);
+}
 
 function reactDir() {
   const candidates = [
@@ -184,6 +229,19 @@ const server = createServer((req, res) => {
   }
   if (path === "/doc-ledger/api/open") return json(res, 200, { ok: true, data: { ok: true } });
   if (path === "/doc-ledger/api/_clienterror") { res.writeHead(204); res.end(); return; }
+  // Tier B of the file glyph: the real plugin extracts these through shell32. The harness has
+  // no shell, so it serves a tiny drawn PNG per known extension and 404s the rest — which is
+  // exactly the contract the client has to handle (and the way tier C gets exercised).
+  if (path === "/doc-ledger/fileicon") {
+    const ext = String(url.searchParams.get("ext") || "").toLowerCase();
+    const known = { md: "#4f7cf7", js: "#eab308", json: "#eab308", java: "#e76f00", yml: "#64748b", yaml: "#64748b" };
+    const tint = known[ext];
+    if (tint === undefined) { res.writeHead(404); res.end(); return; }
+    const png = glyphPng(ext.slice(0, 2).toUpperCase(), tint);
+    res.writeHead(200, { "content-type": "image/png", "content-length": String(png.length), "cache-control": "no-store" });
+    res.end(png);
+    return;
+  }
 
   res.writeHead(404, { "content-type": "text/plain" });
   res.end("not found");

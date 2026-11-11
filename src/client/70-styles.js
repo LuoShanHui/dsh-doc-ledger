@@ -130,6 +130,9 @@
         filterActionGlyph: { fontSize: "10px", lineHeight: "16px", opacity: 0.75 },
         moreRow: { padding: "5px 9px", cursor: "pointer", color: c.accent, borderTop: "1px solid " + c.hairline, textAlign: "center" },
         dot: { width: "7px", height: "7px", borderRadius: "2px", flex: "0 0 auto" },
+        // Tier-C file badge: a small rounded square with the extension on a per-type tint.
+        // It sits under the tier-B image, so it doubles as the loading placeholder.
+        fileBadge: { display: "inline-block", flex: "0 0 auto", borderRadius: "3px", color: c.onAccent, fontWeight: 700, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.02em", overflow: "hidden" },
         // Three visual tiers, and only three: the file name is the anchor (100% + semibold),
         // the path is context (faint, 11px, allowed to shrink to nothing), the counters are
         // metadata (dim, tabular). Before this every cell was the same grey at the same size,

@@ -244,6 +244,14 @@ trimmed by `slimFile()`, because `uses` alone was 30% of the payload and the cli
 - **All sessions**: "Group by session" is on by default (one card per session, split into created/used
   inside the card); turn it off to merge everything into two cross-session lists where each row carries a
   session tag.
+- **File glyphs with a three-tier fallback**: each row shows a real icon, resolved A → B → C.
+  **A** is DSH's own `FileTypeIcon` (probed through `require`, the same opportunistic way the tab
+  artwork is loaded); **B** is the actual Windows association icon, which the host extracts per
+  extension via shell32's `SHGetFileInfo` — `app.getFileIcon` is unreachable from the plugin
+  process, so this is the honest substitute, and it is what renders today (IntelliJ's Java icon,
+  the JSON braces, Markdown's M); **C** is a drawn badge with the extension on a per-type tint,
+  always available and also the loading placeholder and the 404 fallback. Icons are cached per
+  extension in `~/.dsh/doc-ledger-fileicons/` — one extraction covers every `.md` in the ledger.
 - **Visual themes**: a "Theme" dropdown in the toolbar switches between four looks — **Compact** (the default),
   **Airy** (whitespace and weight instead of hairlines), **Table** (zebra rows and tabular numbers) and
   **Card** (floating cards with soft shadows). Pick any theme directly — the active one is ticked. The
@@ -693,14 +701,14 @@ tools/preview-decode-check.mjs decoder regression: 10 encoding scenarios
 tools/harness/                 UI verification: real client.js + fake ctx + synthetic ledger (npm run harness)
 tools/route-check.mjs          host route and security regression: 14 assertions
 tools/cache-check.mjs          cache decisions + obsolete-file cleanup: 10 assertions
-tools/client-core-check.mjs    client pure functions: 51 assertions (search, sort, merge, format, plurals, locale, section decisions)
+tools/client-core-check.mjs    client pure functions: 53 assertions (search, sort, merge, format, plurals, locale, sections, glyph URLs)
 tools/theme-check.mjs          theme factory: 7 assertions (four themes, key parity, pairwise distinct)
 tools/row-time-check.mjs       one timestamp per row, chosen by section: 5 assertions
 tools/readme-check.mjs         bilingual README parity: sections, links, anchors, image files, language prefixes
 tools/release-notes-check.mjs  release-note parity: English twin, structure, tag-pinned images
 ```
 
-`npm test` runs ten check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 10 + client 51 + theme 9 + row time 5 + i18n's 187-key + plural integrity check + README parity 10 + release notes 9 = **125 checks**, no external dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to
+`npm test` runs ten check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 10 + client 53 + theme 9 + row time 5 + i18n's 187-key + plural integrity check + README parity 10 + release notes 9 = **127 checks**, no external dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to
 prove that the committed `client.js` matches `src/client/*.js` byte for byte.
 
 For UI changes, look at the panel in a browser with `npm run harness`: it serves the real `client.js` against

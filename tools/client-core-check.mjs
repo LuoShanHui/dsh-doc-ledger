@@ -55,7 +55,7 @@ for (const name of [
   "fmtTime", "fmtBytes", "encodingLabel", "categoryColor", "categoryLabel",
   "shortPath", "highlight", "hostFileAddress", "iconUrl", "pad",
   "sortSpecOf", "rowModeOf", "rowsReachable", "rowLimitOf", "clampRowIndex",
-  "isActiveRow", "hasActiveRow", "nextRowLimit"
+  "isActiveRow", "hasActiveRow", "nextRowLimit", "extOf", "fileIconUrl"
 ]) {
   assert.equal(typeof f(name), "function", "missing function from fragments: " + name);
 }
@@ -355,6 +355,23 @@ check("clampRowIndex: 到边界停住，不环绕", () => {
   assert.equal(f("clampRowIndex")(0, -1, 5), 0, "before the first row stays on the first row");
   assert.equal(f("clampRowIndex")(2, -1, 5), 1);
   assert.equal(f("clampRowIndex")(0, 1, 0), 0, "an empty section has nowhere to move");
+});
+
+check("extOf: 从路径取小写扩展名，无扩展名返回空", () => {
+  assert.equal(f("extOf")("C:\\w\\a\\notes.md"), "md");
+  assert.equal(f("extOf")("/home/u/Doc.TXT"), "txt");
+  assert.equal(f("extOf")("archive.tar.gz"), "gz", "only the last segment counts");
+  assert.equal(f("extOf")("Makefile"), "", "no dot means no extension");
+  assert.equal(f("extOf")(".gitignore"), "", "a leading dot is a dotfile, not an extension marker");
+  assert.equal(f("extOf")("trailing."), "", "a trailing dot is not an extension");
+  assert.equal(f("extOf")(""), "");
+  assert.equal(f("extOf")(null), "");
+});
+
+check("fileIconUrl: 指向宿主端点并转义扩展名", () => {
+  assert.equal(f("fileIconUrl")("md"), "/doc-ledger/fileicon?ext=md");
+  assert.equal(f("fileIconUrl")("MD"), "/doc-ledger/fileicon?ext=md", "lowercased");
+  assert.equal(f("fileIconUrl")(""), "/doc-ledger/fileicon?ext=");
 });
 
 check("isActiveRow: 只有时间戳没有计数也算活动", () => {

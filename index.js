@@ -920,6 +920,218 @@ export function apply(ctx, config = {}) {
   }
 
   /**
+   * Real Windows file icons, extracted per *extension* through the shell.
+   *
+   * `app.getFileIcon` (Electron) would be the obvious route, but the plugin's host half runs in
+   * a plain Node child of Electron: `process.versions.electron` is undefined there, so there is
+   * no `app` object and no `electron` module to require. `SHGetFileInfo` from shell32 is the
+   * association Explorer itself uses, which makes it the honest B tier.
+   *
+   * Extracted per extension, not per path: the icon is an association, so 40 `.md` files cost
+   * one extraction. When this 404s the client falls back to its own drawing (tier C).
+   */
+  const FILEICON_DIR = join(homedir(), ".dsh", "doc-ledger-fileicons");
+  const FILEICON_KEEP_MAX = 200;
+  /** ext -> cached PNG path ("" when extraction is known to fail), LRU ordered. */
+  const fileIconCache = new Map();
+  const fileIconPending = new Map();
+  let fileIconPruned = false;
+
+  /** Strip a leading dot and sanity-check an extension so it cannot escape the cache dir. */
+  function safeExt(value) {
+    const ext = String(value ?? "").toLowerCase().replace(/^\.+/, "");
+    return /^[a-z0-9_+-]{1,16}$/.test(ext) ? ext : "";
+  }
+
+  function fileIconPath(ext) {
+    return join(FILEICON_DIR, ext + "-" + createHash("sha1").update("v1:" + ext).digest("hex").slice(0, 8) + ".png");
+  }
+
+  function fileIconOnDisk(file) {
+    try {
+      return existsSync(file) && statSync(file).size > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Drop icons of extensions that stopped appearing, so the directory cannot grow forever. */
+  function pruneFileIcons() {
+    if (fileIconPruned === true) return;
+    fileIconPruned = true;
+    const timer = setTimeout(() => {
+      try {
+        const entries = readdirSync(FILEICON_DIR)
+          .map((name) => ({ name, file: join(FILEICON_DIR, name) }))
+          .map((entry) => {
+            try {
+              return { ...entry, at: statSync(entry.file).mtimeMs };
+            } catch {
+              return { ...entry, at: 0 };
+            }
+          })
+          .sort((left, right) => right.at - left.at);
+        for (const stale of entries.slice(FILEICON_KEEP_MAX)) {
+          try {
+            unlinkSync(stale.file);
+          } catch {
+            /* one file */
+          }
+        }
+      } catch {
+        /* the directory does not exist yet */
+      }
+    }, 3000);
+    if (typeof timer.unref === "function") timer.unref();
+  }
+
+  /**
+   * One PowerShell run for a batch of extensions.
+   *
+   * SHGetFileInfo hands back an HICON that must be cloned and then released with DestroyIcon;
+   * skipping the release leaks a GDI handle per icon, which is why the P/Invoke block is spelled
+   * out instead of relying on `ExtractAssociatedIcon` (that one only reads executables).
+   */
+  function runFileIconBatch(jobs) {
+    return new Promise((resolve) => {
+      const listFile = join(tmpdir(), "doc-ledger-fileicons-" + process.pid + "-" + Date.now() + ".txt");
+      const lines = jobs.map((job) => job.ext + "|" + job.file).join("\r\n");
+      try {
+        mkdirSync(FILEICON_DIR, { recursive: true });
+        writeFileSync(listFile, "\uFEFF" + lines, "utf8");
+      } catch {
+        resolve(new Set());
+        return;
+      }
+      const powershell = join(WINDIR, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+      const script = [
+        "Add-Type -AssemblyName System.Drawing",
+        "Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'",
+        "using System;",
+        "using System.Runtime.InteropServices;",
+        "public class DocLedgerShellIcon {",
+        "  [DllImport(\"shell32.dll\", CharSet = CharSet.Unicode)]",
+        "  public static extern IntPtr SHGetFileInfo(string pszPath, uint dwFileAttributes, ref SHFILEINFO psfi, uint cbFileInfo, uint uFlags);",
+        "  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]",
+        "  public struct SHFILEINFO {",
+        "    public IntPtr hIcon; public int iIcon; public uint dwAttributes;",
+        "    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szDisplayName;",
+        "    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string szTypeName;",
+        "  }",
+        "  public static System.Drawing.Icon Get(string path) {",
+        "    SHFILEINFO info = new SHFILEINFO();",
+        "    IntPtr res = SHGetFileInfo(path, 0, ref info, (uint)Marshal.SizeOf(info), 0x000000100u);",
+        "    if (res == IntPtr.Zero || info.hIcon == IntPtr.Zero) return null;",
+        "    try { return (System.Drawing.Icon)System.Drawing.Icon.FromHandle(info.hIcon).Clone(); }",
+        "    finally { DestroyIcon(info.hIcon); }",
+        "  }",
+        "  [DllImport(\"user32.dll\")] public static extern bool DestroyIcon(IntPtr hIcon);",
+        "}",
+        "'@",
+        "$out = New-Object System.Collections.Generic.List[string]",
+        "foreach ($line in (Get-Content -LiteralPath $env:DOC_LEDGER_FILEICON_LIST -Encoding UTF8)) {",
+        "  $parts = $line.Split([char]124)",
+        "  if ($parts.Length -lt 2) { continue }",
+        "  try {",
+        // A probe file on disk makes the shell resolve the extension association; create once.
+        "    $probe = Join-Path ([System.IO.Path]::GetTempPath()) ('doc-ledger-probe.' + $parts[0])",
+        "    if (-not (Test-Path -LiteralPath $probe)) { [System.IO.File]::WriteAllText($probe, '') }",
+        "    $icon = [DocLedgerShellIcon]::Get($probe)",
+        "    if ($icon -ne $null) { $icon.ToBitmap().Save($parts[1], [System.Drawing.Imaging.ImageFormat]::Png); $icon.Dispose() }",
+        "  } catch { }",
+        "}"
+        // Real newlines on purpose: the Add-Type here-string (`@'` … `'@`) is line-based and
+        // silently fails to compile when the whole script is joined onto one line.
+      ].join("\r\n");
+      execFileAsync(powershell, ["-NoProfile", "-NonInteractive", "-Command", script], {
+        encoding: "utf8",
+        timeout: 25000,
+        windowsHide: true,
+        env: Object.assign(launchEnv(), { DOC_LEDGER_FILEICON_LIST: listFile })
+      }).then(() => {
+        const ok = new Set();
+        for (const job of jobs) if (fileIconOnDisk(job.file)) ok.add(job.ext);
+        resolve(ok);
+      }, () => resolve(new Set())).finally(() => {
+        try {
+          unlinkSync(listFile);
+        } catch {
+          /* temp file cleanup is best effort */
+        }
+      });
+    });
+  }
+
+  /** Resolve file icons for a set of extensions; missing ones share one PowerShell run. */
+  function resolveFileIcons(exts) {
+    pruneFileIcons();
+    const result = new Map();
+    const todo = [];
+    for (const raw of exts) {
+      const ext = safeExt(raw);
+      if (ext === "") continue;
+      if (fileIconCache.has(ext)) {
+        result.set(ext, fileIconCache.get(ext));
+        continue;
+      }
+      const pending = fileIconPending.get(ext);
+      if (pending !== undefined) {
+        result.set(ext, pending);
+        continue;
+      }
+      const file = fileIconPath(ext);
+      if (fileIconOnDisk(file)) {
+        fileIconCache.set(ext, file);
+        result.set(ext, file);
+        continue;
+      }
+      todo.push({ ext, file });
+    }
+    if (todo.length === 0) return Promise.resolve(result);
+    const batch = runFileIconBatch(todo).then((ok) => {
+      for (const job of todo) {
+        const file = ok.has(job.ext) ? job.file : "";
+        fileIconCache.set(job.ext, file);
+        fileIconPending.delete(job.ext);
+        result.set(job.ext, file);
+      }
+      return result;
+    });
+    for (const job of todo) {
+      fileIconPending.set(job.ext, batch.then((map) => map.get(job.ext) ?? ""));
+    }
+    return batch;
+  }
+
+  /** Serve one extracted file icon, or 404 so the client draws its own fallback. */
+  async function handleFileIcon(res, url) {
+    const ext = safeExt(url.searchParams.get("ext"));
+    if (ext === "") {
+      sendJson(res, 400, { error: "ext required" });
+      return;
+    }
+    const resolved = await resolveFileIcons([ext]);
+    const file = resolved.get(ext) ?? "";
+    if (file === "" || !fileIconOnDisk(file)) {
+      sendJson(res, 404, { error: "no shell icon for this extension" });
+      return;
+    }
+    try {
+      const bytes = readFileSync(file);
+      res.writeHead(200, {
+        "content-type": "image/png",
+        "content-length": String(bytes.length),
+        // An extension association changes only when the user installs software.
+        "cache-control": "private, max-age=86400",
+        "x-content-type-options": "nosniff"
+      });
+      res.end(bytes);
+    } catch {
+      sendJson(res, 404, { error: "icon unreadable" });
+    }
+  }
+
+  /**
    * Resolve icons for a set of executables. Programs already cached or on disk cost
    * nothing; the rest share one PowerShell run (measured: 6 icons in 510 ms serially
    * versus 308 ms batched, and the gap grows with the number of programs).
@@ -1475,6 +1687,7 @@ export function apply(ctx, config = {}) {
       }
       if (url.pathname === base + "/api/file") return handleFile(res, url);
       if (url.pathname === base + "/icon") return handleIcon(res, url);
+      if (url.pathname === base + "/fileicon") return handleFileIcon(res, url);
       res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       res.end("doc-ledger: not found");
     },

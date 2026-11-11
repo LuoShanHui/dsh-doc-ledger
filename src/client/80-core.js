@@ -154,3 +154,22 @@
       return BASE + "/icon?path=" + encodeURIComponent(String(exe));
     }
 
+    /**
+     * The platform's association icon for an extension (tier B of FileGlyph).
+     * A 404 is the normal answer for an extension Windows does not know, and the client then
+     * draws its own badge instead.
+     */
+    function fileIconUrl(ext) {
+      return BASE + "/fileicon?ext=" + encodeURIComponent(String(ext || "").toLowerCase());
+    }
+
+    /** The extension of a path, lowercased, without the dot. "" when there is none. */
+    function extOf(path) {
+      var name = String(path || "");
+      var slash = Math.max(name.lastIndexOf("/"), name.lastIndexOf("\\"));
+      var base = slash >= 0 ? name.slice(slash + 1) : name;
+      var dot = base.lastIndexOf(".");
+      if (dot <= 0 || dot === base.length - 1) return "";
+      return base.slice(dot + 1).toLowerCase();
+    }
+

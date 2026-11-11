@@ -211,6 +211,12 @@
 
 - **当前会话**：创建/修改 + 使用过两个清单。
 - **全部会话**：默认开启「区分会话」（每个会话一张卡片，卡片内再分创建/使用）；关掉则合并成两个跨会话清单，每行带会话标签。
+- **文件图标三级降级**：每行显示真实图标，按 A → B → C 取。**A** 是 DSH 自己的 `FileTypeIcon`
+  （用 `require` 探测，和 tab 插画同一套机会式加载）；**B** 是 Windows 真实的关联图标，由宿主按扩展名
+  用 shell32 的 `SHGetFileInfo` 提取——插件进程拿不到 `app.getFileIcon`，这是等效替代，也是目前实际
+  渲染的那一档（IntelliJ 的 Java 图标、JSON 大括号、Markdown 的 M）；**C** 是自绘徽标（扩展名前几位 +
+  类型色），永远可用，同时兼任加载占位和 B 级 404 的兜底。图标按扩展名缓存在
+  `~/.dsh/doc-ledger-fileicons/`，一个 `.md` 提取一次就覆盖整本台账。
 - **视觉主题**：工具栏的「主题」下拉列表直接选择四套外观——**紧凑**（默认）/ **留白**（用留白和字重替代分隔线）/
   **表格**（斑马纹 + 等宽数字）/ **卡片**（浮起卡片 + 柔和阴影）；当前生效的那套打勾。选择跨刷新记住，
   每套都读宿主的颜色 token，深浅色自动跟随。
@@ -664,14 +670,14 @@ tools/preview-decode-check.mjs 解码回归：10 个编码场景
 tools/harness/                  UI 验证工具：真 client.js + 假 ctx + 合成台账（npm run harness）
 tools/route-check.mjs          宿主路由与安全回归：14 项（同源 403、台账白名单、POST-only、400/404/405）
 tools/cache-check.mjs          缓存决策 + 废弃文件清理：10 项（精确 stamp、TTL 回退、live 重放下限）
-tools/client-core-check.mjs    客户端纯函数回归：51 项（分词 AND、排序、合并、格式化、高亮、复数、语言快照、分区决策、资源地址）
+tools/client-core-check.mjs    客户端纯函数回归：53 项（分词 AND、排序、合并、格式化、高亮、复数、语言快照、分区决策、图标地址、资源地址）
 tools/theme-check.mjs          主题工厂回归：7 项（四套主题、key 集合一致、两两可区分、宿主 token）
 tools/row-time-check.mjs       行时间回归：5 项（每行一个时间戳，按分区选择）
 tools/readme-check.mjs         双语 README 一致性：小节、互链、锚点、图片存在性、语言前缀
 tools/release-notes-check.mjs  Release notes 一致性：英文孪生、结构、配图钉 tag
 ```
 
-`npm test` 依次跑十支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 10 + 客户端 51 + 主题 9 + 行时间 5 + i18n 187 个 key + 复数完整性 + 双语 README 一致性 10 + Release notes 一致性 9 = **125 项**，无外部依赖），CI 里三套 Node 各跑一遍。
+`npm test` 依次跑十支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 10 + 客户端 53 + 主题 9 + 行时间 5 + i18n 187 个 key + 复数完整性 + 双语 README 一致性 10 + Release notes 一致性 9 = **127 项**，无外部依赖），CI 里三套 Node 各跑一遍。
 CI 还会执行 `npm run check:client`，确保提交的 `client.js` 与 `src/client/*.js` 逐字节一致。
 
 面板本身的 UI 变更用 `npm run harness` 在浏览器里看：它会用真实的 `client.js` + 假 cordis 上下文 + 合成台账起一个本地页，

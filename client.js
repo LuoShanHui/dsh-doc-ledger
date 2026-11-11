@@ -995,6 +995,9 @@ window.__ModuleLoader__.load({
         filterActionGlyph: { fontSize: "10px", lineHeight: "16px", opacity: 0.75 },
         moreRow: { padding: "5px 9px", cursor: "pointer", color: c.accent, borderTop: "1px solid " + c.hairline, textAlign: "center" },
         dot: { width: "7px", height: "7px", borderRadius: "2px", flex: "0 0 auto" },
+        // Tier-C file badge: a small rounded square with the extension on a per-type tint.
+        // It sits under the tier-B image, so it doubles as the loading placeholder.
+        fileBadge: { display: "inline-block", flex: "0 0 auto", borderRadius: "3px", color: c.onAccent, fontWeight: 700, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.02em", overflow: "hidden" },
         // Three visual tiers, and only three: the file name is the anchor (100% + semibold),
         // the path is context (faint, 11px, allowed to shrink to nothing), the counters are
         // metadata (dim, tabular). Before this every cell was the same grey at the same size,
@@ -1337,6 +1340,25 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * The platform's association icon for an extension (tier B of FileGlyph).
+     * A 404 is the normal answer for an extension Windows does not know, and the client then
+     * draws its own badge instead.
+     */
+    function fileIconUrl(ext) {
+      return BASE + "/fileicon?ext=" + encodeURIComponent(String(ext || "").toLowerCase());
+    }
+
+    /** The extension of a path, lowercased, without the dot. "" when there is none. */
+    function extOf(path) {
+      var name = String(path || "");
+      var slash = Math.max(name.lastIndexOf("/"), name.lastIndexOf("\\"));
+      var base = slash >= 0 ? name.slice(slash + 1) : name;
+      var dot = base.lastIndexOf(".");
+      if (dot <= 0 || dot === base.length - 1) return "";
+      return base.slice(dot + 1).toLowerCase();
+    }
+
+    /**
      * The program's own icon with a colour-coded initial as the fallback: an
      * executable whose icon cannot be extracted still gets a distinguishable mark.
      */
@@ -1419,6 +1441,92 @@ window.__ModuleLoader__.load({
      * are memoised: a row only re-renders when its own file object changes. The two
      * callbacks are stable wrappers (see useHandlers) so they never invalidate the memo.
      */
+    /**
+     * The per-file glyph, with a three-tier fallback (A > B > C).
+     *
+     * A — DSH's own `FileTypeIcon` from `@deepseek-ai/dsh-client-ui-primitives`
+     *     (`{ path | kind, size, className }`). Probed exactly like 20-assets.js probes its tab
+     *     artwork: a try/catch around `require`, because the plugin's `require` only resolves
+     *     `react` and this package is inlined into the DSH bundles at build time rather than
+     *     registered as a client module. In DSH 0.2.2-rc.1 the probe therefore misses, but it
+     *     costs nothing, needs no reload to start working, and would pick the host icon up
+     *     automatically if a build ever registers it.
+     * B — the real Windows association icon, extracted per extension by the host half
+     *     (`/fileicon?ext=md`). `app.getFileIcon` is not reachable from the plugin process, so
+     *     the host drives shell32's SHGetFileInfo instead. This is the tier that actually
+     *     renders today: IntelliJ's Java icon, the JSON braces, Markdown's M, the image glyph.
+     * C — a drawn badge: the extension's first characters on a per-type tint. It always works,
+     *     sits underneath the tier-B image (so it doubles as the loading placeholder), and is
+     *     what a 404 from tier B falls back to.
+     *
+     * The module probe is memoised: once tier A is known to be missing, nothing pays again.
+     */
+    var primitivesModule;
+    var primitivesProbed = false;
+    function dshPrimitives() {
+      if (primitivesProbed === true) return primitivesModule;
+      primitivesProbed = true;
+      primitivesModule = null;
+      try {
+        var loaded = require("@deepseek-ai/dsh-client-ui-primitives");
+        if (loaded && typeof loaded.FileTypeIcon === "function") primitivesModule = loaded;
+      } catch (error) {
+        /* not bundled in this build: tier B/C take over */
+      }
+      return primitivesModule;
+    }
+
+    /** Tier C: the drawn badge. Two letters for long extensions so "yaml" reads as "ya". */
+    function fileBadgeText(ext) {
+      var value = String(ext || "").toLowerCase();
+      if (value === "") return "";
+      if (value.length <= 3) return value;
+      return value.slice(0, 2);
+    }
+
+    function FileGlyph(props) {
+      useStyles();
+      var ext = String(props.ext || "").toLowerCase();
+      var size = props.size || 16;
+      // Tier A: the host's own icon.
+      var primitives = dshPrimitives();
+      if (primitives !== null) {
+        return react.createElement(primitives.FileTypeIcon, {
+          path: props.path || props.name || "",
+          size: size
+        });
+      }
+      // Tier B renders the host-extracted image; on error it hides itself and reveals tier C.
+      var state = react.useState(ext === "" ? "fallback" : "image");
+      var mode = state[0];
+      var setMode = state[1];
+      if (mode === "fallback") {
+        return react.createElement("span", {
+          style: Object.assign({}, S.fileBadge, { background: categoryColor(props.category), width: size + "px", height: size + "px", fontSize: Math.max(8, Math.round(size * 0.56)) + "px", lineHeight: size + "px" }),
+          "aria-hidden": "true"
+        }, fileBadgeText(ext).toUpperCase());
+      }
+      return react.createElement("span", { style: { position: "relative", width: size + "px", height: size + "px", flex: "0 0 auto", display: "inline-block" } },
+        react.createElement("span", {
+          style: Object.assign({}, S.fileBadge, {
+            position: "absolute", inset: 0, background: categoryColor(props.category),
+            width: size + "px", height: size + "px", fontSize: Math.max(8, Math.round(size * 0.56)) + "px", lineHeight: size + "px"
+          }),
+          "aria-hidden": "true"
+        }, fileBadgeText(ext).toUpperCase()),
+        react.createElement("img", {
+          src: fileIconUrl(ext),
+          alt: "",
+          width: size,
+          height: size,
+          loading: "lazy",
+          decoding: "async",
+          style: { position: "relative", width: size + "px", height: size + "px", objectFit: "contain", display: "block" },
+          onError: function () { setMode("fallback"); }
+        })
+      );
+    }
+
     var FileRow = react.memo(function FileRow(props) {
       // Theme-aware: the row is memoised, so without this hook a theme switch would
       // leave it frozen on the previous style table.
@@ -1469,7 +1577,7 @@ window.__ModuleLoader__.load({
         },
         title: file.path + (missing ? t("row.missingSuffix") : "")
       },
-        react.createElement("span", { style: Object.assign({}, S.dot, { background: categoryColor(file.category) }) }),
+        react.createElement(FileGlyph, { ext: extOf(file.name || file.path), path: file.path, name: file.name, category: file.category, size: 16 }),
         react.createElement("span", { style: S.name }, highlight(file.name, props.query)),
         missing ? react.createElement("span", { style: S.tagMissing }, t("row.missingTag")) : null,
         file.sessionTitle ? react.createElement("span", { style: S.tag, title: file.sessionId }, file.sessionTitle) : null,
