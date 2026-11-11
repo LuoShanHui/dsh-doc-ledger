@@ -44,12 +44,12 @@
 ```jsonc
 // ~/.dsh/profiles/<profile>/package.json
 "dependencies": {
-  "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.4.0"
+  "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.5.0"
 }
 ```
 
-1. 加上面这行依赖（`#v0.4.0` 固定版本；想跟最新开发版就写 `github:LuoShanHui/dsh-doc-ledger`）。
-   也发布了 npm 包，可以换成 `"dsh-doc-ledger": "0.4.0"`；
+1. 加上面这行依赖（`#v0.5.0` 固定版本；想跟最新开发版就写 `github:LuoShanHui/dsh-doc-ledger`）。
+   也发布了 npm 包，可以换成 `"dsh-doc-ledger": "0.5.0"`；
 2. 用运行时自带的 pnpm 安装，复用已有 store（完整命令见下文「安装（插件形态）」）；
 3. 在 `cordis.patch.yml` 末尾 insert 一行 `doc-ledger`（同样在那一节），刷新页面 → 右侧栏出现「文档台账」。
 
@@ -90,10 +90,10 @@
 所以不要把包直接 `cp` 进 `node_modules/`：下次启动它会消失。
 
 1. 在 `~/.dsh/profiles/<profile>/package.json` 的 `dependencies` 里加一行 GitHub 托管依赖
-   （pnpm 会直接拉仓库，**不需要先 clone**；`#v0.4.0` 固定版本，省掉 tag 就跟开发版）：
+   （pnpm 会直接拉仓库，**不需要先 clone**；`#v0.5.0` 固定版本，省掉 tag 就跟开发版）：
 
    ```json
-   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.4.0"
+   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.5.0"
    ```
 
    想改代码或内网环境，就改成指向本地目录：
@@ -106,7 +106,7 @@
    少了 clone 仓库这一步；内网或镜像源上可能还没同步）：
 
    ```json
-   "dsh-doc-ledger": "0.4.0"
+   "dsh-doc-ledger": "0.5.0"
    ```
 
 2. 用运行时自带的 pnpm 安装（`<runtime>` 换成你的运行时目录；**复用已有的 store**，
