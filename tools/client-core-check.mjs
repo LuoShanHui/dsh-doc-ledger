@@ -53,7 +53,9 @@ const f = (name) => sandbox[name];
 for (const name of [
   "termsOf", "matches", "sortFiles", "defaultDir", "mergeSessions",
   "fmtTime", "fmtBytes", "encodingLabel", "categoryColor", "categoryLabel",
-  "shortPath", "highlight", "hostFileAddress", "iconUrl", "pad"
+  "shortPath", "highlight", "hostFileAddress", "iconUrl", "pad",
+  "sortSpecOf", "rowModeOf", "rowsReachable", "rowLimitOf", "clampRowIndex",
+  "isActiveRow", "hasActiveRow", "nextRowLimit"
 ]) {
   assert.equal(typeof f(name), "function", "missing function from fragments: " + name);
 }
@@ -310,6 +312,75 @@ check("未支持的语言：locale 为空/异常时按英文处理", () => {
 });
 check("t(): 未知 key 原样返回，不崩", () => {
   assert.equal(f("t")("no.such.key"), "no.such.key");
+});
+
+// --- section decisions (extracted from SessionCard, where no test could reach them) ----
+const USED_SORT = { key: "lastUsed", dir: "desc" };
+const CREATED_SORT = { key: "createdAt", dir: "desc" };
+const MODIFIED_SORT = { key: "updatedAt", dir: "desc" };
+
+check("sortSpecOf: 使用过用改自己的排序，其余共用创建排序", () => {
+  assert.equal(f("sortSpecOf")("u", USED_SORT, CREATED_SORT, MODIFIED_SORT), USED_SORT);
+  assert.equal(f("sortSpecOf")("ms", USED_SORT, CREATED_SORT, MODIFIED_SORT), MODIFIED_SORT);
+  assert.equal(f("sortSpecOf")("c", USED_SORT, CREATED_SORT, MODIFIED_SORT), CREATED_SORT);
+  assert.equal(f("sortSpecOf")("cs", USED_SORT, CREATED_SORT, MODIFIED_SORT), CREATED_SORT);
+});
+
+check("rowModeOf: 分区决定显示哪个时间戳", () => {
+  assert.equal(f("rowModeOf")("u"), "used");
+  assert.equal(f("rowModeOf")("ms"), "modified");
+  assert.equal(f("rowModeOf")("c"), "created");
+  assert.equal(f("rowModeOf")("cs"), "created");
+});
+
+check("rowsReachable: 折叠或未渲染都不参与 roving 序号", () => {
+  assert.equal(f("rowsReachable")(true, true), true);
+  assert.equal(f("rowsReachable")(undefined, true), true, "undefined means open by default");
+  assert.equal(f("rowsReachable")(false, true), false, "collapsed section builds no DOM");
+  assert.equal(f("rowsReachable")(true, false), false, "merged view computes split arrays without rendering them");
+  assert.equal(f("rowsReachable")(false, false), false);
+});
+
+check("rowLimitOf: 用分区自己的页限，缺省回退默认值", () => {
+  assert.equal(f("rowLimitOf")("u", { u: 200 }, 100), 200);
+  assert.equal(f("rowLimitOf")("u", {}, 100), 100);
+  assert.equal(f("rowLimitOf")("u", null, 100), 100);
+  assert.equal(f("rowLimitOf")("u", { u: 0 }, 100), 100, "0 is not a usable page limit");
+  assert.equal(f("rowLimitOf")("u", { u: -5 }, 100), 100);
+});
+
+check("clampRowIndex: 到边界停住，不环绕", () => {
+  assert.equal(f("clampRowIndex")(0, 1, 5), 1);
+  assert.equal(f("clampRowIndex")(4, 1, 5), 4, "past the last row stays on the last row");
+  assert.equal(f("clampRowIndex")(0, -1, 5), 0, "before the first row stays on the first row");
+  assert.equal(f("clampRowIndex")(2, -1, 5), 1);
+  assert.equal(f("clampRowIndex")(0, 1, 0), 0, "an empty section has nowhere to move");
+});
+
+check("isActiveRow: 只有时间戳没有计数也算活动", () => {
+  assert.equal(f("isActiveRow")(file({ reads: 1 })), true);
+  assert.equal(f("isActiveRow")(file({ reads: 0, writes: 0, firstUsedAt: 1 })), true, "a bare firstUsedAt counts");
+  assert.equal(f("isActiveRow")(file({ reads: 0, writes: 0, firstUsedAt: 0, createdAt: 5 })), true);
+  assert.equal(f("isActiveRow")(file({ reads: 0, writes: 0, firstUsedAt: 0, createdAt: 0 })), false);
+  assert.equal(f("isActiveRow")(null), false);
+});
+
+check("hasActiveRow: 过滤后没有任何活动行时整张卡不出现", () => {
+  const files = [file({ reads: 1 }), file({ reads: 0, writes: 0, firstUsedAt: 0, createdAt: 0 })];
+  assert.equal(f("hasActiveRow")(files), true);
+  assert.equal(f("hasActiveRow")([file({ reads: 0, writes: 0, firstUsedAt: 0, createdAt: 0 })]), false);
+  assert.equal(f("hasActiveRow")([]), false);
+  assert.equal(f("hasActiveRow")(null), false);
+  // a filter that excludes the only active row must empty the card
+  assert.equal(f("hasActiveRow")(files, function (x) { return x.reads === 9; }), false);
+});
+
+check("nextRowLimit: 每次加一页，未设置时从一页起算", () => {
+  assert.equal(f("nextRowLimit")(undefined, 100), 200, "first click offers the second page");
+  assert.equal(f("nextRowLimit")(100, 100), 200);
+  assert.equal(f("nextRowLimit")(300, 100), 400);
+  assert.equal(f("nextRowLimit")(0, 100), 200);
+  assert.equal(f("nextRowLimit")(undefined, 0), 200, "a missing page size falls back to 100");
 });
 
 // --- host locale snapshot -----------------------------------------------

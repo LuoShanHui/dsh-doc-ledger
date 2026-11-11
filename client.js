@@ -1185,6 +1185,90 @@ window.__ModuleLoader__.load({
       return key === "type" || key === "path" || key === "exists" ? "asc" : "desc";
     }
 
+    /**
+     * The three section-level decisions, isolated so they can be tested without React.
+     *
+     * `rowsOf` used to inline all three inside a hook-heavy component, which put the roving
+     * index arithmetic — the part that actually broke twice — out of reach of any test.
+     */
+
+    /** Section prefixes used by SessionCard: used / created / created-split / modified-split. */
+    var SECTION_PREFIXES = ["u", "c", "cs", "ms"];
+
+    /**
+     * Which sort spec drives a section. The split views (`cs` / `ms`) share the created
+     * sort because they are the two halves of the same "Created / Modified" column.
+     */
+    function sortSpecOf(prefix, usedSort, createdSort, modifiedSort) {
+      if (prefix === "u") return usedSort;
+      if (prefix === "ms") return modifiedSort;
+      return createdSort;
+    }
+
+    /** Which timestamp a section's rows show (see rowTime). */
+    function rowModeOf(prefix) {
+      if (prefix === "u") return "used";
+      if (prefix === "ms") return "modified";
+      return "created";
+    }
+
+    /**
+     * Whether a section's rows take part in the card's roving tab order.
+     *
+     * Both conditions matter and both have caused bugs: a collapsed section builds no DOM,
+     * and the merged view computes the split arrays without rendering them. Counting either
+     * kind would offset every index past the last focusable row.
+     */
+    function rowsReachable(open, rendered) {
+      return open !== false && rendered !== false;
+    }
+
+    /** Rows a section shows: its own page limit, or the default. */
+    function rowLimitOf(prefix, limits, defaultLimit) {
+      var value = limits === null || limits === undefined ? 0 : Number(limits[prefix]);
+      return value > 0 ? value : defaultLimit;
+    }
+
+    /**
+     * The next active index for ArrowUp/ArrowDown inside one card.
+     * Clamped, not wrapped: stepping past the end should stay put rather than jump to the
+     * other end, which is what a list of rows means.
+     */
+    function clampRowIndex(from, delta, total) {
+      if (total <= 0) return 0;
+      return Math.min(total - 1, Math.max(0, from + delta));
+    }
+
+    /**
+     * A row that counts as "activity": the engine records a file the moment it sees a read
+     * or a write, but a file can also arrive with only a timestamp and no counters. A card
+     * with none of these must not claim a slot in the merged view.
+     */
+    function isActiveRow(file) {
+      if (file === null || file === undefined) return false;
+      return (file.reads || 0) > 0 || Boolean(file.firstUsedAt) || Boolean(file.createdAt) || (file.writes || 0) > 0;
+    }
+
+    /** Whether any file of a session survives the active filters and counts as activity. */
+    function hasActiveRow(files, passes) {
+      var list = files || [];
+      for (var i = 0; i < list.length; i += 1) {
+        if (typeof passes === "function" && !passes(list[i])) continue;
+        if (isActiveRow(list[i])) return true;
+      }
+      return false;
+    }
+
+    /**
+     * The page size after "show more": one more page, seeded from the default when the
+     * section has never been widened. Kept pure so the arithmetic is not buried in a setState.
+     */
+    function nextRowLimit(current, page) {
+      var step = page > 0 ? page : 100;
+      var base = Number(current) > 0 ? Number(current) : step;
+      return base + step;
+    }
+
     function sortFiles(files, spec) {
       var key = spec.key;
       var dir = spec.dir === "asc" ? 1 : -1;
@@ -1561,7 +1645,7 @@ window.__ModuleLoader__.load({
         var box = cardRef.current;
         if (box === null || box === undefined) return;
         var total = box.querySelectorAll("[data-row-index]").length;
-        var next = Math.min(total - 1, Math.max(0, from + delta));
+        var next = clampRowIndex(from, delta, total);
         if (next !== from) focusRow(next);
       };
       var edgeRow = function (which) {
@@ -1610,22 +1694,21 @@ window.__ModuleLoader__.load({
       var showMore = function (prefix) {
         setLimits(function (previous) {
           var next = Object.assign({}, previous);
-          next[prefix] = (previous[prefix] || ROW_PAGE) + ROW_PAGE;
+          next[prefix] = nextRowLimit(previous[prefix], ROW_PAGE);
           return next;
         });
       };
 
       var rowsOf = function (prefix, list, open, rendered) {
-        // Only rows the reader can actually reach take part in the roving order: the section
-        // must be expanded AND this view must render it (the merged view computes the split
-        // arrays too, and counting those would offset every index past the end of the DOM).
-        var reachable = open !== false && rendered !== false;
-        var sort = prefix === "u" ? props.usedSort : (prefix === "ms" ? props.modifiedSort : props.createdSort);
-        // Which timestamp this section's rows show (see rowTime): the section already says
-        // which dimension matters, so a row does not repeat both stamps.
-        var mode = prefix === "u" ? "used" : (prefix === "ms" ? "modified" : "created");
+        // The three decisions live in 80-core so they are testable without React: whether a
+        // section joins the roving order, which sort drives it, and which timestamp its rows
+        // show. Both reachability conditions have caused real bugs (collapsed sections build
+        // no DOM; the merged view computes split arrays without rendering them).
+        var reachable = rowsReachable(open, rendered);
+        var sort = sortSpecOf(prefix, props.usedSort, props.createdSort, props.modifiedSort);
+        var mode = rowModeOf(prefix);
         var sorted = sortFiles(list, sort);
-        var limit = limits[prefix] || ROW_PAGE;
+        var limit = rowLimitOf(prefix, limits, ROW_PAGE);
         var rows = sorted.slice(0, limit).map(function (file, ordinal) {
           var index = reachable === true ? rowCursor : -1;
           if (reachable === true) rowCursor += 1;
@@ -3106,11 +3189,9 @@ window.__ModuleLoader__.load({
 
       // A collapsed/empty card must not swallow the "no match" message: decide here
       // which sessions still have a row before creating any element.
+      // The "counts as activity" rule lives in 80-core so it can be tested directly.
       var hasVisibleRow = function (files) {
-        return (files || []).some(function (file) {
-          if (!passesFilters(file)) return false;
-          return (file.reads || 0) > 0 || Boolean(file.firstUsedAt) || Boolean(file.createdAt) || (file.writes || 0) > 0;
-        });
+        return hasActiveRow(files, passesFilters);
       };
 
       var cards = [];

@@ -76,7 +76,7 @@
         var box = cardRef.current;
         if (box === null || box === undefined) return;
         var total = box.querySelectorAll("[data-row-index]").length;
-        var next = Math.min(total - 1, Math.max(0, from + delta));
+        var next = clampRowIndex(from, delta, total);
         if (next !== from) focusRow(next);
       };
       var edgeRow = function (which) {
@@ -125,22 +125,21 @@
       var showMore = function (prefix) {
         setLimits(function (previous) {
           var next = Object.assign({}, previous);
-          next[prefix] = (previous[prefix] || ROW_PAGE) + ROW_PAGE;
+          next[prefix] = nextRowLimit(previous[prefix], ROW_PAGE);
           return next;
         });
       };
 
       var rowsOf = function (prefix, list, open, rendered) {
-        // Only rows the reader can actually reach take part in the roving order: the section
-        // must be expanded AND this view must render it (the merged view computes the split
-        // arrays too, and counting those would offset every index past the end of the DOM).
-        var reachable = open !== false && rendered !== false;
-        var sort = prefix === "u" ? props.usedSort : (prefix === "ms" ? props.modifiedSort : props.createdSort);
-        // Which timestamp this section's rows show (see rowTime): the section already says
-        // which dimension matters, so a row does not repeat both stamps.
-        var mode = prefix === "u" ? "used" : (prefix === "ms" ? "modified" : "created");
+        // The three decisions live in 80-core so they are testable without React: whether a
+        // section joins the roving order, which sort drives it, and which timestamp its rows
+        // show. Both reachability conditions have caused real bugs (collapsed sections build
+        // no DOM; the merged view computes split arrays without rendering them).
+        var reachable = rowsReachable(open, rendered);
+        var sort = sortSpecOf(prefix, props.usedSort, props.createdSort, props.modifiedSort);
+        var mode = rowModeOf(prefix);
         var sorted = sortFiles(list, sort);
-        var limit = limits[prefix] || ROW_PAGE;
+        var limit = rowLimitOf(prefix, limits, ROW_PAGE);
         var rows = sorted.slice(0, limit).map(function (file, ordinal) {
           var index = reachable === true ? rowCursor : -1;
           if (reachable === true) rowCursor += 1;

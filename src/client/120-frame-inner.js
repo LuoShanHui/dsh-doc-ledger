@@ -1188,11 +1188,9 @@
 
       // A collapsed/empty card must not swallow the "no match" message: decide here
       // which sessions still have a row before creating any element.
+      // The "counts as activity" rule lives in 80-core so it can be tested directly.
       var hasVisibleRow = function (files) {
-        return (files || []).some(function (file) {
-          if (!passesFilters(file)) return false;
-          return (file.reads || 0) > 0 || Boolean(file.firstUsedAt) || Boolean(file.createdAt) || (file.writes || 0) > 0;
-        });
+        return hasActiveRow(files, passesFilters);
       };
 
       var cards = [];
