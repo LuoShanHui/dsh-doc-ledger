@@ -182,7 +182,9 @@ window.__ModuleLoader__.load({
       "category.web": "网页",
       "category.config": "配置",
       "category.data": "数据",
+      "category.media": "音视频",
       "category.archive": "压缩",
+      "category.binary": "二进制",
       "category.other": "其他",
 
       // encoding
@@ -304,8 +306,8 @@ window.__ModuleLoader__.load({
       "toolbar.refresh": "刷新",
       "theme.title": "主题：",
       "theme.compact": "紧凑",
-      "theme.airy": "留白",
-      "theme.table": "表格",
+      "theme.timeline": "时间轴",
+      "theme.grid": "网格",
       "theme.card": "卡片",
       "theme.next": "主题",
       "theme.pick": "选择主题",
@@ -374,6 +376,15 @@ window.__ModuleLoader__.load({
       "empty.noMatch": "没有同时匹配「{terms}」的文档",
       "empty.readFailed": "读取失败：",
       "filter.only": "只看 {type}（{count} 个文件）",
+      "filter.extLabel": "扩展名",
+      "filter.allExts": "全部",
+      "filter.noExt": "无扩展名",
+      "filter.onlyExt": "只看 .{ext}（{count} 个文件）",
+      "filter.onlyExt_one": "只看 .{ext}（{count} 个文件）",
+      "filter.onlyExt_other": "只看 .{ext}（{count} 个文件）",
+      "filter.moreExts": "另 {n} 种",
+      "filter.moreExts_one": "另 {n} 种",
+      "filter.moreExts_other": "另 {n} 种",
       "filter.only_one": "只看 {type}（{count} 个文件）",
       "filter.only_other": "只看 {type}（{count} 个文件）",
       "filter.missingTitle": "只看磁盘上已经不存在的文件",
@@ -400,7 +411,9 @@ window.__ModuleLoader__.load({
       "category.web": "Web",
       "category.config": "Config",
       "category.data": "Data",
+      "category.media": "Media",
       "category.archive": "Archives",
+      "category.binary": "Binaries",
       "category.other": "Other",
 
       "encoding.gb18030Mixed": "GB18030 mixed decoding",
@@ -512,8 +525,8 @@ window.__ModuleLoader__.load({
       "toolbar.refresh": "Refresh",
       "theme.title": "Theme: ",
       "theme.compact": "Compact",
-      "theme.airy": "Airy",
-      "theme.table": "Table",
+      "theme.timeline": "Timeline",
+      "theme.grid": "Grid",
       "theme.card": "Card",
       "theme.next": "Theme",
       "theme.pick": "Choose a theme",
@@ -578,6 +591,15 @@ window.__ModuleLoader__.load({
       "empty.noMatch": "No documents matching all of: {terms}",
       "empty.readFailed": "Read failed: ",
       "filter.only": "Only {type} ({count} files)",
+      "filter.extLabel": "Extension",
+      "filter.allExts": "All",
+      "filter.noExt": "(none)",
+      "filter.onlyExt": "Only .{ext} ({count} files)",
+      "filter.onlyExt_one": "Only .{ext} ({count} file)",
+      "filter.onlyExt_other": "Only .{ext} ({count} files)",
+      "filter.moreExts": "{n} more",
+      "filter.moreExts_one": "{n} more",
+      "filter.moreExts_other": "{n} more",
       "filter.only_one": "Only {type} ({count} file)",
       "filter.only_other": "Only {type} ({count} files)",
       "filter.missingTitle": "Only files that no longer exist on disk",
@@ -702,15 +724,17 @@ window.__ModuleLoader__.load({
     }
 
     var CATEGORY_COLOR = {
-      doc: "#4f7cf7",
-      sheet: "#1f9d55",
-      slide: "#d97706",
-      image: "#a855f7",
-      code: "#0ea5e9",
-      web: "#ef4444",
+      doc: "#3b6fe0",
+      sheet: "#12805c",
+      slide: "#c2640a",
+      image: "#8b5cf6",
+      code: "#0e7490",
+      web: "#dc2626",
       config: "#64748b",
       data: "#0891b2",
-      archive: "#b45309",
+      media: "#c026d3",
+      archive: "#92400e",
+      binary: "#525252",
       other: "#94a3b8"
     };
 
@@ -725,7 +749,9 @@ window.__ModuleLoader__.load({
       web: "category.web",
       config: "category.config",
       data: "category.data",
+      media: "category.media",
       archive: "category.archive",
+      binary: "category.binary",
       other: "category.other"
     };
 
@@ -915,76 +941,186 @@ window.__ModuleLoader__.load({
      */
 
     /**
-     * Host theme tokens, spelled exactly as the Theme provider declares them (checked with
-     * cordis_inspect_query → client/Theme/listTokens). These are the ONLY names that exist:
-     * `--dsw-alias-accent`, `--dsw-alias-border` and `--dsw-alias-label-tertiary` are not
-     * real tokens, so using them silently fell back to a light-mode literal and the panel
-     * ignored dark mode entirely.
+     * Colours, self-contained.
      *
-     * Every token is declared light+dark by the host, so a single `var(...)` follows the
-     * active theme. The literal fallback only matters outside the host (harness, static
-     * report), where it provides a readable light scheme.
+     * The host token route was measured and rejected: in this build the DSH theme declares
+     * `--dsw-alias-brand-primary: #0f1115` (ink, not an accent) and `--dsw-alias-bg-layer-1`
+     * and `-layer-2` are **both #fff**. Every distinction this panel draws — an accent rail, a
+     * tinted backdrop behind white cards, a warn tint — collapsed into one flat white with a
+     * black rail. The tokens are also only defined for the shell's own subtree, so half of them
+     * resolved and half fell back to literals.
+     *
+     * So the palette is defined here instead: one light and one dark set, chosen by
+     * prefers-color-scheme. That is a real trade — the panel no longer follows a custom host
+     * theme — but it is honest, and it is the only way four looks can actually differ.
      */
-    var TOKEN = {
-      text: "var(--dsw-alias-label-primary, #1f2329)",
-      textDim: "var(--dsw-alias-label-secondary, rgba(128,128,128,0.95))",
-      // No tertiary label token exists; the secondary colour at reduced weight is the
-      // closest honest equivalent.
-      textFaint: "var(--dsw-alias-label-secondary, rgba(128,128,128,0.95))",
+    /**
+     * The colour scheme, read from the host's own signal.
+     *
+     * `prefers-color-scheme` is the OS setting, and the panel used it — so choosing Dark inside
+     * DSH (with a light OS) kept the panel white forever. Measured on a live window, DSH marks
+     * the scheme with BOTH of these:
+     *
+     *   <html data-ds-theme-source="dark">
+     *   <body data-ds-dark-theme>
+     *
+     * Either one is authoritative; the attribute is present only in dark mode, which makes
+     * "attribute present" the whole test. The media query stays as the last resort for the
+     * harness and the static report, which have no host.
+     */
+    function readDarkScheme() {
+      try {
+        if (typeof document !== "undefined") {
+          var html = document.documentElement;
+          var body = document.body;
+          if (html !== null && html.getAttribute("data-ds-theme-source") === "dark") return true;
+          if (html !== null && html.getAttribute("data-ds-theme-source") === "light") return false;
+          if (body !== null && body.hasAttribute("data-ds-dark-theme")) return true;
+          // `color-scheme` follows the host's own computed value in both schemes.
+          if (html !== null) {
+            var scheme = getComputedStyle(html).colorScheme;
+            if (scheme === "dark") return true;
+            if (scheme === "light") return false;
+          }
+        }
+        if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+          return window.matchMedia("(prefers-color-scheme: dark)").matches === true;
+        }
+      } catch (error) {
+        /* an unreadable document only costs the dark palette */
+      }
+      return false;
+    }
+
+    /**
+     * The host's real colours, taken from the custom properties DSH defines on <body>.
+     *
+     * These are the values the rest of the UI uses, including a user's own theme, so reading
+     * them is what "follow the DSH theme" actually means. Each one keeps a literal fallback for
+     * the harness, where no host defines them — and those fallbacks are the only reason the
+     * light/dark tables below still exist.
+     */
+    var HOST = {
+      text: "var(--dsw-alias-label-primary, #1c1f23)",
+      textDim: "var(--dsw-alias-label-secondary, #5c626b)",
+      textFaint: "var(--dsw-alias-label-secondary, #8a919b)",
       bg: "var(--dsw-alias-bg-layer-1, #ffffff)",
-      bgSoft: "var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.07))",
+      bgSoft: "var(--dsw-alias-bg-layer-2, #f4f5f7)",
       bgBase: "var(--dsw-alias-bg-base, #ffffff)",
       bgOverlay: "var(--dsw-alias-bg-overlay, #ffffff)",
-      border: "var(--dsw-alias-border-l1, rgba(128,128,128,0.28))",
-      borderStrong: "var(--dsw-alias-border-l2, rgba(128,128,128,0.4))",
-      accent: "var(--dsw-alias-brand-primary, #4f7cf7)",
-      danger: "var(--dsw-alias-state-error-primary, #b91c1c)",
-      success: "var(--dsw-alias-state-success-primary, #15805b)",
-      warn: "var(--dsw-alias-state-warn-primary, #b06c10)",
-      idle: "var(--dsw-alias-state-idle-primary, rgba(128,128,128,0.9))",
-      sidebarFill: "var(--dsw-specific-sidebar-fill, rgba(128,128,128,0.04))"
+      border: "var(--dsw-alias-border-l1, #dfe3e8)",
+      borderStrong: "var(--dsw-alias-border-l2, #c7ccd4)",
+      accent: "var(--dsw-alias-brand-primary, #3b6fe0)",
+      danger: "var(--dsw-alias-state-error-primary, #c0392b)",
+      success: "var(--dsw-alias-state-success-primary, #12805c)",
+      warn: "var(--dsw-alias-state-warn-primary, #a86512)"
     };
 
-    var ACCENT = TOKEN.accent;
+    /** Re-read on every rebuild: the host flips a DOM attribute, not a media query. */
+    var prefersDark = readDarkScheme();
 
+    function schemeIsDark() {
+      prefersDark = readDarkScheme();
+      return prefersDark;
+    }
+
+    /**
+     * Fallback literals, used only where no host token exists. `DARK` exists so the harness and
+     * the static report can be previewed in a dark scheme; the host path never needs it.
+     */
+    var LIGHT = {
+      text: "#1c1f23", textDim: "#5c626b", textFaint: "#8a919b",
+      bg: "#ffffff", bgSoft: "#f4f5f7", bgBase: "#ffffff", bgOverlay: "#ffffff",
+      border: "#dfe3e8", borderStrong: "#c7ccd4",
+      accent: "#3b6fe0", danger: "#c0392b", success: "#12805c", warn: "#a86512"
+    };
+
+    var DARK = {
+      text: "#e6e8ec", textDim: "#a3a9b3", textFaint: "#767d88",
+      bg: "#1e2126", bgSoft: "#171a1e", bgBase: "#131518", bgOverlay: "#262a30",
+      border: "#343941", borderStrong: "#444b55",
+      accent: "#6b93ff", danger: "#ff6b6b", success: "#4ec9a0", warn: "#e0a030"
+    };
+
+    /** Theme tokens first (which is what follows DSH); literals are only a fallback. */
+    var TOKEN = HOST;
+
+    /**
+     * The rail and the selected state.
+     *
+     * Deliberately NOT the host accent: DSH's default theme declares
+     * `--dsw-alias-brand-primary: #0f1115` (ink), so a rail drawn from it is a black bar on a
+     * white card — which is what the first attempt produced. A fixed brand blue is legible on
+     * both surfaces; a host theme with a real accent still drives everything else.
+     */
+    function accentFor(dark) {
+      return dark ? "#6b93ff" : "#3b6fe0";
+    }
+
+    var ACCENT = accentFor(prefersDark);
+
+    /**
+     * The palette: follow the host where it is trustworthy, derive where it is not.
+     *
+     * Measured in the live window (light scheme), DSH declares
+     *   --dsw-alias-brand-primary: #0f1115   (ink, not an accent)
+     *   --dsw-alias-bg-layer-1:    #fff
+     *   --dsw-alias-bg-layer-2:    #fff      (identical to layer-1)
+     * so a "faithful" palette gives white cards on a white backdrop with a black rail: the card
+     * theme becomes invisible, which is exactly what the screenshot showed.
+     *
+     * The split that works:
+     *   - text, borders, danger/success/warn  -> host tokens (a custom theme's typography and
+     *     state colours are worth honouring, and they read correctly in both schemes);
+     *   - the backdrop and the accent -> derived locally, because the host gives no usable
+     *     second surface level and no usable accent.
+     *
+     * The backdrop is a tint of the surface actually behind the panel: light mode darkens it a
+     * little, dark mode lightens it, so white (or near-black) cards always have separation.
+     */
     function palette() {
+      var dark = schemeIsDark();
+      // A backdrop derived from the surface: one step away from it, in the direction that
+      // creates contrast for the cards drawn on top.
+      var backdrop = dark
+        ? "color-mix(in oklab, " + TOKEN.bg + " 72%, #000)"
+        : "color-mix(in oklab, " + TOKEN.bg + " 94%, #000)";
+      // The host's accent is ink in the default theme, so it cannot carry an accent rail.
+      // A fixed brand blue stays legible on white and on near-black, and the fallback chain
+      // still lets a theme with a real accent win.
+      var accent = ACCENT;
       return {
         text: TOKEN.text,
         textDim: TOKEN.textDim,
         textFaint: TOKEN.textFaint,
         bg: TOKEN.bg,
-        bgSoft: TOKEN.bgSoft,
+        // The second surface level: derived, since the host's own is identical to the first.
+        bgSoft: backdrop,
         bgBase: TOKEN.bgBase,
         bgOverlay: TOKEN.bgOverlay,
         border: TOKEN.border,
         borderStrong: TOKEN.borderStrong,
-        // A 16% hairline: the token itself is a solid colour, so the soft variant is built
-        // from it rather than invented as an rgba literal that dark mode cannot follow.
         borderSoft: "color-mix(in oklab, " + TOKEN.border + " 55%, transparent)",
-        accent: TOKEN.accent,
-        accentSoft: "color-mix(in oklab, " + TOKEN.accent + " 14%, transparent)",
-        accentBorder: "color-mix(in oklab, " + TOKEN.accent + " 72%, transparent)",
+        accent: accent,
+        accentSoft: "color-mix(in oklab, " + accent + " 14%, transparent)",
+        accentBorder: "color-mix(in oklab, " + accent + " 72%, transparent)",
         danger: TOKEN.danger,
         dangerSoft: "color-mix(in oklab, " + TOKEN.danger + " 16%, transparent)",
         success: TOKEN.success,
         warn: TOKEN.warn,
         warnSoft: "color-mix(in oklab, " + TOKEN.warn + " 14%, transparent)",
         mark: "color-mix(in oklab, #facc15 45%, transparent)",
-        // A 5-step radius scale (shadcn derives all of these from one --radius), so a theme
-        // picks a step instead of inventing a number per box.
         radius: { sm: "4px", md: "6px", lg: "8px", xl: "10px", xxl: "14px" },
-        // Selection/fill for dense rows: a muted wash, not a border.
-        rowHover: "color-mix(in oklab, " + TOKEN.accent + " 8%, transparent)",
-        // Structural shades: hairlines, scrims and shadows are also colour decisions, so
-        // they belong in the palette instead of being literals the dark theme cannot see.
+        rowHover: "color-mix(in oklab, " + accent + " 8%, transparent)",
         hairline: "color-mix(in oklab, " + TOKEN.border + " 40%, transparent)",
         warnBorder: "color-mix(in oklab, " + TOKEN.warn + " 30%, transparent)",
         scrim: "rgba(0,0,0,0.55)",
-        shadowMenu: "0 8px 24px rgba(0,0,0,0.28)",
+        shadowMenu: dark ? "0 8px 24px rgba(0,0,0,0.5)" : "0 8px 24px rgba(0,0,0,0.14)",
         shadowToast: "0 4px 14px rgba(0,0,0,0.22)",
-        shadowCard: "0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06)",
-        // Text drawn on a solid accent/success/error fill: fixed white in both schemes,
-        // because the fill itself is the contrast anchor.
+        // Deeper in dark mode: a 6% black shadow on a near-black backdrop reads as nothing.
+        shadowCard: dark
+          ? "0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.28)"
+          : "0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06)",
         onAccent: "#ffffff"
       };
     }
@@ -1054,6 +1190,12 @@ window.__ModuleLoader__.load({
         filterActionGlyph: { fontSize: "10px", opacity: 0.7 },
         moreRow: { display: "flex", alignItems: "center", justifyContent: "center", height: ROW_H + "px", cursor: "pointer", color: c.accent, fontSize: "11px" },
         dot: { width: "7px", height: "7px", borderRadius: "2px", flex: "0 0 auto" },
+        // Present in every theme (the parity check compares key sets); only "card" gives it a
+        // visible value, the rest leave it null so the head renders no rail.
+        cardRail: null,
+        // Gutter parts for the timeline theme; null elsewhere.
+        rowDot: null,
+        rowSpine: null,
         fileBadge: { display: "inline-block", flex: "0 0 auto", borderRadius: "3px", color: c.onAccent, fontWeight: 700, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.02em", overflow: "hidden" },
         // Three tiers, and only three: name is the anchor, path is context, counters are metadata.
         name: { fontWeight: 500, color: c.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "46%", flex: "0 1 auto", minWidth: 0 },
@@ -1096,26 +1238,54 @@ window.__ModuleLoader__.load({
      * rows by whitespace. Type grows a notch and the label gains weight, because with the
      * separators gone weight is the only thing left to hang hierarchy on.
      */
-    function airyStyles() {
+    /**
+     * "timeline": the ledger as a chronology.
+     *
+     * Structurally different from every other preset: rows carry a left gutter with a dot and a
+     * connecting line, section heads are small caps without rules, and the card is a single
+     * flat sheet rather than a framed box. The gutter is what makes it read as a log instead of
+     * a list, and nothing else here uses one.
+     */
+    function timelineStyles() {
       var c = palette();
       var base = compactStyles();
       return Object.assign({}, base, {
         root: Object.assign({}, base.root, { fontSize: "13px" }),
         bar: Object.assign({}, base.bar, { gap: "6px", padding: "10px 12px", borderBottom: "none" }),
-        barRow: Object.assign({}, base.barRow, { gap: "6px" }),
         title: Object.assign({}, base.title, { fontWeight: 700, fontSize: "14px" }),
-        input: Object.assign({}, base.input, { height: "26px", padding: "0 9px", borderRadius: c.radius.lg, border: "1px solid transparent", background: c.bgSoft }),
-        button: Object.assign({}, base.button, { height: "26px", padding: "0 10px", borderRadius: c.radius.lg, background: "transparent" }),
-        buttonOn: Object.assign({}, base.buttonOn, { height: "26px", padding: "0 10px", borderRadius: c.radius.lg }),
-        summary: Object.assign({}, base.summary, { padding: "6px 12px", fontSize: "12px", borderBottom: "none" }),
-        notice: Object.assign({}, base.notice, { padding: "7px 12px", borderRadius: c.radius.lg, margin: "0 8px 6px" }),
-        list: Object.assign({}, base.list, { padding: "8px 10px 20px" }),
-        card: Object.assign({}, base.card, { border: "none", borderRadius: c.radius.xxl, background: c.bgSoft, marginBottom: "12px" }),
-        cardHead: Object.assign({}, base.cardHead, { height: "34px", padding: "0 12px", background: "transparent" }),
-        cardTitle: Object.assign({}, base.cardTitle, { fontSize: "13px" }),
-        sectionHead: Object.assign({}, base.sectionHead, { height: "30px", padding: "0 12px", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: c.textFaint }),
-        // Rows keep a fixed height so the list cannot shimmer, but the metric is airier.
-        row: Object.assign({}, base.row, { height: "28px", lineHeight: "28px", padding: "0 12px", borderRadius: c.radius.lg }),
+        input: Object.assign({}, base.input, { height: "26px", padding: "0 10px", borderRadius: "999px", background: c.bgSoft, border: "1px solid transparent" }),
+        button: Object.assign({}, base.button, { height: "26px", padding: "0 10px", borderRadius: "999px", background: c.bgSoft }),
+        buttonOn: Object.assign({}, base.buttonOn, { height: "26px", padding: "0 10px", borderRadius: "999px" }),
+        summary: Object.assign({}, base.summary, { padding: "6px 14px", borderBottom: "none" }),
+        notice: Object.assign({}, base.notice, { padding: "7px 14px", borderRadius: c.radius.lg, margin: "0 10px 6px" }),
+        list: Object.assign({}, base.list, { padding: "8px 12px 24px" }),
+        // One flat sheet: no frame, no shadow, no radius on the card itself.
+        card: Object.assign({}, base.card, { border: "none", borderRadius: "0", background: "transparent", marginBottom: "4px" }),
+        cardHead: Object.assign({}, base.cardHead, {
+          height: "32px", padding: "0 6px", background: "transparent",
+          borderBottom: "1px solid " + c.borderSoft
+        }),
+        cardTitle: Object.assign({}, base.cardTitle, { fontSize: "13px", fontWeight: 700 }),
+        sectionHead: Object.assign({}, base.sectionHead, {
+          height: "26px", padding: "0 6px 0 22px", fontSize: "10px", fontWeight: 700,
+          textTransform: "uppercase", letterSpacing: "0.08em", color: c.textFaint
+        }),
+        // The gutter: 22px of left padding holds the dot and the spine drawn by rowDot/rowSpine.
+        row: Object.assign({}, base.row, {
+          height: "30px", lineHeight: "30px", padding: "0 6px 0 22px", borderRadius: 0,
+          position: "relative", gap: "8px"
+        }),
+        // The dot sits on the spine; every row has one so the line reads as continuous.
+        rowDot: {
+          position: "absolute", left: "13px", top: "50%", width: "7px", height: "7px",
+          marginTop: "-3.5px", borderRadius: "999px", background: c.accent,
+          boxShadow: "0 0 0 2px " + c.bg
+        },
+        // The spine: a 1px vertical line behind the dots, drawn per row so it stops with the list.
+        rowSpine: {
+          position: "absolute", left: "16px", top: 0, bottom: 0, width: "1px",
+          background: "color-mix(in oklab, " + c.accent + " 26%, transparent)"
+        },
         filterBar: Object.assign({}, base.filterBar, { gap: "6px", padding: "6px 12px", borderBottom: "none" }),
         filterChip: Object.assign({}, base.filterChip, { height: "22px", padding: "0 10px", background: c.bgSoft, border: "1px solid transparent" }),
         filterChipOn: Object.assign({}, base.filterChipOn, { height: "22px", padding: "0 10px", border: "1px solid transparent" }),
@@ -1124,50 +1294,83 @@ window.__ModuleLoader__.load({
         dir: Object.assign({}, base.dir, { fontSize: "12px" }),
         io: Object.assign({}, base.io, { fontSize: "11px" }),
         times: Object.assign({}, base.times, { fontSize: "11px" }),
-        moreRow: Object.assign({}, base.moreRow, { height: "30px", fontSize: "12px" }),
-        empty: Object.assign({}, base.empty, { padding: "40px 16px", fontSize: "13px" })
+        moreRow: Object.assign({}, base.moreRow, { height: "30px", fontSize: "12px", paddingLeft: "22px" }),
+        empty: Object.assign({}, base.empty, { padding: "44px 16px", fontSize: "13px" })
       });
     }
 
     /**
-     * "table": an actual grid. Zebra stripes replace separators, the name column is monospace
-     * so paths line up, and every number is right-aligned with tabular figures — the same
-     * decisions a data table makes, which is what a ledger is.
+     * "grid": a two-column board.
+     *
+     * The only preset that changes the flow rather than the skin: cards tile side by side and
+     * each one is a compact tile with its own header chip, so a wide panel shows twice as many
+     * sessions before scrolling. Below ~420px the second column would be too narrow, so the
+     * panel falls back to one column through the same inline style (see 100-sections).
      */
-    function tableStyles() {
+    function gridStyles() {
       var c = palette();
       var base = compactStyles();
       return Object.assign({}, base, {
-        root: Object.assign({}, base.root, { fontSize: "12px" }),
-        bar: Object.assign({}, base.bar, { padding: "6px 8px", gap: "4px" }),
-        list: Object.assign({}, base.list, { padding: "0 0 12px" }),
-        card: Object.assign({}, base.card, { borderRadius: "0", border: "none", marginBottom: "10px", background: "transparent" }),
+        root: Object.assign({}, base.root, { fontSize: "12px", background: c.bgSoft }),
+        bar: Object.assign({}, base.bar, { gap: "6px", padding: "10px 12px", borderBottom: "none", background: c.bg }),
+        title: Object.assign({}, base.title, { fontWeight: 700, fontSize: "14px" }),
+        input: Object.assign({}, base.input, { height: "26px", padding: "0 10px", borderRadius: c.radius.lg, background: c.bgSoft, border: "1px solid transparent" }),
+        button: Object.assign({}, base.button, { height: "26px", padding: "0 10px", borderRadius: c.radius.lg, background: c.bgSoft }),
+        buttonOn: Object.assign({}, base.buttonOn, { height: "26px", padding: "0 10px", borderRadius: c.radius.lg }),
+        summary: Object.assign({}, base.summary, { padding: "6px 12px", borderBottom: "none" }),
+        notice: Object.assign({}, base.notice, { padding: "7px 12px", borderRadius: c.radius.lg, margin: "0 8px 6px" }),
+        // The board: cards flow into as many columns as the panel can honour.
+        //
+        // 240px was too narrow to read a file name in — the label truncated to "applicat…" —
+        // so the floor is 300px, which still yields two columns in a 520px sidebar but gives the
+        // name room. Below ~620px the grid collapses to one column on its own.
+        list: Object.assign({}, base.list, {
+          padding: "10px 10px 20px",
+          display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+          gap: "10px", alignContent: "start"
+        }),
+        card: Object.assign({}, base.card, {
+          border: "1px solid " + c.borderSoft, borderRadius: c.radius.lg,
+          background: c.bg, marginBottom: "0", overflow: "hidden",
+          boxShadow: c.shadowCard, alignSelf: "start"
+        }),
+        // The header is a filled chip strip, so a tile reads as a labelled box.
         cardHead: Object.assign({}, base.cardHead, {
-          height: "26px", padding: "0 8px", borderRadius: 0, background: c.bgSoft,
-          borderBottom: "1px solid " + c.border
+          height: "30px", padding: "0 10px", background: c.bgSoft,
+          borderBottom: "1px solid " + c.borderSoft
         }),
+        cardTitle: Object.assign({}, base.cardTitle, { fontSize: "12px", fontWeight: 600 }),
+        cardMeta: Object.assign({}, base.cardMeta, { fontSize: "10px" }),
         sectionHead: Object.assign({}, base.sectionHead, {
-          height: "24px", padding: "0 8px", borderRadius: 0,
-          fontFamily: "ui-monospace, Consolas, monospace", fontSize: "10px",
-          textTransform: "uppercase", letterSpacing: "0.06em",
-          borderBottom: "1px solid " + c.border
+          height: "24px", padding: "6px 10px 2px", fontSize: "10px", fontWeight: 700,
+          textTransform: "uppercase", letterSpacing: "0.06em", color: c.textFaint
         }),
-        row: Object.assign({}, base.row, { padding: "0 8px", gap: "8px", borderRadius: 0 }),
-        rowAlt: { background: "color-mix(in oklab, " + c.textDim + " 6%, transparent)" },
-        name: Object.assign({}, base.name, {
-          maxWidth: "40%", fontWeight: 600, fontSize: "11px",
-          fontFamily: "ui-monospace, Consolas, monospace"
-        }),
-        dir: Object.assign({}, base.dir, { fontSize: "10px" }),
-        io: Object.assign({}, base.io, { fontSize: "10px", textAlign: "right", minWidth: "34px" }),
-        times: Object.assign({}, base.times, { fontSize: "10px", textAlign: "right", minWidth: "72px" })
+        row: Object.assign({}, base.row, { height: "26px", lineHeight: "26px", padding: "0 10px", borderRadius: 0 }),
+        // A tile is ~300px: the name takes every pixel the metadata does not need, the path is
+        // dropped (it is the least useful fact at this width), and the two numeric cells shrink
+        // to their content instead of reserving 70px.
+        name: Object.assign({}, base.name, { flex: "1 1 auto", maxWidth: "none", minWidth: 0, fontSize: "12px", fontWeight: 600 }),
+        dir: Object.assign({}, base.dir, { display: "none" }),
+        io: Object.assign({}, base.io, { fontSize: "10px", minWidth: "auto", flex: "0 0 auto" }),
+        times: Object.assign({}, base.times, { fontSize: "10px", minWidth: "auto", flex: "0 0 auto" }),
+        filterBar: Object.assign({}, base.filterBar, { gap: "6px", padding: "6px 12px", borderBottom: "none" }),
+        filterChip: Object.assign({}, base.filterChip, { height: "20px", padding: "0 9px", background: c.bg, border: "1px solid " + c.borderSoft }),
+        filterChipOn: Object.assign({}, base.filterChipOn, { height: "20px", padding: "0 9px" }),
+        moreRow: Object.assign({}, base.moreRow, { height: "28px", fontSize: "11px" }),
+        empty: Object.assign({}, base.empty, { padding: "40px 16px", gridColumn: "1 / -1" })
       });
     }
 
     /**
-     * "card": surfaces that float. A tinted backdrop with white cards on it, a 3px accent rail
-     * on each card head, and much larger radii — the combination that reads as a different
-     * system rather than a recolour of the dense one.
+     * "card": surfaces that float.
+     *
+     * A tinted backdrop with white cards on it and a 3px accent rail down each card's left edge.
+     * The rail lives on the card's own border box, not inside the head: two earlier attempts
+     * failed for the same geometric reason — the card clips at a 14px radius, and a 3px strip
+     * drawn inside that corner is removed almost entirely (a border was clipped to a sliver, an
+     * inset shadow was clipped the same way, and a 3px absolute strip inside the head was
+     * clipped too). A left border on the card paints in the unclipped border box, so the radius
+     * is applied to the right side only and the left edge stays square — the shape a rail needs.
      */
     function cardStyles() {
       var c = palette();
@@ -1183,15 +1386,23 @@ window.__ModuleLoader__.load({
         summary: Object.assign({}, base.summary, { padding: "6px 12px", borderBottom: "none" }),
         notice: Object.assign({}, base.notice, { padding: "7px 12px", borderRadius: c.radius.lg, margin: "0 8px 6px" }),
         list: Object.assign({}, base.list, { padding: "10px 10px 20px" }),
-        // The rail is what makes a card a card: 3px of accent down the head's left edge.
-        card: Object.assign({}, base.card, {
-          border: "none", borderRadius: c.radius.xxl, marginBottom: "12px",
-          boxShadow: c.shadowCard, background: c.bg, overflow: "hidden"
-        }),
-        cardHead: Object.assign({}, base.cardHead, {
-          height: "36px", padding: "0 12px", background: "transparent",
-          borderLeft: "3px solid " + c.accent
-        }),
+        // All four corners are set individually and the inherited shorthand is dropped, because
+        // React warns (and skips the update) when a rerender mixes `borderRadius` with
+        // `borderTopRightRadius` and friends: the shorthand would win the cascade inconsistently
+        // and the card could keep the previous theme's radius after a switch.
+        card: (function () {
+          var style = Object.assign({}, base.card, {
+            border: "none", borderLeft: "3px solid " + c.accent,
+            marginBottom: "12px", boxShadow: c.shadowCard, background: c.bg, overflow: "hidden"
+          });
+          delete style.borderRadius;
+          style.borderTopLeftRadius = "0";
+          style.borderBottomLeftRadius = "0";
+          style.borderTopRightRadius = c.radius.xxl;
+          style.borderBottomRightRadius = c.radius.xxl;
+          return style;
+        })(),
+        cardHead: Object.assign({}, base.cardHead, { height: "36px", padding: "0 12px", background: "transparent" }),
         cardTitle: Object.assign({}, base.cardTitle, { fontSize: "13px" }),
         sectionHead: Object.assign({}, base.sectionHead, { height: "30px", padding: "0 12px" }),
         row: Object.assign({}, base.row, { height: "28px", lineHeight: "28px", padding: "0 12px 0 21px", borderRadius: 0 }),
@@ -1206,21 +1417,42 @@ window.__ModuleLoader__.load({
 
     var STYLE_THEMES = {
       compact: compactStyles,
-      airy: airyStyles,
-      table: tableStyles,
+      timeline: timelineStyles,
+      grid: gridStyles,
       card: cardStyles
     };
 
-    var currentTheme = "compact";
-    var S = compactStyles();
+    /** Order shown in the picker; the first entry is the fallback and the default. */
+    var THEME_ORDER = ["card", "compact", "timeline", "grid"];
+
+    var currentTheme = "card";
+    var S = cardStyles();
     var styleListeners = new Set();
 
     function styleTheme() {
       return currentTheme;
     }
 
+    /**
+     * Rebuild the active table in place after the host switched light/dark.
+     *
+     * The theme id did not change — only the scheme did — so `setStyleTheme` would early-return.
+     * The palette itself is live CSS (`var(--dsw-alias-…)`) so colours already follow; what this
+     * refreshes is everything derived from `readDarkScheme()` (there is nothing scheme-specific
+     * left in the tables, but rebuilding is what tells subscribers to repaint).
+     */
+    function refreshStyles() {
+      if (S === null) return;
+      prefersDark = readDarkScheme();
+      ACCENT = accentFor(prefersDark);
+      S = STYLE_THEMES[currentTheme]();
+      styleListeners.forEach(function (fn) {
+        try { fn(S); } catch (error) { /* a subscriber must not break a theme switch */ }
+      });
+    }
+
     function setStyleTheme(id) {
-      var next = Object.prototype.hasOwnProperty.call(STYLE_THEMES, id) ? id : "compact";
+      var next = Object.prototype.hasOwnProperty.call(STYLE_THEMES, id) ? id : "card";
       if (next === currentTheme && S !== null) return;
       currentTheme = next;
       S = STYLE_THEMES[next]();
@@ -1299,6 +1531,53 @@ window.__ModuleLoader__.load({
     function clampRowIndex(from, delta, total) {
       if (total <= 0) return 0;
       return Math.min(total - 1, Math.max(0, from + delta));
+    }
+
+    /**
+     * Extensions inside one family, counted from the live data.
+     *
+     * This is the second filter level, and it is deliberately derived rather than declared: a
+     * language table would be biased toward whatever the current project uses (one real ledger
+     * was 44% `.java`, so a fixed "Code" chip filtered nothing), while a derived census is
+     * correct for every project and needs no maintenance when a new extension appears.
+     *
+     * @param files  the files to census
+     * @param family the family to restrict to, or null for every family
+     * @returns `[{ ext, count }]`, most frequent first; `ext` is "" for extension-less files
+     */
+    function extensionCensus(files, family) {
+      var counts = {};
+      (files || []).forEach(function (file) {
+        if (family !== null && family !== undefined && String(file.category || "other") !== family) return;
+        var ext = extOf(file.name || file.path || "");
+        counts[ext] = (counts[ext] || 0) + 1;
+      });
+      return Object.keys(counts).map(function (ext) {
+        return { ext: ext, count: counts[ext] };
+      }).sort(function (left, right) {
+        // Most frequent first; ties alphabetical so the order is stable between renders.
+        return right.count - left.count || left.ext.localeCompare(right.ext);
+      });
+    }
+
+    /**
+     * How many extension chips to show before folding the rest into a counter.
+     * Kept small because this is a second row under an already busy first one.
+     */
+    var EXT_CHIP_MAX = 8;
+
+    /** Split a census into the chips to show and the remainder's totals. */
+    function extensionChips(census, max) {
+      var limit = max > 0 ? max : EXT_CHIP_MAX;
+      var list = census || [];
+      if (list.length <= limit + 1) return { shown: list, hidden: 0, hiddenFiles: 0 };
+      var shown = list.slice(0, limit);
+      var rest = list.slice(limit);
+      return {
+        shown: shown,
+        hidden: rest.length,
+        hiddenFiles: rest.reduce(function (total, entry) { return total + entry.count; }, 0)
+      };
     }
 
     /**
@@ -1645,6 +1924,10 @@ window.__ModuleLoader__.load({
         },
         title: file.path + (missing ? t("row.missingSuffix") : "")
       },
+        // The timeline theme draws a gutter: a spine behind a dot on every row. Other themes
+        // leave both null, so this costs one truthiness check for them.
+        S.rowSpine ? react.createElement("span", { style: S.rowSpine, "aria-hidden": "true" }) : null,
+        S.rowDot ? react.createElement("span", { style: Object.assign({}, S.rowDot, { background: categoryColor(file.category) }), "aria-hidden": "true" }) : null,
         react.createElement(FileGlyph, { ext: extOf(file.name || file.path), path: file.path, name: file.name, category: file.category, size: 16 }),
         react.createElement("span", { style: S.name }, highlight(file.name, props.query)),
         missing ? react.createElement("span", { style: S.tagMissing }, t("row.missingTag")) : null,
@@ -1978,6 +2261,9 @@ window.__ModuleLoader__.load({
             if (typeof props.onSessionMenu === "function") props.onSessionMenu(event, session);
           }
         },
+          // The accent rail is a real element, not a border or an inset shadow: both of those
+          // were clipped by the card's 14px radius plus overflow:hidden and never appeared.
+          S.cardRail ? react.createElement("span", { style: S.cardRail, "aria-hidden": "true" }) : null,
           react.createElement("span", { style: S.cardTitle, title: session.title }, (props.open ? "▾ " : "▸ ") + (session.title || session.sessionId)),
           react.createElement("span", { style: S.cardMeta },
             split
@@ -2255,7 +2541,7 @@ window.__ModuleLoader__.load({
 
       // Visual theme: compact (original) / airy / table / card. Persisted like the
       // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
-      var themeState = react.useState(function () { return loadPref("styleTheme", "compact"); });
+      var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
       var setTheme = themeState[1];
       react.useEffect(function () {
@@ -2271,6 +2557,13 @@ window.__ModuleLoader__.load({
       });
       var typeSelection = typeSelState[0];
       var setTypeSelection = typeSelState[1];
+      // Second filter level: one extension inside the selected family, or "" for all of them.
+      // Kept separate from `typeSelection` so clearing the family clears the extension too,
+      // and so the extension can be "all" without inventing a sentinel in the family map.
+      var extState = react.useState(function () { return String(loadPref("extFilter", "")); });
+      var extFilter = extState[0];
+      var setExtFilter = extState[1];
+
       var typeKeys = Object.keys(typeSelection).filter(function (key) { return typeSelection[key] === true; }).sort();
       var typeKey = typeKeys.join(",");
       // One stable object per selection, so memoised cards are not invalidated by a re-render.
@@ -2454,7 +2747,6 @@ window.__ModuleLoader__.load({
        * they wanted, and with four themes the label alone never told them what was on offer.
        * The list shows every theme with a check next to the active one.
        */
-      var THEME_ORDER = ["compact", "airy", "table", "card"];
       var openThemeMenu = function (event) {
         if (menu !== null && menu !== undefined && menu.kind === "theme") { setMenu(null); return; }
         var rect = event.currentTarget.getBoundingClientRect();
@@ -3105,9 +3397,10 @@ window.__ModuleLoader__.load({
       var passesFilters = function (file) {
         if (deletedOnly === true && file.exists !== false) return false;
         if (typeSet !== null && typeSet[String(file.category || "other")] !== true) return false;
+        if (extFilter !== "" && extOf(file.name || file.path || "") !== extFilter) return false;
         return matches(file, query);
       };
-      var filterActive = query !== "" || typeSet !== null || deletedOnly === true;
+      var filterActive = query !== "" || typeSet !== null || deletedOnly === true || extFilter !== "";
       var visible = { files: 0, sessions: 0, deleted: 0 };
       sessions.forEach(function (session) {
         var counts = session.counts || {};
@@ -3433,6 +3726,61 @@ window.__ModuleLoader__.load({
 
       // Kept in the tree even when hidden: a new child index would remount the list.
       var showFilterBar = categoryChips.length >= 2 || (scope === "all" && separate);
+      // The second level appears only when a single family is selected AND that family actually
+      // has more than one extension in the current data. Otherwise it would be a row of one chip
+      // repeating the family the reader just clicked.
+      var selectedFamilies = typeSet === null ? [] : Object.keys(typeSet);
+      var showExtRow = selectedFamilies.length === 1;
+      var familyFiles = [];
+      if (showExtRow) {
+        var onlyFamily = selectedFamilies[0];
+        sessions.forEach(function (session) {
+          (session.files || []).forEach(function (file) {
+            if (String(file.category || "other") === onlyFamily) familyFiles.push(file);
+          });
+        });
+      }
+      var census = showExtRow ? extensionCensus(familyFiles, null) : [];
+      var extChipsPartition = showExtRow ? extensionChips(census, EXT_CHIP_MAX) : { shown: [], hidden: 0, hiddenFiles: 0 };
+      var acceptExtFilter = showExtRow && extChipsPartition.shown.length >= 2;
+      var extRow = acceptExtFilter ? h("div", { style: S.filterBar },
+        h("span", { style: S.filterLabel }, t("filter.extLabel")),
+        h("button", {
+          type: "button",
+          style: extFilter === "" ? S.filterChipOn : S.filterChip,
+          "aria-pressed": extFilter === "",
+          onFocus: ringOn,
+          onBlur: ringOff,
+          onClick: function () { setExtFilter(""); savePref("extFilter", ""); }
+        },
+          h("span", null, t("filter.allExts")),
+          h("span", { style: extFilter === "" ? S.chipCountOn : S.chipCount }, String(familyFiles.length))
+        ),
+        extChipsPartition.shown.map(function (entry) {
+          var on = extFilter === entry.ext;
+          var label = entry.ext === "" ? t("filter.noExt") : entry.ext;
+          return h("button", {
+            key: "ext:" + entry.ext,
+            type: "button",
+            style: on ? S.filterChipOn : S.filterChip,
+            "aria-pressed": on,
+            title: t("filter.onlyExt", { ext: label, count: entry.count }),
+            onFocus: ringOn,
+            onBlur: ringOff,
+            onClick: function () {
+              var next = on ? "" : entry.ext;
+              setExtFilter(next);
+              savePref("extFilter", next);
+            }
+          },
+            h("span", null, label),
+            h("span", { style: on ? S.chipCountOn : S.chipCount }, String(entry.count))
+          );
+        }),
+        extChipsPartition.hidden > 0 ? h("span", { style: S.chipCount, title: t("filter.moreExts", { n: extChipsPartition.hidden }) },
+          t("filter.moreExts", { n: extChipsPartition.hidden })) : null
+      ) : null;
+
       var filterBar = h("div", { style: showFilterBar ? S.filterBar : Object.assign({}, S.filterBar, { display: "none" }) },
         h("span", { style: S.filterLabel }, t("sort.type")),
         categoryChips.map(function (chip) {
@@ -3477,6 +3825,8 @@ window.__ModuleLoader__.load({
           onClick: function () {
             setTypeSelection({});
             savePref("typeFilter", []);
+            setExtFilter("");
+            savePref("extFilter", "");
             setDeletedOnly(false);
           }
         }, h("span", { style: S.filterActionGlyph, "aria-hidden": "true" }, "✕"), t("filter.clear")) : null,
@@ -3498,6 +3848,7 @@ window.__ModuleLoader__.load({
         summaryLine,
         notice,
         filterBar,
+        extRow,
         h("div", { ref: listRef, style: S.list, onScroll: onListScroll }, body),
         h(Menu, { menu: menu, onPick: act, onClose: function () { setMenu(null); } }),
         renderModal(),
@@ -3565,6 +3916,36 @@ window.__ModuleLoader__.load({
       // evaluation-time constants (category labels, sort labels) and TabTitle all see it.
       setFallback({ zh: zh, en: en });
       setTranslator(ctx.locale.bind(NS), readActiveLocale(ctx));
+      // Follow the host's appearance. DSH marks the scheme on <html>/<body> and emits
+      // `theme/change`; the CSS variables the palette reads update by themselves, and this
+      // listener repaints the panel so a derived value cannot lag behind.
+      ctx.effect(function () {
+        if (typeof ctx.on !== "function") return undefined;
+        return ctx.on("theme/change", function () {
+          try {
+            report("theme-change", JSON.stringify({ dark: readDarkScheme() }));
+            refreshStyles();
+          } catch (error) {
+            report("theme-change-error", String((error && error.message) || error));
+          }
+        });
+      }, "doc-ledger: theme change");
+
+      // A user can also flip the OS scheme while DSH follows `system`; that never emits
+      // theme/change, so the media query is watched as well.
+      ctx.effect(function () {
+        if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+        var query = window.matchMedia("(prefers-color-scheme: dark)");
+        var onChange = function () {
+          try { refreshStyles(); } catch (error) { /* repaint is best effort */ }
+        };
+        if (typeof query.addEventListener === "function") {
+          query.addEventListener("change", onChange);
+          return function () { query.removeEventListener("change", onChange); };
+        }
+        return undefined;
+      }, "doc-ledger: os scheme change");
+
       ctx.effect(function () {
         return ctx.locale.register(NS, { zh: zh, en: en });
       }, "doc-ledger: dictionaries");

@@ -215,6 +215,9 @@
             if (typeof props.onSessionMenu === "function") props.onSessionMenu(event, session);
           }
         },
+          // The accent rail is a real element, not a border or an inset shadow: both of those
+          // were clipped by the card's 14px radius plus overflow:hidden and never appeared.
+          S.cardRail ? react.createElement("span", { style: S.cardRail, "aria-hidden": "true" }) : null,
           react.createElement("span", { style: S.cardTitle, title: session.title }, (props.open ? "▾ " : "▸ ") + (session.title || session.sessionId)),
           react.createElement("span", { style: S.cardMeta },
             split

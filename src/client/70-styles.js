@@ -18,76 +18,186 @@
      */
 
     /**
-     * Host theme tokens, spelled exactly as the Theme provider declares them (checked with
-     * cordis_inspect_query → client/Theme/listTokens). These are the ONLY names that exist:
-     * `--dsw-alias-accent`, `--dsw-alias-border` and `--dsw-alias-label-tertiary` are not
-     * real tokens, so using them silently fell back to a light-mode literal and the panel
-     * ignored dark mode entirely.
+     * Colours, self-contained.
      *
-     * Every token is declared light+dark by the host, so a single `var(...)` follows the
-     * active theme. The literal fallback only matters outside the host (harness, static
-     * report), where it provides a readable light scheme.
+     * The host token route was measured and rejected: in this build the DSH theme declares
+     * `--dsw-alias-brand-primary: #0f1115` (ink, not an accent) and `--dsw-alias-bg-layer-1`
+     * and `-layer-2` are **both #fff**. Every distinction this panel draws — an accent rail, a
+     * tinted backdrop behind white cards, a warn tint — collapsed into one flat white with a
+     * black rail. The tokens are also only defined for the shell's own subtree, so half of them
+     * resolved and half fell back to literals.
+     *
+     * So the palette is defined here instead: one light and one dark set, chosen by
+     * prefers-color-scheme. That is a real trade — the panel no longer follows a custom host
+     * theme — but it is honest, and it is the only way four looks can actually differ.
      */
-    var TOKEN = {
-      text: "var(--dsw-alias-label-primary, #1f2329)",
-      textDim: "var(--dsw-alias-label-secondary, rgba(128,128,128,0.95))",
-      // No tertiary label token exists; the secondary colour at reduced weight is the
-      // closest honest equivalent.
-      textFaint: "var(--dsw-alias-label-secondary, rgba(128,128,128,0.95))",
+    /**
+     * The colour scheme, read from the host's own signal.
+     *
+     * `prefers-color-scheme` is the OS setting, and the panel used it — so choosing Dark inside
+     * DSH (with a light OS) kept the panel white forever. Measured on a live window, DSH marks
+     * the scheme with BOTH of these:
+     *
+     *   <html data-ds-theme-source="dark">
+     *   <body data-ds-dark-theme>
+     *
+     * Either one is authoritative; the attribute is present only in dark mode, which makes
+     * "attribute present" the whole test. The media query stays as the last resort for the
+     * harness and the static report, which have no host.
+     */
+    function readDarkScheme() {
+      try {
+        if (typeof document !== "undefined") {
+          var html = document.documentElement;
+          var body = document.body;
+          if (html !== null && html.getAttribute("data-ds-theme-source") === "dark") return true;
+          if (html !== null && html.getAttribute("data-ds-theme-source") === "light") return false;
+          if (body !== null && body.hasAttribute("data-ds-dark-theme")) return true;
+          // `color-scheme` follows the host's own computed value in both schemes.
+          if (html !== null) {
+            var scheme = getComputedStyle(html).colorScheme;
+            if (scheme === "dark") return true;
+            if (scheme === "light") return false;
+          }
+        }
+        if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+          return window.matchMedia("(prefers-color-scheme: dark)").matches === true;
+        }
+      } catch (error) {
+        /* an unreadable document only costs the dark palette */
+      }
+      return false;
+    }
+
+    /**
+     * The host's real colours, taken from the custom properties DSH defines on <body>.
+     *
+     * These are the values the rest of the UI uses, including a user's own theme, so reading
+     * them is what "follow the DSH theme" actually means. Each one keeps a literal fallback for
+     * the harness, where no host defines them — and those fallbacks are the only reason the
+     * light/dark tables below still exist.
+     */
+    var HOST = {
+      text: "var(--dsw-alias-label-primary, #1c1f23)",
+      textDim: "var(--dsw-alias-label-secondary, #5c626b)",
+      textFaint: "var(--dsw-alias-label-secondary, #8a919b)",
       bg: "var(--dsw-alias-bg-layer-1, #ffffff)",
-      bgSoft: "var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.07))",
+      bgSoft: "var(--dsw-alias-bg-layer-2, #f4f5f7)",
       bgBase: "var(--dsw-alias-bg-base, #ffffff)",
       bgOverlay: "var(--dsw-alias-bg-overlay, #ffffff)",
-      border: "var(--dsw-alias-border-l1, rgba(128,128,128,0.28))",
-      borderStrong: "var(--dsw-alias-border-l2, rgba(128,128,128,0.4))",
-      accent: "var(--dsw-alias-brand-primary, #4f7cf7)",
-      danger: "var(--dsw-alias-state-error-primary, #b91c1c)",
-      success: "var(--dsw-alias-state-success-primary, #15805b)",
-      warn: "var(--dsw-alias-state-warn-primary, #b06c10)",
-      idle: "var(--dsw-alias-state-idle-primary, rgba(128,128,128,0.9))",
-      sidebarFill: "var(--dsw-specific-sidebar-fill, rgba(128,128,128,0.04))"
+      border: "var(--dsw-alias-border-l1, #dfe3e8)",
+      borderStrong: "var(--dsw-alias-border-l2, #c7ccd4)",
+      accent: "var(--dsw-alias-brand-primary, #3b6fe0)",
+      danger: "var(--dsw-alias-state-error-primary, #c0392b)",
+      success: "var(--dsw-alias-state-success-primary, #12805c)",
+      warn: "var(--dsw-alias-state-warn-primary, #a86512)"
     };
 
-    var ACCENT = TOKEN.accent;
+    /** Re-read on every rebuild: the host flips a DOM attribute, not a media query. */
+    var prefersDark = readDarkScheme();
 
+    function schemeIsDark() {
+      prefersDark = readDarkScheme();
+      return prefersDark;
+    }
+
+    /**
+     * Fallback literals, used only where no host token exists. `DARK` exists so the harness and
+     * the static report can be previewed in a dark scheme; the host path never needs it.
+     */
+    var LIGHT = {
+      text: "#1c1f23", textDim: "#5c626b", textFaint: "#8a919b",
+      bg: "#ffffff", bgSoft: "#f4f5f7", bgBase: "#ffffff", bgOverlay: "#ffffff",
+      border: "#dfe3e8", borderStrong: "#c7ccd4",
+      accent: "#3b6fe0", danger: "#c0392b", success: "#12805c", warn: "#a86512"
+    };
+
+    var DARK = {
+      text: "#e6e8ec", textDim: "#a3a9b3", textFaint: "#767d88",
+      bg: "#1e2126", bgSoft: "#171a1e", bgBase: "#131518", bgOverlay: "#262a30",
+      border: "#343941", borderStrong: "#444b55",
+      accent: "#6b93ff", danger: "#ff6b6b", success: "#4ec9a0", warn: "#e0a030"
+    };
+
+    /** Theme tokens first (which is what follows DSH); literals are only a fallback. */
+    var TOKEN = HOST;
+
+    /**
+     * The rail and the selected state.
+     *
+     * Deliberately NOT the host accent: DSH's default theme declares
+     * `--dsw-alias-brand-primary: #0f1115` (ink), so a rail drawn from it is a black bar on a
+     * white card — which is what the first attempt produced. A fixed brand blue is legible on
+     * both surfaces; a host theme with a real accent still drives everything else.
+     */
+    function accentFor(dark) {
+      return dark ? "#6b93ff" : "#3b6fe0";
+    }
+
+    var ACCENT = accentFor(prefersDark);
+
+    /**
+     * The palette: follow the host where it is trustworthy, derive where it is not.
+     *
+     * Measured in the live window (light scheme), DSH declares
+     *   --dsw-alias-brand-primary: #0f1115   (ink, not an accent)
+     *   --dsw-alias-bg-layer-1:    #fff
+     *   --dsw-alias-bg-layer-2:    #fff      (identical to layer-1)
+     * so a "faithful" palette gives white cards on a white backdrop with a black rail: the card
+     * theme becomes invisible, which is exactly what the screenshot showed.
+     *
+     * The split that works:
+     *   - text, borders, danger/success/warn  -> host tokens (a custom theme's typography and
+     *     state colours are worth honouring, and they read correctly in both schemes);
+     *   - the backdrop and the accent -> derived locally, because the host gives no usable
+     *     second surface level and no usable accent.
+     *
+     * The backdrop is a tint of the surface actually behind the panel: light mode darkens it a
+     * little, dark mode lightens it, so white (or near-black) cards always have separation.
+     */
     function palette() {
+      var dark = schemeIsDark();
+      // A backdrop derived from the surface: one step away from it, in the direction that
+      // creates contrast for the cards drawn on top.
+      var backdrop = dark
+        ? "color-mix(in oklab, " + TOKEN.bg + " 72%, #000)"
+        : "color-mix(in oklab, " + TOKEN.bg + " 94%, #000)";
+      // The host's accent is ink in the default theme, so it cannot carry an accent rail.
+      // A fixed brand blue stays legible on white and on near-black, and the fallback chain
+      // still lets a theme with a real accent win.
+      var accent = ACCENT;
       return {
         text: TOKEN.text,
         textDim: TOKEN.textDim,
         textFaint: TOKEN.textFaint,
         bg: TOKEN.bg,
-        bgSoft: TOKEN.bgSoft,
+        // The second surface level: derived, since the host's own is identical to the first.
+        bgSoft: backdrop,
         bgBase: TOKEN.bgBase,
         bgOverlay: TOKEN.bgOverlay,
         border: TOKEN.border,
         borderStrong: TOKEN.borderStrong,
-        // A 16% hairline: the token itself is a solid colour, so the soft variant is built
-        // from it rather than invented as an rgba literal that dark mode cannot follow.
         borderSoft: "color-mix(in oklab, " + TOKEN.border + " 55%, transparent)",
-        accent: TOKEN.accent,
-        accentSoft: "color-mix(in oklab, " + TOKEN.accent + " 14%, transparent)",
-        accentBorder: "color-mix(in oklab, " + TOKEN.accent + " 72%, transparent)",
+        accent: accent,
+        accentSoft: "color-mix(in oklab, " + accent + " 14%, transparent)",
+        accentBorder: "color-mix(in oklab, " + accent + " 72%, transparent)",
         danger: TOKEN.danger,
         dangerSoft: "color-mix(in oklab, " + TOKEN.danger + " 16%, transparent)",
         success: TOKEN.success,
         warn: TOKEN.warn,
         warnSoft: "color-mix(in oklab, " + TOKEN.warn + " 14%, transparent)",
         mark: "color-mix(in oklab, #facc15 45%, transparent)",
-        // A 5-step radius scale (shadcn derives all of these from one --radius), so a theme
-        // picks a step instead of inventing a number per box.
         radius: { sm: "4px", md: "6px", lg: "8px", xl: "10px", xxl: "14px" },
-        // Selection/fill for dense rows: a muted wash, not a border.
-        rowHover: "color-mix(in oklab, " + TOKEN.accent + " 8%, transparent)",
-        // Structural shades: hairlines, scrims and shadows are also colour decisions, so
-        // they belong in the palette instead of being literals the dark theme cannot see.
+        rowHover: "color-mix(in oklab, " + accent + " 8%, transparent)",
         hairline: "color-mix(in oklab, " + TOKEN.border + " 40%, transparent)",
         warnBorder: "color-mix(in oklab, " + TOKEN.warn + " 30%, transparent)",
         scrim: "rgba(0,0,0,0.55)",
-        shadowMenu: "0 8px 24px rgba(0,0,0,0.28)",
+        shadowMenu: dark ? "0 8px 24px rgba(0,0,0,0.5)" : "0 8px 24px rgba(0,0,0,0.14)",
         shadowToast: "0 4px 14px rgba(0,0,0,0.22)",
-        shadowCard: "0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06)",
-        // Text drawn on a solid accent/success/error fill: fixed white in both schemes,
-        // because the fill itself is the contrast anchor.
+        // Deeper in dark mode: a 6% black shadow on a near-black backdrop reads as nothing.
+        shadowCard: dark
+          ? "0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.28)"
+          : "0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06)",
         onAccent: "#ffffff"
       };
     }
@@ -157,6 +267,12 @@
         filterActionGlyph: { fontSize: "10px", opacity: 0.7 },
         moreRow: { display: "flex", alignItems: "center", justifyContent: "center", height: ROW_H + "px", cursor: "pointer", color: c.accent, fontSize: "11px" },
         dot: { width: "7px", height: "7px", borderRadius: "2px", flex: "0 0 auto" },
+        // Present in every theme (the parity check compares key sets); only "card" gives it a
+        // visible value, the rest leave it null so the head renders no rail.
+        cardRail: null,
+        // Gutter parts for the timeline theme; null elsewhere.
+        rowDot: null,
+        rowSpine: null,
         fileBadge: { display: "inline-block", flex: "0 0 auto", borderRadius: "3px", color: c.onAccent, fontWeight: 700, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.02em", overflow: "hidden" },
         // Three tiers, and only three: name is the anchor, path is context, counters are metadata.
         name: { fontWeight: 500, color: c.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "46%", flex: "0 1 auto", minWidth: 0 },
@@ -199,26 +315,54 @@
      * rows by whitespace. Type grows a notch and the label gains weight, because with the
      * separators gone weight is the only thing left to hang hierarchy on.
      */
-    function airyStyles() {
+    /**
+     * "timeline": the ledger as a chronology.
+     *
+     * Structurally different from every other preset: rows carry a left gutter with a dot and a
+     * connecting line, section heads are small caps without rules, and the card is a single
+     * flat sheet rather than a framed box. The gutter is what makes it read as a log instead of
+     * a list, and nothing else here uses one.
+     */
+    function timelineStyles() {
       var c = palette();
       var base = compactStyles();
       return Object.assign({}, base, {
         root: Object.assign({}, base.root, { fontSize: "13px" }),
         bar: Object.assign({}, base.bar, { gap: "6px", padding: "10px 12px", borderBottom: "none" }),
-        barRow: Object.assign({}, base.barRow, { gap: "6px" }),
         title: Object.assign({}, base.title, { fontWeight: 700, fontSize: "14px" }),
-        input: Object.assign({}, base.input, { height: "26px", padding: "0 9px", borderRadius: c.radius.lg, border: "1px solid transparent", background: c.bgSoft }),
-        button: Object.assign({}, base.button, { height: "26px", padding: "0 10px", borderRadius: c.radius.lg, background: "transparent" }),
-        buttonOn: Object.assign({}, base.buttonOn, { height: "26px", padding: "0 10px", borderRadius: c.radius.lg }),
-        summary: Object.assign({}, base.summary, { padding: "6px 12px", fontSize: "12px", borderBottom: "none" }),
-        notice: Object.assign({}, base.notice, { padding: "7px 12px", borderRadius: c.radius.lg, margin: "0 8px 6px" }),
-        list: Object.assign({}, base.list, { padding: "8px 10px 20px" }),
-        card: Object.assign({}, base.card, { border: "none", borderRadius: c.radius.xxl, background: c.bgSoft, marginBottom: "12px" }),
-        cardHead: Object.assign({}, base.cardHead, { height: "34px", padding: "0 12px", background: "transparent" }),
-        cardTitle: Object.assign({}, base.cardTitle, { fontSize: "13px" }),
-        sectionHead: Object.assign({}, base.sectionHead, { height: "30px", padding: "0 12px", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: c.textFaint }),
-        // Rows keep a fixed height so the list cannot shimmer, but the metric is airier.
-        row: Object.assign({}, base.row, { height: "28px", lineHeight: "28px", padding: "0 12px", borderRadius: c.radius.lg }),
+        input: Object.assign({}, base.input, { height: "26px", padding: "0 10px", borderRadius: "999px", background: c.bgSoft, border: "1px solid transparent" }),
+        button: Object.assign({}, base.button, { height: "26px", padding: "0 10px", borderRadius: "999px", background: c.bgSoft }),
+        buttonOn: Object.assign({}, base.buttonOn, { height: "26px", padding: "0 10px", borderRadius: "999px" }),
+        summary: Object.assign({}, base.summary, { padding: "6px 14px", borderBottom: "none" }),
+        notice: Object.assign({}, base.notice, { padding: "7px 14px", borderRadius: c.radius.lg, margin: "0 10px 6px" }),
+        list: Object.assign({}, base.list, { padding: "8px 12px 24px" }),
+        // One flat sheet: no frame, no shadow, no radius on the card itself.
+        card: Object.assign({}, base.card, { border: "none", borderRadius: "0", background: "transparent", marginBottom: "4px" }),
+        cardHead: Object.assign({}, base.cardHead, {
+          height: "32px", padding: "0 6px", background: "transparent",
+          borderBottom: "1px solid " + c.borderSoft
+        }),
+        cardTitle: Object.assign({}, base.cardTitle, { fontSize: "13px", fontWeight: 700 }),
+        sectionHead: Object.assign({}, base.sectionHead, {
+          height: "26px", padding: "0 6px 0 22px", fontSize: "10px", fontWeight: 700,
+          textTransform: "uppercase", letterSpacing: "0.08em", color: c.textFaint
+        }),
+        // The gutter: 22px of left padding holds the dot and the spine drawn by rowDot/rowSpine.
+        row: Object.assign({}, base.row, {
+          height: "30px", lineHeight: "30px", padding: "0 6px 0 22px", borderRadius: 0,
+          position: "relative", gap: "8px"
+        }),
+        // The dot sits on the spine; every row has one so the line reads as continuous.
+        rowDot: {
+          position: "absolute", left: "13px", top: "50%", width: "7px", height: "7px",
+          marginTop: "-3.5px", borderRadius: "999px", background: c.accent,
+          boxShadow: "0 0 0 2px " + c.bg
+        },
+        // The spine: a 1px vertical line behind the dots, drawn per row so it stops with the list.
+        rowSpine: {
+          position: "absolute", left: "16px", top: 0, bottom: 0, width: "1px",
+          background: "color-mix(in oklab, " + c.accent + " 26%, transparent)"
+        },
         filterBar: Object.assign({}, base.filterBar, { gap: "6px", padding: "6px 12px", borderBottom: "none" }),
         filterChip: Object.assign({}, base.filterChip, { height: "22px", padding: "0 10px", background: c.bgSoft, border: "1px solid transparent" }),
         filterChipOn: Object.assign({}, base.filterChipOn, { height: "22px", padding: "0 10px", border: "1px solid transparent" }),
@@ -227,50 +371,83 @@
         dir: Object.assign({}, base.dir, { fontSize: "12px" }),
         io: Object.assign({}, base.io, { fontSize: "11px" }),
         times: Object.assign({}, base.times, { fontSize: "11px" }),
-        moreRow: Object.assign({}, base.moreRow, { height: "30px", fontSize: "12px" }),
-        empty: Object.assign({}, base.empty, { padding: "40px 16px", fontSize: "13px" })
+        moreRow: Object.assign({}, base.moreRow, { height: "30px", fontSize: "12px", paddingLeft: "22px" }),
+        empty: Object.assign({}, base.empty, { padding: "44px 16px", fontSize: "13px" })
       });
     }
 
     /**
-     * "table": an actual grid. Zebra stripes replace separators, the name column is monospace
-     * so paths line up, and every number is right-aligned with tabular figures — the same
-     * decisions a data table makes, which is what a ledger is.
+     * "grid": a two-column board.
+     *
+     * The only preset that changes the flow rather than the skin: cards tile side by side and
+     * each one is a compact tile with its own header chip, so a wide panel shows twice as many
+     * sessions before scrolling. Below ~420px the second column would be too narrow, so the
+     * panel falls back to one column through the same inline style (see 100-sections).
      */
-    function tableStyles() {
+    function gridStyles() {
       var c = palette();
       var base = compactStyles();
       return Object.assign({}, base, {
-        root: Object.assign({}, base.root, { fontSize: "12px" }),
-        bar: Object.assign({}, base.bar, { padding: "6px 8px", gap: "4px" }),
-        list: Object.assign({}, base.list, { padding: "0 0 12px" }),
-        card: Object.assign({}, base.card, { borderRadius: "0", border: "none", marginBottom: "10px", background: "transparent" }),
+        root: Object.assign({}, base.root, { fontSize: "12px", background: c.bgSoft }),
+        bar: Object.assign({}, base.bar, { gap: "6px", padding: "10px 12px", borderBottom: "none", background: c.bg }),
+        title: Object.assign({}, base.title, { fontWeight: 700, fontSize: "14px" }),
+        input: Object.assign({}, base.input, { height: "26px", padding: "0 10px", borderRadius: c.radius.lg, background: c.bgSoft, border: "1px solid transparent" }),
+        button: Object.assign({}, base.button, { height: "26px", padding: "0 10px", borderRadius: c.radius.lg, background: c.bgSoft }),
+        buttonOn: Object.assign({}, base.buttonOn, { height: "26px", padding: "0 10px", borderRadius: c.radius.lg }),
+        summary: Object.assign({}, base.summary, { padding: "6px 12px", borderBottom: "none" }),
+        notice: Object.assign({}, base.notice, { padding: "7px 12px", borderRadius: c.radius.lg, margin: "0 8px 6px" }),
+        // The board: cards flow into as many columns as the panel can honour.
+        //
+        // 240px was too narrow to read a file name in — the label truncated to "applicat…" —
+        // so the floor is 300px, which still yields two columns in a 520px sidebar but gives the
+        // name room. Below ~620px the grid collapses to one column on its own.
+        list: Object.assign({}, base.list, {
+          padding: "10px 10px 20px",
+          display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+          gap: "10px", alignContent: "start"
+        }),
+        card: Object.assign({}, base.card, {
+          border: "1px solid " + c.borderSoft, borderRadius: c.radius.lg,
+          background: c.bg, marginBottom: "0", overflow: "hidden",
+          boxShadow: c.shadowCard, alignSelf: "start"
+        }),
+        // The header is a filled chip strip, so a tile reads as a labelled box.
         cardHead: Object.assign({}, base.cardHead, {
-          height: "26px", padding: "0 8px", borderRadius: 0, background: c.bgSoft,
-          borderBottom: "1px solid " + c.border
+          height: "30px", padding: "0 10px", background: c.bgSoft,
+          borderBottom: "1px solid " + c.borderSoft
         }),
+        cardTitle: Object.assign({}, base.cardTitle, { fontSize: "12px", fontWeight: 600 }),
+        cardMeta: Object.assign({}, base.cardMeta, { fontSize: "10px" }),
         sectionHead: Object.assign({}, base.sectionHead, {
-          height: "24px", padding: "0 8px", borderRadius: 0,
-          fontFamily: "ui-monospace, Consolas, monospace", fontSize: "10px",
-          textTransform: "uppercase", letterSpacing: "0.06em",
-          borderBottom: "1px solid " + c.border
+          height: "24px", padding: "6px 10px 2px", fontSize: "10px", fontWeight: 700,
+          textTransform: "uppercase", letterSpacing: "0.06em", color: c.textFaint
         }),
-        row: Object.assign({}, base.row, { padding: "0 8px", gap: "8px", borderRadius: 0 }),
-        rowAlt: { background: "color-mix(in oklab, " + c.textDim + " 6%, transparent)" },
-        name: Object.assign({}, base.name, {
-          maxWidth: "40%", fontWeight: 600, fontSize: "11px",
-          fontFamily: "ui-monospace, Consolas, monospace"
-        }),
-        dir: Object.assign({}, base.dir, { fontSize: "10px" }),
-        io: Object.assign({}, base.io, { fontSize: "10px", textAlign: "right", minWidth: "34px" }),
-        times: Object.assign({}, base.times, { fontSize: "10px", textAlign: "right", minWidth: "72px" })
+        row: Object.assign({}, base.row, { height: "26px", lineHeight: "26px", padding: "0 10px", borderRadius: 0 }),
+        // A tile is ~300px: the name takes every pixel the metadata does not need, the path is
+        // dropped (it is the least useful fact at this width), and the two numeric cells shrink
+        // to their content instead of reserving 70px.
+        name: Object.assign({}, base.name, { flex: "1 1 auto", maxWidth: "none", minWidth: 0, fontSize: "12px", fontWeight: 600 }),
+        dir: Object.assign({}, base.dir, { display: "none" }),
+        io: Object.assign({}, base.io, { fontSize: "10px", minWidth: "auto", flex: "0 0 auto" }),
+        times: Object.assign({}, base.times, { fontSize: "10px", minWidth: "auto", flex: "0 0 auto" }),
+        filterBar: Object.assign({}, base.filterBar, { gap: "6px", padding: "6px 12px", borderBottom: "none" }),
+        filterChip: Object.assign({}, base.filterChip, { height: "20px", padding: "0 9px", background: c.bg, border: "1px solid " + c.borderSoft }),
+        filterChipOn: Object.assign({}, base.filterChipOn, { height: "20px", padding: "0 9px" }),
+        moreRow: Object.assign({}, base.moreRow, { height: "28px", fontSize: "11px" }),
+        empty: Object.assign({}, base.empty, { padding: "40px 16px", gridColumn: "1 / -1" })
       });
     }
 
     /**
-     * "card": surfaces that float. A tinted backdrop with white cards on it, a 3px accent rail
-     * on each card head, and much larger radii — the combination that reads as a different
-     * system rather than a recolour of the dense one.
+     * "card": surfaces that float.
+     *
+     * A tinted backdrop with white cards on it and a 3px accent rail down each card's left edge.
+     * The rail lives on the card's own border box, not inside the head: two earlier attempts
+     * failed for the same geometric reason — the card clips at a 14px radius, and a 3px strip
+     * drawn inside that corner is removed almost entirely (a border was clipped to a sliver, an
+     * inset shadow was clipped the same way, and a 3px absolute strip inside the head was
+     * clipped too). A left border on the card paints in the unclipped border box, so the radius
+     * is applied to the right side only and the left edge stays square — the shape a rail needs.
      */
     function cardStyles() {
       var c = palette();
@@ -286,15 +463,23 @@
         summary: Object.assign({}, base.summary, { padding: "6px 12px", borderBottom: "none" }),
         notice: Object.assign({}, base.notice, { padding: "7px 12px", borderRadius: c.radius.lg, margin: "0 8px 6px" }),
         list: Object.assign({}, base.list, { padding: "10px 10px 20px" }),
-        // The rail is what makes a card a card: 3px of accent down the head's left edge.
-        card: Object.assign({}, base.card, {
-          border: "none", borderRadius: c.radius.xxl, marginBottom: "12px",
-          boxShadow: c.shadowCard, background: c.bg, overflow: "hidden"
-        }),
-        cardHead: Object.assign({}, base.cardHead, {
-          height: "36px", padding: "0 12px", background: "transparent",
-          borderLeft: "3px solid " + c.accent
-        }),
+        // All four corners are set individually and the inherited shorthand is dropped, because
+        // React warns (and skips the update) when a rerender mixes `borderRadius` with
+        // `borderTopRightRadius` and friends: the shorthand would win the cascade inconsistently
+        // and the card could keep the previous theme's radius after a switch.
+        card: (function () {
+          var style = Object.assign({}, base.card, {
+            border: "none", borderLeft: "3px solid " + c.accent,
+            marginBottom: "12px", boxShadow: c.shadowCard, background: c.bg, overflow: "hidden"
+          });
+          delete style.borderRadius;
+          style.borderTopLeftRadius = "0";
+          style.borderBottomLeftRadius = "0";
+          style.borderTopRightRadius = c.radius.xxl;
+          style.borderBottomRightRadius = c.radius.xxl;
+          return style;
+        })(),
+        cardHead: Object.assign({}, base.cardHead, { height: "36px", padding: "0 12px", background: "transparent" }),
         cardTitle: Object.assign({}, base.cardTitle, { fontSize: "13px" }),
         sectionHead: Object.assign({}, base.sectionHead, { height: "30px", padding: "0 12px" }),
         row: Object.assign({}, base.row, { height: "28px", lineHeight: "28px", padding: "0 12px 0 21px", borderRadius: 0 }),
@@ -309,21 +494,42 @@
 
     var STYLE_THEMES = {
       compact: compactStyles,
-      airy: airyStyles,
-      table: tableStyles,
+      timeline: timelineStyles,
+      grid: gridStyles,
       card: cardStyles
     };
 
-    var currentTheme = "compact";
-    var S = compactStyles();
+    /** Order shown in the picker; the first entry is the fallback and the default. */
+    var THEME_ORDER = ["card", "compact", "timeline", "grid"];
+
+    var currentTheme = "card";
+    var S = cardStyles();
     var styleListeners = new Set();
 
     function styleTheme() {
       return currentTheme;
     }
 
+    /**
+     * Rebuild the active table in place after the host switched light/dark.
+     *
+     * The theme id did not change — only the scheme did — so `setStyleTheme` would early-return.
+     * The palette itself is live CSS (`var(--dsw-alias-…)`) so colours already follow; what this
+     * refreshes is everything derived from `readDarkScheme()` (there is nothing scheme-specific
+     * left in the tables, but rebuilding is what tells subscribers to repaint).
+     */
+    function refreshStyles() {
+      if (S === null) return;
+      prefersDark = readDarkScheme();
+      ACCENT = accentFor(prefersDark);
+      S = STYLE_THEMES[currentTheme]();
+      styleListeners.forEach(function (fn) {
+        try { fn(S); } catch (error) { /* a subscriber must not break a theme switch */ }
+      });
+    }
+
     function setStyleTheme(id) {
-      var next = Object.prototype.hasOwnProperty.call(STYLE_THEMES, id) ? id : "compact";
+      var next = Object.prototype.hasOwnProperty.call(STYLE_THEMES, id) ? id : "card";
       if (next === currentTheme && S !== null) return;
       currentTheme = next;
       S = STYLE_THEMES[next]();

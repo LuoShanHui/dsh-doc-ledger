@@ -60,7 +60,7 @@
 
       // Visual theme: compact (original) / airy / table / card. Persisted like the
       // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
-      var themeState = react.useState(function () { return loadPref("styleTheme", "compact"); });
+      var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
       var setTheme = themeState[1];
       react.useEffect(function () {
@@ -76,6 +76,13 @@
       });
       var typeSelection = typeSelState[0];
       var setTypeSelection = typeSelState[1];
+      // Second filter level: one extension inside the selected family, or "" for all of them.
+      // Kept separate from `typeSelection` so clearing the family clears the extension too,
+      // and so the extension can be "all" without inventing a sentinel in the family map.
+      var extState = react.useState(function () { return String(loadPref("extFilter", "")); });
+      var extFilter = extState[0];
+      var setExtFilter = extState[1];
+
       var typeKeys = Object.keys(typeSelection).filter(function (key) { return typeSelection[key] === true; }).sort();
       var typeKey = typeKeys.join(",");
       // One stable object per selection, so memoised cards are not invalidated by a re-render.
@@ -259,7 +266,6 @@
        * they wanted, and with four themes the label alone never told them what was on offer.
        * The list shows every theme with a check next to the active one.
        */
-      var THEME_ORDER = ["compact", "airy", "table", "card"];
       var openThemeMenu = function (event) {
         if (menu !== null && menu !== undefined && menu.kind === "theme") { setMenu(null); return; }
         var rect = event.currentTarget.getBoundingClientRect();
@@ -910,9 +916,10 @@
       var passesFilters = function (file) {
         if (deletedOnly === true && file.exists !== false) return false;
         if (typeSet !== null && typeSet[String(file.category || "other")] !== true) return false;
+        if (extFilter !== "" && extOf(file.name || file.path || "") !== extFilter) return false;
         return matches(file, query);
       };
-      var filterActive = query !== "" || typeSet !== null || deletedOnly === true;
+      var filterActive = query !== "" || typeSet !== null || deletedOnly === true || extFilter !== "";
       var visible = { files: 0, sessions: 0, deleted: 0 };
       sessions.forEach(function (session) {
         var counts = session.counts || {};
@@ -1238,6 +1245,61 @@
 
       // Kept in the tree even when hidden: a new child index would remount the list.
       var showFilterBar = categoryChips.length >= 2 || (scope === "all" && separate);
+      // The second level appears only when a single family is selected AND that family actually
+      // has more than one extension in the current data. Otherwise it would be a row of one chip
+      // repeating the family the reader just clicked.
+      var selectedFamilies = typeSet === null ? [] : Object.keys(typeSet);
+      var showExtRow = selectedFamilies.length === 1;
+      var familyFiles = [];
+      if (showExtRow) {
+        var onlyFamily = selectedFamilies[0];
+        sessions.forEach(function (session) {
+          (session.files || []).forEach(function (file) {
+            if (String(file.category || "other") === onlyFamily) familyFiles.push(file);
+          });
+        });
+      }
+      var census = showExtRow ? extensionCensus(familyFiles, null) : [];
+      var extChipsPartition = showExtRow ? extensionChips(census, EXT_CHIP_MAX) : { shown: [], hidden: 0, hiddenFiles: 0 };
+      var acceptExtFilter = showExtRow && extChipsPartition.shown.length >= 2;
+      var extRow = acceptExtFilter ? h("div", { style: S.filterBar },
+        h("span", { style: S.filterLabel }, t("filter.extLabel")),
+        h("button", {
+          type: "button",
+          style: extFilter === "" ? S.filterChipOn : S.filterChip,
+          "aria-pressed": extFilter === "",
+          onFocus: ringOn,
+          onBlur: ringOff,
+          onClick: function () { setExtFilter(""); savePref("extFilter", ""); }
+        },
+          h("span", null, t("filter.allExts")),
+          h("span", { style: extFilter === "" ? S.chipCountOn : S.chipCount }, String(familyFiles.length))
+        ),
+        extChipsPartition.shown.map(function (entry) {
+          var on = extFilter === entry.ext;
+          var label = entry.ext === "" ? t("filter.noExt") : entry.ext;
+          return h("button", {
+            key: "ext:" + entry.ext,
+            type: "button",
+            style: on ? S.filterChipOn : S.filterChip,
+            "aria-pressed": on,
+            title: t("filter.onlyExt", { ext: label, count: entry.count }),
+            onFocus: ringOn,
+            onBlur: ringOff,
+            onClick: function () {
+              var next = on ? "" : entry.ext;
+              setExtFilter(next);
+              savePref("extFilter", next);
+            }
+          },
+            h("span", null, label),
+            h("span", { style: on ? S.chipCountOn : S.chipCount }, String(entry.count))
+          );
+        }),
+        extChipsPartition.hidden > 0 ? h("span", { style: S.chipCount, title: t("filter.moreExts", { n: extChipsPartition.hidden }) },
+          t("filter.moreExts", { n: extChipsPartition.hidden })) : null
+      ) : null;
+
       var filterBar = h("div", { style: showFilterBar ? S.filterBar : Object.assign({}, S.filterBar, { display: "none" }) },
         h("span", { style: S.filterLabel }, t("sort.type")),
         categoryChips.map(function (chip) {
@@ -1282,6 +1344,8 @@
           onClick: function () {
             setTypeSelection({});
             savePref("typeFilter", []);
+            setExtFilter("");
+            savePref("extFilter", "");
             setDeletedOnly(false);
           }
         }, h("span", { style: S.filterActionGlyph, "aria-hidden": "true" }, "✕"), t("filter.clear")) : null,
@@ -1303,6 +1367,7 @@
         summaryLine,
         notice,
         filterBar,
+        extRow,
         h("div", { ref: listRef, style: S.list, onScroll: onListScroll }, body),
         h(Menu, { menu: menu, onPick: act, onClose: function () { setMenu(null); } }),
         renderModal(),

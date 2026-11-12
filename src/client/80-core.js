@@ -58,6 +58,53 @@
     }
 
     /**
+     * Extensions inside one family, counted from the live data.
+     *
+     * This is the second filter level, and it is deliberately derived rather than declared: a
+     * language table would be biased toward whatever the current project uses (one real ledger
+     * was 44% `.java`, so a fixed "Code" chip filtered nothing), while a derived census is
+     * correct for every project and needs no maintenance when a new extension appears.
+     *
+     * @param files  the files to census
+     * @param family the family to restrict to, or null for every family
+     * @returns `[{ ext, count }]`, most frequent first; `ext` is "" for extension-less files
+     */
+    function extensionCensus(files, family) {
+      var counts = {};
+      (files || []).forEach(function (file) {
+        if (family !== null && family !== undefined && String(file.category || "other") !== family) return;
+        var ext = extOf(file.name || file.path || "");
+        counts[ext] = (counts[ext] || 0) + 1;
+      });
+      return Object.keys(counts).map(function (ext) {
+        return { ext: ext, count: counts[ext] };
+      }).sort(function (left, right) {
+        // Most frequent first; ties alphabetical so the order is stable between renders.
+        return right.count - left.count || left.ext.localeCompare(right.ext);
+      });
+    }
+
+    /**
+     * How many extension chips to show before folding the rest into a counter.
+     * Kept small because this is a second row under an already busy first one.
+     */
+    var EXT_CHIP_MAX = 8;
+
+    /** Split a census into the chips to show and the remainder's totals. */
+    function extensionChips(census, max) {
+      var limit = max > 0 ? max : EXT_CHIP_MAX;
+      var list = census || [];
+      if (list.length <= limit + 1) return { shown: list, hidden: 0, hiddenFiles: 0 };
+      var shown = list.slice(0, limit);
+      var rest = list.slice(limit);
+      return {
+        shown: shown,
+        hidden: rest.length,
+        hiddenFiles: rest.reduce(function (total, entry) { return total + entry.count; }, 0)
+      };
+    }
+
+    /**
      * A row that counts as "activity": the engine records a file the moment it sees a read
      * or a write, but a file can also arrive with only a timestamp and no counters. A card
      * with none of these must not claim a slot in the merged view.

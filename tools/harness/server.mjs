@@ -120,6 +120,10 @@ const SESSIONS = [
     files: [
       file("src\\main\\java\\com\\example\\demo\\OrderService.java", "code"),
       file("src\\main\\java\\com\\example\\demo\\OrderDraft.java", "code", { created: "confirmed", writes: 4 }),
+  // A second and third extension in the same family, so the extension row has something to show:
+  // with only .java present the second level collapses by design.
+  file("scripts\\deploy.ps1", "code", { reads: 3, writes: 0 }),
+  file("scripts\\build.py", "code", { reads: 1, writes: 1 }),
       file("docs\\order-notes.md", "doc"),
       file("docs\\2026-11-06-订单服务重构说明.md", "doc"),
       file("config\\application.yml", "config"),

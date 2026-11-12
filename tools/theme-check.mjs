@@ -29,8 +29,8 @@ const cases = [];
 function check(name, body) { cases.push([name, body]); }
 
 const themes = Object.keys(sandbox.STYLE_THEMES);
-check("定义了四套主题", () => {
-  assert.deepEqual(themes.sort(), ["airy", "card", "compact", "table"]);
+check("定义了四套主题（卡片为默认）", () => {
+  assert.deepEqual(themes.sort(), ["card", "compact", "grid", "timeline"]);
 });
 
 const keysOf = (styles) => Object.keys(styles).sort();
@@ -56,7 +56,9 @@ check("每个主题每个 key 都是非空对象或颜色字符串", () => {
         assert.ok(value.length > 0, id + "." + key + " must not be empty");
         continue;
       }
-      assert.ok(value !== null && typeof value === "object" && Object.keys(value).length > 0,
+      // A key may be null when a theme deliberately draws nothing for it (cardRail).
+      if (value === null) continue;
+      assert.ok(typeof value === "object" && Object.keys(value).length > 0,
         id + "." + key + " must be a non-empty style object");
     }
   }
@@ -64,7 +66,7 @@ check("每个主题每个 key 都是非空对象或颜色字符串", () => {
 
 check("非 compact 主题至少有一处与 compact 不同", () => {
   const compact = sandbox.STYLE_THEMES.compact();
-  for (const id of ["airy", "table", "card"]) {
+  for (const id of ["card", "grid", "timeline"]) {
     const other = sandbox.STYLE_THEMES[id]();
     const diff = Object.keys(compact).filter((key) => JSON.stringify(compact[key]) !== JSON.stringify(other[key]));
     assert.ok(diff.length > 0, id + " must differ from compact");
@@ -74,7 +76,7 @@ check("非 compact 主题至少有一处与 compact 不同", () => {
 check("四套主题两两可区分（不允许只差一两个数值）", () => {
   // Two themes that differ only in a radius read as "the same look", which is exactly the
   // report that made this check exist: cycling four themes felt like two.
-  const ids = ["compact", "airy", "table", "card"];
+  const ids = ["compact", "timeline", "grid", "card"];
   const built = Object.fromEntries(ids.map((id) => [id, sandbox.STYLE_THEMES[id]()]));
   const differingKeys = (a, b) =>
     Object.keys(built[a]).filter((key) => JSON.stringify(built[a][key]) !== JSON.stringify(built[b][key]));
@@ -91,41 +93,40 @@ check("setStyleTheme 会切换并拒绝未知 id", () => {
   vm.runInContext('setStyleTheme("card")', sandbox);
   assert.equal(sandbox.styleTheme(), "card");
   vm.runInContext('setStyleTheme("not-a-theme")', sandbox);
-  assert.equal(sandbox.styleTheme(), "compact", "unknown id must fall back to compact");
+  assert.equal(sandbox.styleTheme(), "card", "unknown id must fall back to the default (card)");
 });
 
-check("每个主题都引用宿主 token（深浅色跟随）", () => {
-  const compact = sandbox.STYLE_THEMES.compact();
-  const rootStyle = JSON.stringify(compact.root);
-  assert.ok(rootStyle.includes("--dsw-alias"), "root must use a host theme token");
-});
-
-check("颜色只引用真实存在的宿主 token（拼错的 token 会静默退化成浅色）", () => {
-  // The host declares a fixed set; a name outside it silently falls back to the literal,
-  // which is how the panel ignored dark mode: --dsw-alias-accent, --dsw-alias-border and
-  // --dsw-alias-label-tertiary do not exist.
-  const REAL = [
-    "--dsw-alias-bg-base", "--dsw-alias-bg-layer-1", "--dsw-alias-bg-layer-2",
-    "--dsw-alias-bg-overlay", "--dsw-alias-border-l1", "--dsw-alias-border-l2",
-    "--dsw-alias-brand-primary", "--dsw-alias-label-primary", "--dsw-alias-label-secondary",
-    "--dsw-alias-state-error-primary", "--dsw-alias-state-idle-primary",
-    "--dsw-alias-state-success-primary", "--dsw-alias-state-warn-primary",
-    "--dsw-specific-sidebar-fill"
-  ];
-  const source = readFileSync(join(root, "src", "client", "70-styles.js"), "utf8");
-  // Only real `var(--token` references count: prose in a comment is not a token use.
-  const used = new Set([...source.matchAll(/var\((--dsw-[a-z0-9-]+)/g)].map((m) => m[1]));
-  const unknown = [...used].filter((token) => !REAL.includes(token));
-  assert.deepEqual(unknown, [], "unknown theme tokens (they fall back to a light literal)");
+check("配色跟随宿主 token，并为每个 token 备好回退字面量", () => {
+  // The host is the source of truth: DSH defines its colours as custom properties on <body>,
+  // including a user's own theme, so following them is what "follow the DSH appearance" means.
+  // The literals only serve the harness and the static report, which have no host.
+  const src = readFileSync(join(root, "src", "client", "70-styles.js"), "utf8");
+  const host = src.slice(src.indexOf("var HOST = {"), src.indexOf("var prefersDark = readDarkScheme();"));
+  const entries = [...host.matchAll(/^\s{6}(\w+):\s*"var\((--dsw-[a-z0-9-]+),\s*(#[0-9a-f]{3,8})\)"/gm)];
+  assert.ok(entries.length >= 12, "expected every palette entry to be a var() with a fallback, got " + entries.length);
+  // Both literal tables must cover exactly the same keys, or one scheme has a hole.
+  const light = src.slice(src.indexOf("var LIGHT = {"), src.indexOf("var DARK = {"));
+  const dark = src.slice(src.indexOf("var DARK = {"), src.indexOf("/** Theme tokens first"));
+  const keysOf = (block) => [...block.matchAll(/(\w+):\s*"#/g)].map((m) => m[1]).sort();
+  assert.deepEqual(keysOf(light), keysOf(dark), "the light and dark fallbacks must define the same keys");
 });
 
 check("样式表里没有写死的十六进制或 rgba 颜色", () => {
-  // Every colour has to come from the palette so it can follow light/dark. The palette
-  // itself is the one place allowed to hold fallback literals.
+  // Every colour has to come from the palette so it can follow light/dark. The palette and the
+  // two-scheme ACCENT constant are the only places allowed to hold a literal.
   const source = readFileSync(join(root, "src", "client", "70-styles.js"), "utf8");
   const body = source.slice(source.indexOf("function compactStyles"));
   const literals = [...body.matchAll(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g)].map((m) => m[0]);
   assert.deepEqual(literals, [], "hardcoded colours outside the palette: " + literals.slice(0, 5).join(", "));
+});
+
+check("强调色与背景层次由自己派生，不依赖宿主的 ink/白", () => {
+  // Pinned because "follow the host faithfully" produced a black rail on a white card: the
+  // host's brand token is ink and its two surface levels are both #fff.
+  const source = readFileSync(join(root, "src", "client", "70-styles.js"), "utf8");
+  assert.ok(/function accentFor\(dark\)/.test(source), "the accent must come from its own two-scheme pair");
+  assert.ok(/var ACCENT = accentFor\(prefersDark\)/.test(source), "ACCENT must be built from that pair");
+  assert.ok(source.includes("var backdrop = dark"), "the backdrop must be derived from the surface");
 });
 
 for (const [name, body] of cases) {

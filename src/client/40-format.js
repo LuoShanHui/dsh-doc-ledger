@@ -1,13 +1,15 @@
     var CATEGORY_COLOR = {
-      doc: "#4f7cf7",
-      sheet: "#1f9d55",
-      slide: "#d97706",
-      image: "#a855f7",
-      code: "#0ea5e9",
-      web: "#ef4444",
+      doc: "#3b6fe0",
+      sheet: "#12805c",
+      slide: "#c2640a",
+      image: "#8b5cf6",
+      code: "#0e7490",
+      web: "#dc2626",
       config: "#64748b",
       data: "#0891b2",
-      archive: "#b45309",
+      media: "#c026d3",
+      archive: "#92400e",
+      binary: "#525252",
       other: "#94a3b8"
     };
 
@@ -22,7 +24,9 @@
       web: "category.web",
       config: "category.config",
       data: "category.data",
+      media: "category.media",
       archive: "category.archive",
+      binary: "category.binary",
       other: "category.other"
     };
 

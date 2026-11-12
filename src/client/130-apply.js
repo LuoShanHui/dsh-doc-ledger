@@ -52,6 +52,36 @@
       // evaluation-time constants (category labels, sort labels) and TabTitle all see it.
       setFallback({ zh: zh, en: en });
       setTranslator(ctx.locale.bind(NS), readActiveLocale(ctx));
+      // Follow the host's appearance. DSH marks the scheme on <html>/<body> and emits
+      // `theme/change`; the CSS variables the palette reads update by themselves, and this
+      // listener repaints the panel so a derived value cannot lag behind.
+      ctx.effect(function () {
+        if (typeof ctx.on !== "function") return undefined;
+        return ctx.on("theme/change", function () {
+          try {
+            report("theme-change", JSON.stringify({ dark: readDarkScheme() }));
+            refreshStyles();
+          } catch (error) {
+            report("theme-change-error", String((error && error.message) || error));
+          }
+        });
+      }, "doc-ledger: theme change");
+
+      // A user can also flip the OS scheme while DSH follows `system`; that never emits
+      // theme/change, so the media query is watched as well.
+      ctx.effect(function () {
+        if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+        var query = window.matchMedia("(prefers-color-scheme: dark)");
+        var onChange = function () {
+          try { refreshStyles(); } catch (error) { /* repaint is best effort */ }
+        };
+        if (typeof query.addEventListener === "function") {
+          query.addEventListener("change", onChange);
+          return function () { query.removeEventListener("change", onChange); };
+        }
+        return undefined;
+      }, "doc-ledger: os scheme change");
+
       ctx.effect(function () {
         return ctx.locale.register(NS, { zh: zh, en: en });
       }, "doc-ledger: dictionaries");

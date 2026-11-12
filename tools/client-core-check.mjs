@@ -55,7 +55,8 @@ for (const name of [
   "fmtTime", "fmtBytes", "encodingLabel", "categoryColor", "categoryLabel",
   "shortPath", "highlight", "hostFileAddress", "iconUrl", "pad",
   "sortSpecOf", "rowModeOf", "rowsReachable", "rowLimitOf", "clampRowIndex",
-  "isActiveRow", "hasActiveRow", "nextRowLimit", "extOf", "fileIconUrl"
+  "isActiveRow", "hasActiveRow", "nextRowLimit", "extOf", "fileIconUrl",
+  "extensionCensus", "extensionChips"
 ]) {
   assert.equal(typeof f(name), "function", "missing function from fragments: " + name);
 }
@@ -200,8 +201,13 @@ check("encodingLabel: 三种非 UTF-8 标签", () => {
   assert.equal(f("encodingLabel")("utf-16be"), "UTF-16BE");
 });
 check("categoryColor / categoryLabel: 已知值与回退", () => {
-  assert.equal(f("categoryColor")("doc"), "#4f7cf7");
+  assert.equal(f("categoryColor")("doc"), "#3b6fe0");
   assert.equal(f("categoryColor")("nope"), "#94a3b8");
+  // Every family the sorter can emit must have a colour and a label, or a chip renders blank.
+  for (const family of ["doc", "sheet", "slide", "image", "code", "web", "config", "data", "media", "archive", "binary", "other"]) {
+    assert.match(f("categoryColor")(family), /^#[0-9a-f]{6}$/, family + " needs a colour");
+    assert.notEqual(f("categoryLabel")(family), "category." + family, family + " needs a label");
+  }
   assert.equal(f("categoryLabel")("doc"), "文档");
   // Unknown categories fall back to the localized "other" label rather than
   // echoing the raw key to the user.
@@ -355,6 +361,48 @@ check("clampRowIndex: 到边界停住，不环绕", () => {
   assert.equal(f("clampRowIndex")(0, -1, 5), 0, "before the first row stays on the first row");
   assert.equal(f("clampRowIndex")(2, -1, 5), 1);
   assert.equal(f("clampRowIndex")(0, 1, 0), 0, "an empty section has nowhere to move");
+});
+
+check("extensionCensus: 按数据统计，不预设任何语言", () => {
+  // The point of deriving this instead of declaring it: a project that is 90% .java and one that
+  // is 90% .md must both get a useful second level, with no code change.
+  const javaHeavy = [
+    file({ name: "a.java", path: "C:/w/a.java", category: "code" }),
+    file({ name: "b.java", path: "C:/w/b.java", category: "code" }),
+    file({ name: "c.java", path: "C:/w/c.java", category: "code" }),
+    file({ name: "d.js", path: "C:/w/d.js", category: "code" })
+  ];
+  const census = f("extensionCensus")(javaHeavy, "code");
+  // The sandbox is another realm, so compare through JSON rather than object identity.
+  assert.equal(JSON.stringify(Array.from(census, (e) => ({ ext: e.ext, count: e.count }))),
+    JSON.stringify([{ ext: "java", count: 3 }, { ext: "js", count: 1 }]), "most frequent first");
+
+  const mdHeavy = [
+    file({ name: "a.md", path: "C:/w/a.md", category: "doc" }),
+    file({ name: "b.md", path: "C:/w/b.md", category: "doc" })
+  ];
+  assert.equal(JSON.stringify(Array.from(f("extensionCensus")(mdHeavy, "doc"), (e) => ({ ext: e.ext, count: e.count }))),
+    JSON.stringify([{ ext: "md", count: 2 }]), "a single extension is fine");
+
+  // A family filter must exclude other families, or the row would show chips that match nothing.
+  assert.deepEqual(f("extensionCensus")(javaHeavy, "doc"), [], "no docs means no chips");
+  // null family censuses everything.
+  assert.equal(f("extensionCensus")(javaHeavy, null).length, 2);
+  // Extension-less files are their own bucket, keyed "".
+  assert.equal(JSON.stringify(Array.from(f("extensionCensus")([file({ name: "LICENSE", path: "C:/w/LICENSE", category: "doc" })], "doc"), (e) => ({ ext: e.ext, count: e.count }))),
+    JSON.stringify([{ ext: "", count: 1 }]), "extension-less files bucket under \"\"");
+});
+
+check("extensionChips: 超出上限时折叠，且不丢计数", () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({ ext: "e" + i, count: 12 - i }));
+  const split = f("extensionChips")(many, 8);
+  assert.equal(split.shown.length, 8, "shows the cap");
+  assert.equal(split.hidden, 4, "counts the rest");
+  assert.equal(split.hiddenFiles, 4 + 3 + 2 + 1, "the hidden ones still carry their totals (counts 4,3,2,1)");
+  // At or below the cap nothing is folded, so the row never shows a pointless "1 more".
+  assert.equal(f("extensionChips")(many.slice(0, 8), 8).hidden, 0);
+  assert.equal(f("extensionChips")([], 8).shown.length, 0);
+  assert.equal(f("extensionChips")(null, 8).shown.length, 0);
 });
 
 check("extOf: 从路径取小写扩展名，无扩展名返回空", () => {
