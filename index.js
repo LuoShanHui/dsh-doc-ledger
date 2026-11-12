@@ -150,6 +150,36 @@ export function cleanObsoleteFiles(dir) {
   }
   return gone;
 }
+  /**
+   * `listSessions()` rows -> flat records with a guaranteed non-empty id.
+   *
+   * The host returns `{ header: { id, createdAt, cwd, agentPreset }, live, persisted }`, but
+   * older shapes put those fields at the top level, so every field is read from both. Records
+   * without an id are dropped: they cannot be replayed or addressed.
+   */
+  export function normalizeRecords(listed, limit) {
+    const all = Array.isArray(listed) ? listed : [];
+    // A falsy/non-positive limit means "every record": the caller wants to filter before paging.
+    const page = Number(limit) > 0 ? all.slice(0, limit) : all;
+    return page.map((item) => {
+      const header = item?.header ?? item ?? {};
+      const id = header.id ?? item?.id ?? item?.sessionId ?? "";
+      const createdAt = header.createdAt ?? item?.createdAt ?? null;
+      const cwd = header.cwd ?? item?.cwd ?? "";
+      const agentPreset = header.agentPreset ?? item?.agentPreset ?? null;
+      return {
+        header: { id, createdAt, cwd, agentPreset },
+        id,
+        createdAt,
+        cwd,
+        agentPreset,
+        live: item?.live === true,
+        // A subagent names its parent here; the panel turns it into "jump to parent".
+        parentSession: typeof header.parentSession === "string" ? header.parentSession : null,
+      };
+    }).filter((record) => record.id !== "");
+  }
+
 export function apply(ctx, config = {}) {
   const maxSessions = Number(config.maxSessions ?? 40);
   const base = typeof config.basePath === "string" ? config.basePath.replace(/\/$/, "") : "/doc-ledger";
@@ -600,33 +630,6 @@ export function apply(ctx, config = {}) {
   }
 
     /**
-     * `listSessions()` rows -> flat records with a guaranteed non-empty id.
-     *
-     * The host returns `{ header: { id, createdAt, cwd, agentPreset }, live, persisted }`, but
-     * older shapes put those fields at the top level, so every field is read from both. Records
-     * without an id are dropped: they cannot be replayed or addressed.
-     */
-    function normalizeRecords(listed, limit) {
-      return (Array.isArray(listed) ? listed : []).slice(0, limit).map((item) => {
-        const header = item?.header ?? item ?? {};
-        const id = header.id ?? item?.id ?? item?.sessionId ?? "";
-        const createdAt = header.createdAt ?? item?.createdAt ?? null;
-        const cwd = header.cwd ?? item?.cwd ?? "";
-        const agentPreset = header.agentPreset ?? item?.agentPreset ?? null;
-        return {
-          header: { id, createdAt, cwd, agentPreset },
-          id,
-          createdAt,
-          cwd,
-          agentPreset,
-          live: item?.live === true,
-          // A subagent names its parent here; the panel turns it into "jump to parent".
-          parentSession: typeof header.parentSession === "string" ? header.parentSession : null,
-        };
-      }).filter((record) => record.id !== "");
-    }
-
-    /**
      * Replay the wanted sessions and build the panel's `sessions[]`.
      *
      * Replaying is the expensive half, so it happens through `mapPool` (bounded concurrency) and
@@ -702,12 +705,21 @@ export function apply(ctx, config = {}) {
       const listed = await query.listSessions();
       const listedCount = Array.isArray(listed) ? listed.length : 0;
       if (timing !== null) timing.listSessions = Date.now() - started;
-      const records = normalizeRecords(listed, limit);
 
-      // One session asked for: replay only it, so opening the panel does not pay for
-      // every other conversation in the profile.
+      // One session asked for: pick it out of the FULL listing, before the page slice.
+      //
+      // The slice is a page-size limit for "all sessions". Applying it first meant a session
+      // outside the top `limit` positions of `listSessions()` could never be opened on its own:
+      // the panel showed "no documents in this session" while the same session listed 15 files
+      // under "all sessions". Reproduced with a real id that sits at position 35 of 63 while the
+      // default limit is 40 and six empty sessions ahead of it are dropped — it fell off the page
+      // and `scope=current` filtered an array that no longer contained it.
       const preferred = preferredId !== null && preferredId !== undefined && preferredId !== "";
-      const wanted = scope === "current" && preferred ? records.filter((record) => record.id === preferredId) : records;
+      const allRecords = normalizeRecords(listed, 0);
+      const records = scope === "current" && preferred
+        ? allRecords.filter((record) => record.id === preferredId)
+        : allRecords.slice(0, limit);
+      const wanted = records;
       const ids = wanted.map((record) => record.id);
       const liveIds = new Set(wanted.filter((record) => record.live === true).map((record) => record.id));
       let titles = new Map();

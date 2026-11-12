@@ -80,6 +80,16 @@
 
 ### Fixed
 
+- **单独打开一个会话显示「本会话还没有文档记录」**，而同一个会话在「全部会话」里
+  列出 15 个文件。原因：`scope=current` 也走了页面切片 `normalizeRecords(listed, limit)`，
+  而 `listSessions()` 的顺序和界面的 createdAt 排序不同——真实案例排在 63 个会话的第 35 位，
+  默认 limit 是 40，但它前面有 6 个空会话被丢弃，于是它被挤出了切片，
+  `scope=current` 在一个不再包含它的数组里筛选。
+  修法：先从**全量**列表里挑出目标会话，再对结果分页；分页只对「全部会话」有意义。
+  `normalizeRecords` 也提到模块级并导出，新增回归断言守着「非正数 limit = 不切片」。
+
+### Fixed
+
 - **搜会话 ID 搜不到东西**：从会话菜单复制一个会话 ID，粘进搜索框搜不出任何结果。
   两处都缺：宿主的 `slimFile` 没有把 `sessionId` 放进每行，客户端的 `matches()`
   也从来没把它算进 haystack。现在每行都带着 ID，且带不带 `session-`

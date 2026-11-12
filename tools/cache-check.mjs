@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cleanObsoleteFiles, ledgerReusable } from "../index.js";
+import { cleanObsoleteFiles, ledgerReusable, normalizeRecords } from "../index.js";
 
 const NOW = 1_000_000;
 const hit = (extra = {}) => Object.assign({ at: NOW - 2000, live: true, ttl: 5000, stamp: "10:20" }, extra);
@@ -82,6 +82,24 @@ check("没有废弃文件时清理是无操作，不抛", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+check("开一个不在首页切片里的会话能找到", () => {
+  // 真实缺陷：会话在 listSessions() 里排第 35 位，默认 limit 是 40，但它前面有 6 个
+  // 空会话被丢弃，于是它被挤出了切片——单独打开时面板报「本会话还没有文档记录」，
+  // 而同一个会话在「全部会话」里列出 15 个文件。
+  //
+  // 修法：scope=current 先从**全量**列表里挑出目标会话，再对结果分页；
+  // 分页只对「全部会话」有意义。
+  const listed = Array.from({ length: 63 }, (_, i) => ({ header: { id: "session-" + i, createdAt: 1000 - i } }));
+  const target = "session-34";
+  // normalizeRecords(listed, 0) must keep everything, so the pick can see record 35.
+  const all = normalizeRecords(listed, 0);
+  assert.equal(all.length, 63, "a non-positive limit means every record");
+  const picked = all.filter((r) => r.id === target);
+  assert.equal(picked.length, 1, "the requested session must survive the pick");
+  // And the page slice still works for the all-sessions view.
+  assert.equal(normalizeRecords(listed, 40).length, 40, "a positive limit still pages");
 });
 
 for (const [name, body] of cases) {

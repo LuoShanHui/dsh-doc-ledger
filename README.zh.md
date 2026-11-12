@@ -691,7 +691,7 @@ tools/ledger-scan-check.mjs    引擎回归：7 个 PTC 写文件场景
 tools/preview-decode-check.mjs 解码回归：10 个编码场景
 tools/harness/                  UI 验证工具：真 client.js + 假 ctx + 合成台账（npm run harness）
 tools/route-check.mjs          宿主路由与安全回归：14 项（同源 403、台账白名单、POST-only、400/404/405）
-tools/cache-check.mjs          缓存决策 + 废弃文件清理：10 项（精确 stamp、TTL 回退、live 重放下限）
+tools/cache-check.mjs          缓存决策 + 分页保护：11 项（精确 stamp、TTL 回退、live 重放下限）
 tools/client-core-check.mjs    客户端纯函数回归：55 项（分词 AND、排序、合并、格式化、高亮、复数、语言快照、分区决策、图标地址、资源地址）
 tools/theme-check.mjs          主题工厂回归：7 项（四套主题、key 集合一致、两两可区分、宿主 token）
 tools/row-time-check.mjs       行时间回归：6 项（每行一个时间戳，按分区选择；文件大小后缀）
@@ -699,7 +699,7 @@ tools/readme-check.mjs         双语 README 一致性：小节、互链、锚�
 tools/release-notes-check.mjs  Release notes 一致性：英文孪生、结构、配图钉 tag
 ```
 
-`npm test` 依次跑十支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 10 + 客户端 56 + 主题 9 + 行时间 6 + i18n 198 个 key + 复数完整性 + 双语 README 一致性 10 + Release notes 一致性 9 = **131 项**，无外部依赖），CI 里三套 Node 各跑一遍。
+`npm test` 依次跑十支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 11 + 客户端 56 + 主题 9 + 行时间 6 + i18n 198 个 key + 复数完整性 + 双语 README 一致性 10 + Release notes 一致性 9 = **132 项**，无外部依赖），CI 里三套 Node 各跑一遍。
 CI 还会执行 `npm run check:client`，确保提交的 `client.js` 与 `src/client/*.js` 逐字节一致。
 
 面板本身的 UI 变更用 `npm run harness` 在浏览器里看：它会用真实的 `client.js` + 假 cordis 上下文 + 合成台账起一个本地页，
