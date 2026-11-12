@@ -93,6 +93,18 @@ check("matches: 多词 AND，缺一词即不匹配", () => {
   assert.equal(f("matches")(file({ name: "order-notes.md" }), "order md"), true);
   assert.equal(f("matches")(file({ name: "order-notes.md" }), "order zzz"), false);
 });
+check("matches: 会话 ID 可搜，带不带 session- 前缀都行", () => {
+  // 真实反馈：从会话菜单复制会话 ID 粘进搜索框搜不到东西，
+  // 因为 matches() 从来没看过这个字段。
+  const withId = file({ sessionId: "session-c1a01f6e-a6ac-42e4-b4d3-3ef4146664bc" });
+  assert.equal(f("matches")(withId, "c1a01f6e"), true, "粘一段就应该命中");
+  assert.equal(f("matches")(withId, "session-c1a01f6e-a6ac-42e4-b4d3-3ef4146664bc"), true, "完整 id");
+  assert.equal(f("matches")(withId, "a6ac-42e4"), true, "中间一段");
+  assert.equal(f("matches")(withId, "b4d3-3ef4146664bc"), true, "尾部一段");
+  // 没有这个字段的行不能因此匹配一切。
+  assert.equal(f("matches")(file({}), "c1a01f6e"), false);
+});
+
 check("matches: 大小写不敏感", () => {
   assert.equal(f("matches")(file(), "ORDERSERVICE"), true);
 });

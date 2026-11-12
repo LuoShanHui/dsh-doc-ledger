@@ -167,7 +167,15 @@
     function matches(file, query) {
       var terms = termsOf(query);
       if (terms.length === 0) return true;
-      var haystack = (String(file.name) + " " + String(file.rel) + " " + String(file.path) + " " + String(file.category) + " " + String(file.sessionTitle || "")).toLowerCase();
+      // `sessionId` is part of the haystack because it is the one identifier a reader can copy
+      // from the session menu or from a log, and searching it previously matched nothing.
+      var haystack = (
+        String(file.name) + " " + String(file.rel) + " " + String(file.path) + " " +
+        String(file.category) + " " + String(file.sessionTitle || "") + " " +
+        String(file.sessionId || "") + " " +
+        // A pasted id may carry the `session-` prefix or not, so both spellings match.
+        String(file.sessionId || "").replace(/^session-/, "")
+      ).toLowerCase();
       for (var index = 0; index < terms.length; index += 1) {
         if (haystack.indexOf(terms[index]) === -1) return false;
       }

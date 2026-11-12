@@ -88,6 +88,10 @@ function slimFile(file, stat) {
     firstUsedAt: file.firstUsedAt,
     lastUsedAt: file.lastUsedAt,
     created: file.created,
+    // The id travels with the row so search can match it: a reader who copies a session id from
+    // the session menu (or from a log) had no way to find that session again, because the
+    // matcher only saw the file's own fields and the title.
+    sessionId: file.sessionId || "",
     exists: stat === undefined ? (file.exists ?? null) : stat.exists,
     // Current size on disk, or null when the file is gone. Part of the payload rather than
     // of the cached ledger: a file that grows does not change the log, so a cached size would
@@ -656,7 +660,12 @@ export function apply(ctx, config = {}) {
           live: record.live,
           parentSessionId: record.parentSession,
           counts: ledger.counts,
-          files: ledger.files.map((file) => slimFile(file, statOf(file.path))),
+          // The session id is stamped onto every row here: a file object comes from the ledger
+          // engine and does not know which session it belongs to, but search needs it.
+          files: ledger.files.map((file) => slimFile(
+            Object.assign({}, file, { sessionId: ledger.sessionId || record.id }),
+            statOf(file.path)
+          )),
         });
       }
       sessions.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));

@@ -334,7 +334,8 @@ trimmed by `slimFile()`, because `uses` alone was 30% of the payload and the cli
     written file).
 - **Group by session**: on = cards grouped per session; off = one merged list, deduplicated by path, each row
   tagged with its session.
-- **Search**: filters file names, relative paths, absolute paths, types and session titles; 150 ms debounce,
+- **Search**: filters file names, relative paths, absolute paths, types, session titles and session ids
+  (paste an id with or without its `session-` prefix); 150 ms debounce,
   Ctrl/⌘+K to focus. Space-separated terms must **all** match (AND); each term highlights independently and
   overlapping ranges merge; the empty state lists every term. The input's draft state is local, so typing
   re-renders only the input, not a 900-row list.
@@ -718,14 +719,14 @@ tools/preview-decode-check.mjs decoder regression: 10 encoding scenarios
 tools/harness/                 UI verification: real client.js + fake ctx + synthetic ledger (npm run harness)
 tools/route-check.mjs          host route and security regression: 14 assertions
 tools/cache-check.mjs          cache decisions + obsolete-file cleanup: 10 assertions
-tools/client-core-check.mjs    client pure functions: 55 assertions (search, sort, merge, format, plurals, locale, sections, glyph URLs)
+tools/client-core-check.mjs    client pure functions: 56 assertions (search, sort, merge, format, plurals, locale, sections, glyph URLs)
 tools/theme-check.mjs          theme factory: 7 assertions (four themes, key parity, pairwise distinct)
 tools/row-time-check.mjs       one timestamp per row and the size suffix: 6 assertions
 tools/readme-check.mjs         bilingual README parity: sections, links, anchors, image files, language prefixes
 tools/release-notes-check.mjs  release-note parity: English twin, structure, tag-pinned images
 ```
 
-`npm test` runs ten check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 10 + client 55 + theme 9 + row time 6 + i18n's 198-key + plural integrity check + README parity 10 + release notes 9 = **130 checks**, no external dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to
+`npm test` runs ten check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 10 + client 56 + theme 9 + row time 6 + i18n's 198-key + plural integrity check + README parity 10 + release notes 9 = **131 checks**, no external dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to
 prove that the committed `client.js` matches `src/client/*.js` byte for byte.
 
 For UI changes, look at the panel in a browser with `npm run harness`: it serves the real `client.js` against

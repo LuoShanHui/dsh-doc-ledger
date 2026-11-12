@@ -226,10 +226,14 @@
         },
         title: file.path + (missing ? t("row.missingSuffix") : "")
       },
-        // The timeline theme draws a gutter: a spine behind a dot on every row. Other themes
-        // leave both null, so this costs one truthiness check for them.
-        S.rowSpine ? react.createElement("span", { style: S.rowSpine, "aria-hidden": "true" }) : null,
-        S.rowDot ? react.createElement("span", { style: Object.assign({}, S.rowDot, { background: categoryColor(file.category) }), "aria-hidden": "true" }) : null,
+        // The timeline gutter, painted in order: spine first (so it sits behind), then the dot,
+        // then the glyph. Other themes leave both styles null and pay one truthiness check.
+        S.rowSpine ? react.createElement("span", { key: "spine", style: S.rowSpine, "aria-hidden": "true" }) : null,
+        S.rowDot ? react.createElement("span", {
+          key: "dot",
+          style: Object.assign({}, S.rowDot, { background: categoryColor(file.category) }),
+          "aria-hidden": "true"
+        }) : null,
         react.createElement(FileGlyph, { ext: extOf(file.name || file.path), path: file.path, name: file.name, category: file.category, size: 16 }),
         react.createElement("span", { style: S.name }, highlight(file.name, props.query)),
         missing ? react.createElement("span", { style: S.tagMissing }, t("row.missingTag")) : null,

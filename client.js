@@ -1270,21 +1270,26 @@ window.__ModuleLoader__.load({
           height: "26px", padding: "0 6px 0 22px", fontSize: "10px", fontWeight: 700,
           textTransform: "uppercase", letterSpacing: "0.08em", color: c.textFaint
         }),
-        // The gutter: 22px of left padding holds the dot and the spine drawn by rowDot/rowSpine.
+        // The gutter is 34px, in three bands: spine at x=9, dot centred on it (x≈12), and the
+        // row's own glyph starting at x=26. The first attempt used 26px total, which put the dot
+        // and the file icon within 2px of each other — measured at gap -4px, i.e. overlapping,
+        // and it read as a smudge rather than a timeline.
         row: Object.assign({}, base.row, {
-          height: "30px", lineHeight: "30px", padding: "0 6px 0 22px", borderRadius: 0,
+          height: "30px", lineHeight: "30px", padding: "0 8px 0 34px", borderRadius: 0,
           position: "relative", gap: "8px"
         }),
-        // The dot sits on the spine; every row has one so the line reads as continuous.
+        // The dot is the timeline marker; it is tinted by the file family, not by the accent, so
+        // a long list reads as coloured events rather than a column of identical dots.
         rowDot: {
-          position: "absolute", left: "13px", top: "50%", width: "7px", height: "7px",
+          position: "absolute", left: "9px", top: "50%", width: "7px", height: "7px",
           marginTop: "-3.5px", borderRadius: "999px", background: c.accent,
-          boxShadow: "0 0 0 2px " + c.bg
+          boxShadow: "0 0 0 2px " + c.bg, zIndex: 1
         },
-        // The spine: a 1px vertical line behind the dots, drawn per row so it stops with the list.
+        // The spine stops at the first and last dot instead of running past them: a line that
+        // overhangs the ends looks like a crop, not a timeline.
         rowSpine: {
-          position: "absolute", left: "16px", top: 0, bottom: 0, width: "1px",
-          background: "color-mix(in oklab, " + c.accent + " 26%, transparent)"
+          position: "absolute", left: "12px", top: 0, bottom: 0, width: "1px",
+          background: "color-mix(in oklab, " + c.accent + " 30%, transparent)"
         },
         filterBar: Object.assign({}, base.filterBar, { gap: "6px", padding: "6px 12px", borderBottom: "none" }),
         filterChip: Object.assign({}, base.filterChip, { height: "22px", padding: "0 10px", background: c.bgSoft, border: "1px solid transparent" }),
@@ -1319,14 +1324,16 @@ window.__ModuleLoader__.load({
         buttonOn: Object.assign({}, base.buttonOn, { height: "26px", padding: "0 10px", borderRadius: c.radius.lg }),
         summary: Object.assign({}, base.summary, { padding: "6px 12px", borderBottom: "none" }),
         notice: Object.assign({}, base.notice, { padding: "7px 12px", borderRadius: c.radius.lg, margin: "0 8px 6px" }),
-        // The board: cards flow into as many columns as the panel can honour.
+        // The board: as many columns as the panel can honour, and never a tile too narrow to read.
         //
-        // 240px was too narrow to read a file name in — the label truncated to "applicat…" —
-        // so the floor is 300px, which still yields two columns in a 520px sidebar but gives the
-        // name room. Below ~620px the grid collapses to one column on its own.
+        // The floor is 230px, measured rather than guessed: a 520px sidebar minus 20px of list
+        // padding and a 10px gap leaves 490px, which fits two 240px tiles and therefore needs a
+        // floor at or below 240. At 300px and 270px the grid silently collapsed to one column —
+        // a list with extra steps — while 230px keeps two columns down to a ~490px panel and
+        // still gives the name the tile's full width, because this theme drops the path column.
         list: Object.assign({}, base.list, {
           padding: "10px 10px 20px",
-          display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+          display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
           gap: "10px", alignContent: "start"
         }),
         card: Object.assign({}, base.card, {
@@ -1334,10 +1341,11 @@ window.__ModuleLoader__.load({
           background: c.bg, marginBottom: "0", overflow: "hidden",
           boxShadow: c.shadowCard, alignSelf: "start"
         }),
-        // The header is a filled chip strip, so a tile reads as a labelled box.
+        // A filled strip with the counts right-aligned: on a narrow tile the title and the meta
+        // compete, so the meta is pinned to the right and never wraps.
         cardHead: Object.assign({}, base.cardHead, {
-          height: "30px", padding: "0 10px", background: c.bgSoft,
-          borderBottom: "1px solid " + c.borderSoft
+          height: "32px", padding: "0 10px", background: c.bgSoft,
+          borderBottom: "1px solid " + c.borderSoft, gap: "6px"
         }),
         cardTitle: Object.assign({}, base.cardTitle, { fontSize: "12px", fontWeight: 600 }),
         cardMeta: Object.assign({}, base.cardMeta, { fontSize: "10px" }),
@@ -1345,7 +1353,11 @@ window.__ModuleLoader__.load({
           height: "24px", padding: "6px 10px 2px", fontSize: "10px", fontWeight: 700,
           textTransform: "uppercase", letterSpacing: "0.06em", color: c.textFaint
         }),
-        row: Object.assign({}, base.row, { height: "26px", lineHeight: "26px", padding: "0 10px", borderRadius: 0 }),
+        // A hairline between rows keeps a tile scannable without the zebra of the table theme.
+        row: Object.assign({}, base.row, {
+          height: "26px", lineHeight: "26px", padding: "0 10px", borderRadius: 0,
+          borderTop: "1px solid color-mix(in oklab, " + c.borderSoft + " 55%, transparent)"
+        }),
         // A tile is ~300px: the name takes every pixel the metadata does not need, the path is
         // dropped (it is the least useful fact at this width), and the two numeric cells shrink
         // to their content instead of reserving 70px.
@@ -1643,7 +1655,15 @@ window.__ModuleLoader__.load({
     function matches(file, query) {
       var terms = termsOf(query);
       if (terms.length === 0) return true;
-      var haystack = (String(file.name) + " " + String(file.rel) + " " + String(file.path) + " " + String(file.category) + " " + String(file.sessionTitle || "")).toLowerCase();
+      // `sessionId` is part of the haystack because it is the one identifier a reader can copy
+      // from the session menu or from a log, and searching it previously matched nothing.
+      var haystack = (
+        String(file.name) + " " + String(file.rel) + " " + String(file.path) + " " +
+        String(file.category) + " " + String(file.sessionTitle || "") + " " +
+        String(file.sessionId || "") + " " +
+        // A pasted id may carry the `session-` prefix or not, so both spellings match.
+        String(file.sessionId || "").replace(/^session-/, "")
+      ).toLowerCase();
       for (var index = 0; index < terms.length; index += 1) {
         if (haystack.indexOf(terms[index]) === -1) return false;
       }
@@ -1924,10 +1944,14 @@ window.__ModuleLoader__.load({
         },
         title: file.path + (missing ? t("row.missingSuffix") : "")
       },
-        // The timeline theme draws a gutter: a spine behind a dot on every row. Other themes
-        // leave both null, so this costs one truthiness check for them.
-        S.rowSpine ? react.createElement("span", { style: S.rowSpine, "aria-hidden": "true" }) : null,
-        S.rowDot ? react.createElement("span", { style: Object.assign({}, S.rowDot, { background: categoryColor(file.category) }), "aria-hidden": "true" }) : null,
+        // The timeline gutter, painted in order: spine first (so it sits behind), then the dot,
+        // then the glyph. Other themes leave both styles null and pay one truthiness check.
+        S.rowSpine ? react.createElement("span", { key: "spine", style: S.rowSpine, "aria-hidden": "true" }) : null,
+        S.rowDot ? react.createElement("span", {
+          key: "dot",
+          style: Object.assign({}, S.rowDot, { background: categoryColor(file.category) }),
+          "aria-hidden": "true"
+        }) : null,
         react.createElement(FileGlyph, { ext: extOf(file.name || file.path), path: file.path, name: file.name, category: file.category, size: 16 }),
         react.createElement("span", { style: S.name }, highlight(file.name, props.query)),
         missing ? react.createElement("span", { style: S.tagMissing }, t("row.missingTag")) : null,
