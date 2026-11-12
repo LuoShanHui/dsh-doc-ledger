@@ -270,7 +270,8 @@
         // Present in every theme (the parity check compares key sets); only "card" gives it a
         // visible value, the rest leave it null so the head renders no rail.
         cardRail: null,
-        // Gutter parts for the timeline theme; null elsewhere.
+        // Gutter parts (the timeline preset was removed; the row still guards on these, so
+        // they stay as nulls rather than dragging the drawing code out of the row).
         rowDot: null,
         rowSpine: null,
         fileBadge: { display: "inline-block", flex: "0 0 auto", borderRadius: "3px", color: c.onAccent, fontWeight: 700, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.02em", overflow: "hidden" },
@@ -315,72 +316,6 @@
      * rows by whitespace. Type grows a notch and the label gains weight, because with the
      * separators gone weight is the only thing left to hang hierarchy on.
      */
-    /**
-     * "timeline": the ledger as a chronology.
-     *
-     * Structurally different from every other preset: rows carry a left gutter with a dot and a
-     * connecting line, section heads are small caps without rules, and the card is a single
-     * flat sheet rather than a framed box. The gutter is what makes it read as a log instead of
-     * a list, and nothing else here uses one.
-     */
-    function timelineStyles() {
-      var c = palette();
-      var base = compactStyles();
-      return Object.assign({}, base, {
-        root: Object.assign({}, base.root, { fontSize: "13px" }),
-        bar: Object.assign({}, base.bar, { gap: "6px", padding: "10px 12px", borderBottom: "none" }),
-        title: Object.assign({}, base.title, { fontWeight: 700, fontSize: "14px" }),
-        input: Object.assign({}, base.input, { height: "26px", padding: "0 10px", borderRadius: "999px", background: c.bgSoft, border: "1px solid transparent" }),
-        button: Object.assign({}, base.button, { height: "26px", padding: "0 10px", borderRadius: "999px", background: c.bgSoft }),
-        buttonOn: Object.assign({}, base.buttonOn, { height: "26px", padding: "0 10px", borderRadius: "999px" }),
-        summary: Object.assign({}, base.summary, { padding: "6px 14px", borderBottom: "none" }),
-        notice: Object.assign({}, base.notice, { padding: "7px 14px", borderRadius: c.radius.lg, margin: "0 10px 6px" }),
-        list: Object.assign({}, base.list, { padding: "8px 12px 24px" }),
-        // One flat sheet: no frame, no shadow, no radius on the card itself.
-        card: Object.assign({}, base.card, { border: "none", borderRadius: "0", background: "transparent", marginBottom: "4px" }),
-        cardHead: Object.assign({}, base.cardHead, {
-          height: "32px", padding: "0 6px", background: "transparent",
-          borderBottom: "1px solid " + c.borderSoft
-        }),
-        cardTitle: Object.assign({}, base.cardTitle, { fontSize: "13px", fontWeight: 700 }),
-        sectionHead: Object.assign({}, base.sectionHead, {
-          height: "26px", padding: "0 6px 0 22px", fontSize: "10px", fontWeight: 700,
-          textTransform: "uppercase", letterSpacing: "0.08em", color: c.textFaint
-        }),
-        // The gutter is 34px, in three bands: spine at x=9, dot centred on it (x≈12), and the
-        // row's own glyph starting at x=26. The first attempt used 26px total, which put the dot
-        // and the file icon within 2px of each other — measured at gap -4px, i.e. overlapping,
-        // and it read as a smudge rather than a timeline.
-        row: Object.assign({}, base.row, {
-          height: "30px", lineHeight: "30px", padding: "0 8px 0 34px", borderRadius: 0,
-          position: "relative", gap: "8px"
-        }),
-        // The dot is the timeline marker; it is tinted by the file family, not by the accent, so
-        // a long list reads as coloured events rather than a column of identical dots.
-        rowDot: {
-          position: "absolute", left: "9px", top: "50%", width: "7px", height: "7px",
-          marginTop: "-3.5px", borderRadius: "999px", background: c.accent,
-          boxShadow: "0 0 0 2px " + c.bg, zIndex: 1
-        },
-        // The spine stops at the first and last dot instead of running past them: a line that
-        // overhangs the ends looks like a crop, not a timeline.
-        rowSpine: {
-          position: "absolute", left: "12px", top: 0, bottom: 0, width: "1px",
-          background: "color-mix(in oklab, " + c.accent + " 30%, transparent)"
-        },
-        filterBar: Object.assign({}, base.filterBar, { gap: "6px", padding: "6px 12px", borderBottom: "none" }),
-        filterChip: Object.assign({}, base.filterChip, { height: "22px", padding: "0 10px", background: c.bgSoft, border: "1px solid transparent" }),
-        filterChipOn: Object.assign({}, base.filterChipOn, { height: "22px", padding: "0 10px", border: "1px solid transparent" }),
-        sortChip: Object.assign({}, base.sortChip, { height: "22px", padding: "0 9px", border: "1px solid transparent", background: c.bgSoft }),
-        name: Object.assign({}, base.name, { fontWeight: 600, fontSize: "13px" }),
-        dir: Object.assign({}, base.dir, { fontSize: "12px" }),
-        io: Object.assign({}, base.io, { fontSize: "11px" }),
-        times: Object.assign({}, base.times, { fontSize: "11px" }),
-        moreRow: Object.assign({}, base.moreRow, { height: "30px", fontSize: "12px", paddingLeft: "22px" }),
-        empty: Object.assign({}, base.empty, { padding: "44px 16px", fontSize: "13px" })
-      });
-    }
-
     /**
      * "grid": a two-column board.
      *
@@ -430,18 +365,63 @@
           height: "24px", padding: "6px 10px 2px", fontSize: "10px", fontWeight: 700,
           textTransform: "uppercase", letterSpacing: "0.06em", color: c.textFaint
         }),
-        // A hairline between rows keeps a tile scannable without the zebra of the table theme.
+        // A tile is ~245px, so the row is a two-line block:
+        //   line 1  the file name (full width, ellipsised) plus the deleted marker
+        //   line 2  the session this row came from, then reads/writes and the time
+        // The session sits on its own line because in the merged view it is the only thing that
+        // tells two identical-looking names apart, and it used to be a 10px chip squeezed
+        // between the name and the counters with no room to read.
+        // Two lines per row, laid out as a 3-column, 2-row grid:
+        //
+        //   [glyph] [name ....................] [deleted?]
+        //           [session] [R/W · size] [time]
+        //
+        // A flex wrap could not express this: with the name at `flex: 1 1 100%` the glyph was
+        // pushed onto a line of its own, so every row became three lines and a tile held six
+        // files instead of ten. A grid keeps the glyph spanning both rows, which is what a list
+        // with a leading icon wants.
+        // Two lines, with the session chip as a leading badge on the FIRST line:
+        //   row 1  glyph | [session] name ....... | deleted
+        //   row 2  ....................... | R/W · size | time
+        //
+        // Three lines was tried and measured at 60px per row, which halves how many files a tile
+        // can show — the opposite of what a board is for. Putting the chip inline before the name
+        // keeps the affiliation visible while staying at 40px.
         row: Object.assign({}, base.row, {
-          height: "26px", lineHeight: "26px", padding: "0 10px", borderRadius: 0,
+          display: "grid",
+          gridTemplateColumns: "auto auto minmax(0, 1fr) auto",
+          gridTemplateRows: "auto auto",
+          alignItems: "center", columnGap: "5px", rowGap: "1px",
+          height: "auto", minHeight: "40px", lineHeight: "15px",
+          padding: "4px 10px 5px", borderRadius: 0,
           borderTop: "1px solid color-mix(in oklab, " + c.borderSoft + " 55%, transparent)"
         }),
-        // A tile is ~300px: the name takes every pixel the metadata does not need, the path is
-        // dropped (it is the least useful fact at this width), and the two numeric cells shrink
-        // to their content instead of reserving 70px.
-        name: Object.assign({}, base.name, { flex: "1 1 auto", maxWidth: "none", minWidth: 0, fontSize: "12px", fontWeight: 600 }),
-        dir: Object.assign({}, base.dir, { display: "none" }),
-        io: Object.assign({}, base.io, { fontSize: "10px", minWidth: "auto", flex: "0 0 auto" }),
-        times: Object.assign({}, base.times, { fontSize: "10px", minWidth: "auto", flex: "0 0 auto" }),
+        name: Object.assign({}, base.name, {
+          gridColumn: "3", gridRow: "1", maxWidth: "none", minWidth: 0,
+          fontSize: "12px", fontWeight: 600
+        }),
+        dir: Object.assign({}, base.dir, { display: "none", gridColumn: "1", gridRow: "2" }),
+        // The glyph is the first cell; keep it centred across the three text lines.
+        dot: Object.assign({}, base.dot, { gridRow: "1 / 4" }),
+        // The session tag becomes a real label: filled, tinted, and the first thing on line 2.
+        // Row 2, left: the session this file came from. Spanning the name and counter columns
+        // keeps it from being clipped by them when the title is long.
+        // The session chip leads line 1, right before the name: a coloured badge is easier to
+        // scan down a tile than a suffix, and it cannot collide with the counters on line 2.
+        tag: {
+          gridColumn: "2", gridRow: "1", justifySelf: "start",
+          padding: "0 5px", borderRadius: "3px", background: c.accentSoft, color: c.accent,
+          whiteSpace: "nowrap", maxWidth: "90px", overflow: "hidden", textOverflow: "ellipsis",
+          fontSize: "10px", lineHeight: "14px", fontWeight: 600
+        },
+        io: Object.assign({}, base.io, {
+          gridColumn: "3", gridRow: "2", justifySelf: "end",
+          fontSize: "10px", minWidth: "auto", textAlign: "right"
+        }),
+        times: Object.assign({}, base.times, {
+          gridColumn: "4", gridRow: "2", justifySelf: "end",
+          fontSize: "10px", minWidth: "auto", textAlign: "right"
+        }),
         filterBar: Object.assign({}, base.filterBar, { gap: "6px", padding: "6px 12px", borderBottom: "none" }),
         filterChip: Object.assign({}, base.filterChip, { height: "20px", padding: "0 9px", background: c.bg, border: "1px solid " + c.borderSoft }),
         filterChipOn: Object.assign({}, base.filterChipOn, { height: "20px", padding: "0 9px" }),
@@ -506,13 +486,12 @@
 
     var STYLE_THEMES = {
       compact: compactStyles,
-      timeline: timelineStyles,
       grid: gridStyles,
       card: cardStyles
     };
 
     /** Order shown in the picker; the first entry is the fallback and the default. */
-    var THEME_ORDER = ["card", "compact", "timeline", "grid"];
+    var THEME_ORDER = ["card", "compact", "grid"];
 
     var currentTheme = "card";
     var S = cardStyles();

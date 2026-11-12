@@ -1,10 +1,10 @@
-- **Visual themes**: a "Theme" dropdown with four looks that differ in *structure*, not tint —
+- **Visual themes**: a "Theme" dropdown with three looks that differ in *structure*, not tint —
   **Card** (the default: a tinted backdrop under white cards, each with a 3px accent rail),
-  **Compact** (VS Code density: 22px rows, hairline separators), **Timeline** (a dot-and-spine
-  gutter down the left, capsule controls) and **Grid** (cards tiled into as many columns as the
-  panel can honour). Pick any theme directly; the active one is ticked and the choice is
-  remembered. Light and dark follow the host's own scheme marker, and the colours are read from
-  the host's token table, so a custom DSH theme carries over.
+  **Compact** (VS Code density: 22px rows, hairline separators) and **Grid** (cards tiled into as
+  many columns as the panel can honour, with the session a row came from as a leading badge).
+  Pick any theme directly; the active one is ticked and the choice is remembered. Light and dark
+  follow the host's own scheme marker, and the colours are read from the host's token table, so a
+  custom DSH theme carries over.
 - **Two-level type filter**: the family row answers "what kind of thing" — docs, sheets, slides,
   images, code, web, config, data, media, archives, binaries — and selecting one reveals a second
   row of the *extensions actually present in that family*, counted from the live ledger. The

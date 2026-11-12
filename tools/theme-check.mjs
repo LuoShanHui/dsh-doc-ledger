@@ -29,8 +29,8 @@ const cases = [];
 function check(name, body) { cases.push([name, body]); }
 
 const themes = Object.keys(sandbox.STYLE_THEMES);
-check("定义了四套主题（卡片为默认）", () => {
-  assert.deepEqual(themes.sort(), ["card", "compact", "grid", "timeline"]);
+check("定义了三套主题（卡片为默认）", () => {
+  assert.deepEqual(themes.sort(), ["card", "compact", "grid"]);
 });
 
 const keysOf = (styles) => Object.keys(styles).sort();
@@ -66,17 +66,17 @@ check("每个主题每个 key 都是非空对象或颜色字符串", () => {
 
 check("非 compact 主题至少有一处与 compact 不同", () => {
   const compact = sandbox.STYLE_THEMES.compact();
-  for (const id of ["card", "grid", "timeline"]) {
+  for (const id of ["card", "grid"]) {
     const other = sandbox.STYLE_THEMES[id]();
     const diff = Object.keys(compact).filter((key) => JSON.stringify(compact[key]) !== JSON.stringify(other[key]));
     assert.ok(diff.length > 0, id + " must differ from compact");
   }
 });
 
-check("四套主题两两可区分（不允许只差一两个数值）", () => {
+check("三套主题两两可区分（不允许只差一两个数值）", () => {
   // Two themes that differ only in a radius read as "the same look", which is exactly the
   // report that made this check exist: cycling four themes felt like two.
-  const ids = ["compact", "timeline", "grid", "card"];
+  const ids = ["compact", "grid", "card"];
   const built = Object.fromEntries(ids.map((id) => [id, sandbox.STYLE_THEMES[id]()]));
   const differingKeys = (a, b) =>
     Object.keys(built[a]).filter((key) => JSON.stringify(built[a][key]) !== JSON.stringify(built[b][key]));
