@@ -51,7 +51,30 @@ const parts = manifest.map((name) => {
   if (!text.endsWith("\n")) throw new Error("fragment must end with a newline: " + name);
   return text;
 });
-const built = parts.join("");
+/**
+ * Stamp the build time into the bundle.
+ *
+ * The client bundle lives in the DSH process until it is restarted, so a stale bundle and a
+ * broken layout are indistinguishable from the outside: both look like "the fix did nothing".
+ * The panel prints this tag on the toolbar, which makes the answer one glance instead of a
+ * round trip. It is coarse (a minute) so rebuilding twice in the same minute is byte-identical
+ * and `--check` stays meaningful.
+ */
+const now = new Date();
+const stamp = now.getFullYear() + "-" +
+  String(now.getMonth() + 1).padStart(2, "0") + "-" +
+  String(now.getDate()).padStart(2, "0") + " " +
+  String(now.getHours()).padStart(2, "0") + ":" +
+  String(now.getMinutes()).padStart(2, "0");
+
+// `--check` must not fail merely because the clock moved, so it reuses the tag already present in
+// the committed artifact instead of computing a new one.
+const checkMode = process.argv.includes("--check");
+const committed = existsSync(out) ? readFileSync(out, "utf8") : "";
+const committedTag = (committed.match(/"([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2})"/) || [])[1];
+
+const tag = checkMode ? (committedTag ?? stamp) : stamp;
+const built = parts.join("").replace(/__DOC_LEDGER_BUILD__/g, tag);
 
 const check = process.argv.includes("--check");
 const current = existsSync(out) ? readFileSync(out, "utf8") : "";

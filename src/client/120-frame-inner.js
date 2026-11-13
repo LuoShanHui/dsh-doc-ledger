@@ -60,7 +60,10 @@
 
       // Visual theme: compact (original) / airy / table / card. Persisted like the
       // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
-      var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
+      /** Stamped by tools/build-client.mjs as an ISO minute so a stale bundle is obvious. */
+    var BUILD_TAG = "__DOC_LEDGER_BUILD__";
+
+    var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
       var setTheme = themeState[1];
       react.useEffect(function () {
@@ -733,7 +736,14 @@
             "aria-haspopup": "menu",
             "aria-expanded": menu !== null && menu.kind === "theme",
             onClick: function (event) { event.stopPropagation(); openThemeMenu(event); }
-          }, t("theme.next") + ": " + t("theme." + theme) + " ▾")
+          }, t("theme.next") + ": " + t("theme." + theme) + " ▾"),
+          // A build tag on the toolbar. Without it there is no way to tell a stale bundle from a
+          // broken layout: the DSH window keeps its client bundle until the process restarts, so
+          // "I fixed it" and "you are looking at the old code" look identical from both sides.
+          h("span", {
+            style: { marginLeft: "auto", fontSize: "10px", opacity: 0.45, letterSpacing: "0.02em" },
+            title: "doc-ledger build"
+          }, BUILD_TAG)
         )
       );
 
