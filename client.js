@@ -2596,7 +2596,7 @@ window.__ModuleLoader__.load({
       // Visual theme: compact (original) / airy / table / card. Persisted like the
       // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
       /** Stamped by tools/build-client.mjs as an ISO minute so a stale bundle is obvious. */
-    var BUILD_TAG = "2026-11-13 16:18";
+    var BUILD_TAG = "2026-11-13 16:25";
 
     var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
@@ -3797,8 +3797,11 @@ window.__ModuleLoader__.load({
         flatProps.createdSort = createdSort;
         flatProps.open = cardOpen.__flat__ !== false;
         flatProps.onToggleCard = function () {
-          // The merged card keeps the ordinary toggle in every preset: there is no session to
-          // enter, and the merged view is already a single full-width card.
+          // The merged card has nothing to enter, and toggling it in the grid preset is a trap:
+          // its header looks like every other card's, so a reader clicks it and the whole list
+          // collapses to a 35px strip. In the grid preset the merged card's header is inert;
+          // the board's other presets keep the collapse.
+          if (styleThemeRef.current === "grid") return;
           setCardOpen(function (previous) {
             var next = Object.assign({}, previous);
             next.__flat__ = previous.__flat__ === false ? true : false;
