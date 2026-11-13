@@ -125,34 +125,17 @@
       var sessionLimit = limitState[0];
       var setSessionLimit = limitState[1];
 
-      // The grid preset opens a session in a right-hand drawer instead of expanding its tile.
-      // Holds the session object (or null when closed).
-      var drawerState = react.useState(null);
-      var drawer = drawerState[0];
-      var setDrawer = drawerState[1];
-      // The drawer's own roving index. Separate from the board's active row so opening the drawer
-      // does not disturb where the reader was in the list behind it.
-      var drawerRowState = react.useState(null);
-      var drawerRow = drawerRowState[0];
-      var setDrawerRow = drawerRowState[1];
-      var drawerRowsRef = react.useRef(0);
-      var drawerBoxRef = react.useRef(null);
-      var drawerFocus = function (index) {
-        var box = drawerBoxRef.current;
-        if (box === null) return;
-        var nodes = box.querySelectorAll("[data-row-index]");
-        for (var i = 0; i < nodes.length; i += 1) {
-          if (String(i) === String(index)) { setDrawerRow(index); nodes[i].focus(); return; }
-        }
-      };
-      var drawerMove = function (from, delta) {
-        var total = drawerRowsRef.current;
-        var next = clampRowIndex(from, delta, total);
-        if (next !== from) drawerFocus(next);
-      };
-      var drawerEdge = function (which) {
-        drawerFocus(which === "first" ? 0 : Math.max(0, drawerRowsRef.current - 1));
-      };
+      /**
+       * The session the grid preset has "entered", or null while it shows the board.
+       *
+       * In the grid preset a session is not expanded in place: the board is replaced by that one
+       * session's full-width card. Expanding in place cannot work in a board — one tall card
+       * leaves a hole its neighbours cannot backfill and shoves everything after it — and a
+       * right-hand drawer was rejected because it covers the board it is meant to complement.
+       */
+      var enteredState = react.useState(null);
+      var entered = enteredState[0];
+      var setEntered = enteredState[1];
 
       var cardOpenState = react.useState({});
       var cardOpen = cardOpenState[0];
@@ -1016,15 +999,11 @@
       // Stable dispatchers: memoised cards must not see a new callback on every render.
       var rowHandlers = useHandlers({ open: openDefault, quick: openPreview, menu: openFileMenu, sortMenu: openSortMenu, sessionMenu: openSessionMenu });
       var toggleCard = react.useCallback(function (id) {
-        // The grid preset does not expand in place: a tile that grows many times taller than its
-        // neighbours leaves a hole the grid cannot backfill and shoves every later card down,
-        // which reads as the board breaking. The drawer shows the session beside an untouched
-        // board instead. Every other preset keeps the in-place expansion.
-        if (styleThemeRef.current === "grid") {
-          setDrawer(function (previous) {
-            if (previous !== null && previous.sessionId === id) return null;
-            return { sessionId: id };
-          });
+        // In the grid preset a click enters the session: the board is replaced by that session's
+        // card. Only "all sessions" is affected; "current session" already is a single card and
+        // keeps the ordinary expansion below.
+        if (styleThemeRef.current === "grid" && scopeRef.current !== "current") {
+          setEntered(function (previous) { return previous === id ? null : id; });
           return;
         }
         // Clicking a card always mounts it, even when it is far below the fold.
@@ -1255,7 +1234,24 @@
       };
 
       var cards = [];
-      if (separate) {
+      // Grid preset, "all sessions", a session entered: exactly one full-width card, always open,
+      // with a back affordance above it. The board is not rendered at all, so nothing is covered
+      // and nothing shifts.
+      var enteredSession = null;
+      if (entered !== null && theme === "grid" && separate) {
+        for (var ei = 0; ei < sessions.length; ei += 1) {
+          if (sessions[ei].sessionId === entered) { enteredSession = sessions[ei]; break; }
+        }
+      }
+      if (enteredSession !== null) {
+        var enteredProps = cardProps(enteredSession, 0);
+        enteredProps.open = true;
+        enteredProps.near = true;
+        // Its head toggles back out, so clicking the card header is the same affordance as the bar.
+        enteredProps.onToggleCard = function () { setEntered(null); };
+        enteredProps.entered = true;
+        cards = [h(SessionCard, enteredProps)];
+      } else if (separate) {
         cards = sessions
           .filter(function (session) { return hasVisibleRow(session.files); })
           .map(function (session, index) { return h(SessionCard, cardProps(session, index)); });
@@ -1266,11 +1262,8 @@
         flatProps.createdSort = createdSort;
         flatProps.open = cardOpen.__flat__ !== false;
         flatProps.onToggleCard = function () {
-          // The merged card overrides the toggle, so it has to honour the grid preset's drawer
-          // itself — routing through `toggleCard` is not possible here because the merged card
-          // has no session id. Without this, clicking the only card on a merged grid board did
-          // nothing at all.
-          if (styleThemeRef.current === "grid") { toggleCard("__flat__"); return; }
+          // The merged card keeps the ordinary toggle in every preset: there is no session to
+          // enter, and the merged view is already a single full-width card.
           setCardOpen(function (previous) {
             var next = Object.assign({}, previous);
             next.__flat__ = previous.__flat__ === false ? true : false;
@@ -1284,6 +1277,19 @@
       var placeholder = activeState.status === "error"
         ? t("empty.readFailed") + activeState.message
         : t("preview.loading");
+      // The way back out of an entered session. Rendered above the list rather than floated, so it
+      // can never cover a row.
+      var backBar = enteredSession !== null ? h("div", { style: S.backBar },
+        h("button", {
+          type: "button",
+          style: S.backButton,
+          onClick: function () { setEntered(null); },
+          onFocus: ringOn,
+          onBlur: ringOff
+        }, "\u2190 " + t("enter.back")),
+        h("span", { style: S.backLabel }, t("enter.hint"))
+      ) : null;
+
       var body = !ready
         ? h("div", { style: S.empty }, placeholder)
         : (cards.length > 0 ? cards : h("div", { style: S.empty }, emptyText));
@@ -1421,88 +1427,16 @@
         }, everyOpen === true || bulkBusy === true ? t("expand.collapse") : t("expand.expand")) : null
       );
 
-      /**
-       * The session drawer, for the grid preset.
-       *
-       * It lists the same rows the expanded card would have shown, but leaves the board alone.
-       * The session is looked up by id so a refresh that replaces every object cannot leave the
-       * drawer pointing at stale files.
-       */
-      var renderDrawer = function () {
-        if (drawer === null) return null;
-        // The merged view's card id is "__flat__", which is not a session. It still has to open
-        // something, otherwise clicking the only card on the board does nothing at all (that was
-        // the reported "no reaction" case). Resolve "__flat__" to the merged list itself.
-        var found = null;
-        if (drawer.sessionId === "__flat__") {
-          found = { sessionId: "__flat__", title: t("empty.mergeAll"), files: mergeSessions(sessions) };
-        } else {
-          for (var i = 0; i < sessions.length; i += 1) {
-            if (sessions[i].sessionId === drawer.sessionId) { found = sessions[i]; break; }
-          }
-        }
-        if (found === null) return null;
-        var files = found.files || [];
-        var shown = files.filter(passesFilters).slice(0, 200);
-        drawerRowsRef.current = shown.length;
-        var rows = shown.map(function (file, ordinal) {
-          return h(FileRow, {
-            key: "drawer:" + (file.path || "") + ":" + ordinal,
-            file: file,
-            // A real index: FileRow omits `data-row-index` entirely for -1, which broke arrow-key
-            // navigation inside the drawer (focusRow queries that attribute) and made every row
-            // unreachable by keyboard. The drawer keeps its own roving index so it cannot collide
-            // with the board's.
-            index: ordinal,
-            mode: usedSort,
-            parity: ordinal % 2,
-            // With nothing selected yet the first row is the Tab stop, matching the board's
-            // roving-tabindex rule (exactly one reachable row per container).
-            active: drawerRow === null ? ordinal === 0 : drawerRow === ordinal,
-            query: query,
-            onOpen: rowHandlers.open,
-            onQuick: rowHandlers.quick,
-            onMenu: rowHandlers.menu,
-            onFocusIndex: setDrawerRow,
-            onMove: drawerMove,
-            onEdge: drawerEdge
-          });
-        });
-        return h(react.Fragment, null,
-          h("div", { style: S.scrim, onClick: function () { setDrawer(null); } }),
-          h("div", { style: S.drawer, role: "dialog", "aria-label": found.title || found.sessionId },
-            h("div", { style: S.drawerHead },
-              h("span", { style: S.drawerTitle, title: found.title || found.sessionId }, found.title || found.sessionId),
-              h("button", {
-                type: "button",
-                style: S.drawerClose,
-                title: t("preview.close"),
-                "aria-label": t("preview.close"),
-                onClick: function () { setDrawer(null); setDrawerRow(null); }
-              }, "\u2715")
-            ),
-            h("div", { style: S.drawerMeta }, t("drawer.meta", {
-              used: (found.counts && found.counts.used) || 0,
-              created: (found.counts && found.counts.created) || 0,
-              files: files.length
-            })),
-            h("div", { style: S.drawerBody, ref: drawerBoxRef }, rows.length === 0
-              ? h("div", { style: S.empty }, t("empty.noMatch"))
-              : rows)
-          )
-        );
-      };
-
       return h("div", { "data-doc-ledger-root": "1", style: S.root, onClick: function () { if (menu !== null) setMenu(null); } },
         header,
         summaryLine,
         notice,
         filterBar,
         extRow,
+        backBar,
         h("div", { ref: listRef, style: S.list, onScroll: onListScroll }, body),
         h(Menu, { menu: menu, onPick: act, onClose: function () { setMenu(null); } }),
         renderModal(),
-        renderDrawer(),
         toast === null ? null : h("div", {
           style: Object.assign({}, S.toast, toast.kind === "error" ? S.toastError : S.toastOk),
           role: "status",

@@ -356,7 +356,8 @@ window.__ModuleLoader__.load({
       "preview.esc": "　·　Esc 关闭",
 
       // summary line
-      "drawer.meta": "使用 {used} · 创建 {created} · {files} 个文件",
+      "enter.back": "返回全部会话",
+      "enter.hint": "当前只显示这一个会话",
       "summary.line": "会话 {sessions} · 使用 {used} · 创建 {created} · 读 {reads} 次 · 写 {writes} 次",
       "summary.filteredLine": "　·　筛选后{files} /{sessions}",
       "summary.countFiles": " {n} 个文件",
@@ -573,7 +574,8 @@ window.__ModuleLoader__.load({
       "preview.copyPathHint": " (click to copy the full path)",
       "preview.esc": "  ·  Esc to close",
 
-      "drawer.meta": "{used} used · {created} created · {files} files",
+      "enter.back": "All sessions",
+      "enter.hint": "Showing this session only",
       "summary.line": "Sessions {sessions} · used {used} · created {created} · R {reads} · W {writes}",
       "summary.filteredLine": "  ·  filtered{files} /{sessions}",
       "summary.countFiles": " {n} files",
@@ -1214,36 +1216,24 @@ window.__ModuleLoader__.load({
         times: { color: c.textFaint, whiteSpace: "nowrap", flex: "0 0 auto", fontVariantNumeric: "tabular-nums", fontSize: "10px", textAlign: "right", minWidth: "70px" },
         tag: { padding: "0 5px", borderRadius: "3px", background: c.accentSoft, color: c.accent, whiteSpace: "nowrap", maxWidth: "88px", overflow: "hidden", textOverflow: "ellipsis", flex: "0 0 auto", fontSize: "10px" },
         empty: { padding: "24px 12px", textAlign: "center", color: c.textFaint, fontSize: "12px" },
-        // A right-hand drawer, used by the grid preset instead of expanding a tile in place.
-        //
-        // Expanding a tile in a board is what looked broken: one card grows many times taller
-        // than its neighbours, the grid cannot backfill the hole beside it, and every card after
-        // it moves down. A drawer leaves the board untouched and shows the session beside it.
-        drawer: {
-          position: "absolute", top: 0, right: 0, bottom: 0, width: "min(420px, 88%)",
-          display: "flex", flexDirection: "column",
-          // `bgBase` is the raised surface (the one cards sit on), so the drawer reads as a layer
-          // above the panel instead of dissolving into the panel's tinted background.
-          background: c.bgBase, borderLeft: "1px solid " + c.border, boxShadow: c.shadowMenu,
-          zIndex: 60
+        // The "entered session" bar, shown by the grid preset above the single card it drilled
+        // into. A right-hand drawer was tried first and rejected: it covers the board it is meant
+        // to complement. Replacing the board needs no overlay, no empty gap and no covering.
+        backBar: {
+          display: "flex", alignItems: "center", gap: "8px", flex: "0 0 auto",
+          height: "32px", padding: "0 10px", margin: "6px 10px 0",
+          borderRadius: c.radius.lg, background: c.bg
         },
-        drawerHead: {
-          display: "flex", alignItems: "center", gap: "8px",
-          height: "40px", padding: "0 12px", flex: "0 0 auto",
-          borderBottom: "1px solid " + c.borderSoft
+        backButton: {
+          display: "inline-flex", alignItems: "center", gap: "4px",
+          height: "22px", padding: "0 8px", border: "none", cursor: "pointer",
+          borderRadius: c.radius.sm, background: "transparent", color: c.accent,
+          fontSize: "12px", fontWeight: 600
         },
-        drawerTitle: {
-          flex: "1 1 auto", minWidth: 0, fontWeight: 700, fontSize: "13px",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+        backLabel: {
+          flex: "1 1 auto", minWidth: 0, color: c.textFaint, fontSize: "11px",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right"
         },
-        drawerClose: {
-          flex: "0 0 auto", width: "24px", height: "24px", padding: 0,
-          borderRadius: c.radius.sm, background: "transparent", color: c.textDim,
-          cursor: "pointer", fontSize: "14px", lineHeight: "24px", border: "none"
-        },
-        drawerBody: { flex: "1 1 auto", overflowY: "auto", padding: "6px 0 12px" },
-        drawerMeta: { padding: "6px 12px", color: c.textFaint, fontSize: "11px" },
-        scrim: { position: "absolute", inset: 0, background: "color-mix(in oklab, " + c.scrim + " 32%, transparent)", zIndex: 55 },
         modal: { position: "fixed", inset: 0, background: c.scrim, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: "24px" },
         modalBox: { background: c.bg, color: "inherit", borderRadius: c.radius.lg, width: "min(900px, 100%)", maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "visible", border: "1px solid " + c.border, boxShadow: c.shadowMenu },
         modalHead: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", minWidth: 0, flex: "0 0 auto", borderBottom: "1px solid " + c.borderSoft },
@@ -2606,7 +2596,7 @@ window.__ModuleLoader__.load({
       // Visual theme: compact (original) / airy / table / card. Persisted like the
       // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
       /** Stamped by tools/build-client.mjs as an ISO minute so a stale bundle is obvious. */
-    var BUILD_TAG = "2026-11-13 16:06";
+    var BUILD_TAG = "2026-11-13 16:18";
 
     var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
@@ -2670,34 +2660,17 @@ window.__ModuleLoader__.load({
       var sessionLimit = limitState[0];
       var setSessionLimit = limitState[1];
 
-      // The grid preset opens a session in a right-hand drawer instead of expanding its tile.
-      // Holds the session object (or null when closed).
-      var drawerState = react.useState(null);
-      var drawer = drawerState[0];
-      var setDrawer = drawerState[1];
-      // The drawer's own roving index. Separate from the board's active row so opening the drawer
-      // does not disturb where the reader was in the list behind it.
-      var drawerRowState = react.useState(null);
-      var drawerRow = drawerRowState[0];
-      var setDrawerRow = drawerRowState[1];
-      var drawerRowsRef = react.useRef(0);
-      var drawerBoxRef = react.useRef(null);
-      var drawerFocus = function (index) {
-        var box = drawerBoxRef.current;
-        if (box === null) return;
-        var nodes = box.querySelectorAll("[data-row-index]");
-        for (var i = 0; i < nodes.length; i += 1) {
-          if (String(i) === String(index)) { setDrawerRow(index); nodes[i].focus(); return; }
-        }
-      };
-      var drawerMove = function (from, delta) {
-        var total = drawerRowsRef.current;
-        var next = clampRowIndex(from, delta, total);
-        if (next !== from) drawerFocus(next);
-      };
-      var drawerEdge = function (which) {
-        drawerFocus(which === "first" ? 0 : Math.max(0, drawerRowsRef.current - 1));
-      };
+      /**
+       * The session the grid preset has "entered", or null while it shows the board.
+       *
+       * In the grid preset a session is not expanded in place: the board is replaced by that one
+       * session's full-width card. Expanding in place cannot work in a board — one tall card
+       * leaves a hole its neighbours cannot backfill and shoves everything after it — and a
+       * right-hand drawer was rejected because it covers the board it is meant to complement.
+       */
+      var enteredState = react.useState(null);
+      var entered = enteredState[0];
+      var setEntered = enteredState[1];
 
       var cardOpenState = react.useState({});
       var cardOpen = cardOpenState[0];
@@ -3561,15 +3534,11 @@ window.__ModuleLoader__.load({
       // Stable dispatchers: memoised cards must not see a new callback on every render.
       var rowHandlers = useHandlers({ open: openDefault, quick: openPreview, menu: openFileMenu, sortMenu: openSortMenu, sessionMenu: openSessionMenu });
       var toggleCard = react.useCallback(function (id) {
-        // The grid preset does not expand in place: a tile that grows many times taller than its
-        // neighbours leaves a hole the grid cannot backfill and shoves every later card down,
-        // which reads as the board breaking. The drawer shows the session beside an untouched
-        // board instead. Every other preset keeps the in-place expansion.
-        if (styleThemeRef.current === "grid") {
-          setDrawer(function (previous) {
-            if (previous !== null && previous.sessionId === id) return null;
-            return { sessionId: id };
-          });
+        // In the grid preset a click enters the session: the board is replaced by that session's
+        // card. Only "all sessions" is affected; "current session" already is a single card and
+        // keeps the ordinary expansion below.
+        if (styleThemeRef.current === "grid" && scopeRef.current !== "current") {
+          setEntered(function (previous) { return previous === id ? null : id; });
           return;
         }
         // Clicking a card always mounts it, even when it is far below the fold.
@@ -3800,7 +3769,24 @@ window.__ModuleLoader__.load({
       };
 
       var cards = [];
-      if (separate) {
+      // Grid preset, "all sessions", a session entered: exactly one full-width card, always open,
+      // with a back affordance above it. The board is not rendered at all, so nothing is covered
+      // and nothing shifts.
+      var enteredSession = null;
+      if (entered !== null && theme === "grid" && separate) {
+        for (var ei = 0; ei < sessions.length; ei += 1) {
+          if (sessions[ei].sessionId === entered) { enteredSession = sessions[ei]; break; }
+        }
+      }
+      if (enteredSession !== null) {
+        var enteredProps = cardProps(enteredSession, 0);
+        enteredProps.open = true;
+        enteredProps.near = true;
+        // Its head toggles back out, so clicking the card header is the same affordance as the bar.
+        enteredProps.onToggleCard = function () { setEntered(null); };
+        enteredProps.entered = true;
+        cards = [h(SessionCard, enteredProps)];
+      } else if (separate) {
         cards = sessions
           .filter(function (session) { return hasVisibleRow(session.files); })
           .map(function (session, index) { return h(SessionCard, cardProps(session, index)); });
@@ -3811,11 +3797,8 @@ window.__ModuleLoader__.load({
         flatProps.createdSort = createdSort;
         flatProps.open = cardOpen.__flat__ !== false;
         flatProps.onToggleCard = function () {
-          // The merged card overrides the toggle, so it has to honour the grid preset's drawer
-          // itself — routing through `toggleCard` is not possible here because the merged card
-          // has no session id. Without this, clicking the only card on a merged grid board did
-          // nothing at all.
-          if (styleThemeRef.current === "grid") { toggleCard("__flat__"); return; }
+          // The merged card keeps the ordinary toggle in every preset: there is no session to
+          // enter, and the merged view is already a single full-width card.
           setCardOpen(function (previous) {
             var next = Object.assign({}, previous);
             next.__flat__ = previous.__flat__ === false ? true : false;
@@ -3829,6 +3812,19 @@ window.__ModuleLoader__.load({
       var placeholder = activeState.status === "error"
         ? t("empty.readFailed") + activeState.message
         : t("preview.loading");
+      // The way back out of an entered session. Rendered above the list rather than floated, so it
+      // can never cover a row.
+      var backBar = enteredSession !== null ? h("div", { style: S.backBar },
+        h("button", {
+          type: "button",
+          style: S.backButton,
+          onClick: function () { setEntered(null); },
+          onFocus: ringOn,
+          onBlur: ringOff
+        }, "\u2190 " + t("enter.back")),
+        h("span", { style: S.backLabel }, t("enter.hint"))
+      ) : null;
+
       var body = !ready
         ? h("div", { style: S.empty }, placeholder)
         : (cards.length > 0 ? cards : h("div", { style: S.empty }, emptyText));
@@ -3966,88 +3962,16 @@ window.__ModuleLoader__.load({
         }, everyOpen === true || bulkBusy === true ? t("expand.collapse") : t("expand.expand")) : null
       );
 
-      /**
-       * The session drawer, for the grid preset.
-       *
-       * It lists the same rows the expanded card would have shown, but leaves the board alone.
-       * The session is looked up by id so a refresh that replaces every object cannot leave the
-       * drawer pointing at stale files.
-       */
-      var renderDrawer = function () {
-        if (drawer === null) return null;
-        // The merged view's card id is "__flat__", which is not a session. It still has to open
-        // something, otherwise clicking the only card on the board does nothing at all (that was
-        // the reported "no reaction" case). Resolve "__flat__" to the merged list itself.
-        var found = null;
-        if (drawer.sessionId === "__flat__") {
-          found = { sessionId: "__flat__", title: t("empty.mergeAll"), files: mergeSessions(sessions) };
-        } else {
-          for (var i = 0; i < sessions.length; i += 1) {
-            if (sessions[i].sessionId === drawer.sessionId) { found = sessions[i]; break; }
-          }
-        }
-        if (found === null) return null;
-        var files = found.files || [];
-        var shown = files.filter(passesFilters).slice(0, 200);
-        drawerRowsRef.current = shown.length;
-        var rows = shown.map(function (file, ordinal) {
-          return h(FileRow, {
-            key: "drawer:" + (file.path || "") + ":" + ordinal,
-            file: file,
-            // A real index: FileRow omits `data-row-index` entirely for -1, which broke arrow-key
-            // navigation inside the drawer (focusRow queries that attribute) and made every row
-            // unreachable by keyboard. The drawer keeps its own roving index so it cannot collide
-            // with the board's.
-            index: ordinal,
-            mode: usedSort,
-            parity: ordinal % 2,
-            // With nothing selected yet the first row is the Tab stop, matching the board's
-            // roving-tabindex rule (exactly one reachable row per container).
-            active: drawerRow === null ? ordinal === 0 : drawerRow === ordinal,
-            query: query,
-            onOpen: rowHandlers.open,
-            onQuick: rowHandlers.quick,
-            onMenu: rowHandlers.menu,
-            onFocusIndex: setDrawerRow,
-            onMove: drawerMove,
-            onEdge: drawerEdge
-          });
-        });
-        return h(react.Fragment, null,
-          h("div", { style: S.scrim, onClick: function () { setDrawer(null); } }),
-          h("div", { style: S.drawer, role: "dialog", "aria-label": found.title || found.sessionId },
-            h("div", { style: S.drawerHead },
-              h("span", { style: S.drawerTitle, title: found.title || found.sessionId }, found.title || found.sessionId),
-              h("button", {
-                type: "button",
-                style: S.drawerClose,
-                title: t("preview.close"),
-                "aria-label": t("preview.close"),
-                onClick: function () { setDrawer(null); setDrawerRow(null); }
-              }, "\u2715")
-            ),
-            h("div", { style: S.drawerMeta }, t("drawer.meta", {
-              used: (found.counts && found.counts.used) || 0,
-              created: (found.counts && found.counts.created) || 0,
-              files: files.length
-            })),
-            h("div", { style: S.drawerBody, ref: drawerBoxRef }, rows.length === 0
-              ? h("div", { style: S.empty }, t("empty.noMatch"))
-              : rows)
-          )
-        );
-      };
-
       return h("div", { "data-doc-ledger-root": "1", style: S.root, onClick: function () { if (menu !== null) setMenu(null); } },
         header,
         summaryLine,
         notice,
         filterBar,
         extRow,
+        backBar,
         h("div", { ref: listRef, style: S.list, onScroll: onListScroll }, body),
         h(Menu, { menu: menu, onPick: act, onClose: function () { setMenu(null); } }),
         renderModal(),
-        renderDrawer(),
         toast === null ? null : h("div", {
           style: Object.assign({}, S.toast, toast.kind === "error" ? S.toastError : S.toastOk),
           role: "status",

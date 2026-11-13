@@ -284,36 +284,24 @@
         times: { color: c.textFaint, whiteSpace: "nowrap", flex: "0 0 auto", fontVariantNumeric: "tabular-nums", fontSize: "10px", textAlign: "right", minWidth: "70px" },
         tag: { padding: "0 5px", borderRadius: "3px", background: c.accentSoft, color: c.accent, whiteSpace: "nowrap", maxWidth: "88px", overflow: "hidden", textOverflow: "ellipsis", flex: "0 0 auto", fontSize: "10px" },
         empty: { padding: "24px 12px", textAlign: "center", color: c.textFaint, fontSize: "12px" },
-        // A right-hand drawer, used by the grid preset instead of expanding a tile in place.
-        //
-        // Expanding a tile in a board is what looked broken: one card grows many times taller
-        // than its neighbours, the grid cannot backfill the hole beside it, and every card after
-        // it moves down. A drawer leaves the board untouched and shows the session beside it.
-        drawer: {
-          position: "absolute", top: 0, right: 0, bottom: 0, width: "min(420px, 88%)",
-          display: "flex", flexDirection: "column",
-          // `bgBase` is the raised surface (the one cards sit on), so the drawer reads as a layer
-          // above the panel instead of dissolving into the panel's tinted background.
-          background: c.bgBase, borderLeft: "1px solid " + c.border, boxShadow: c.shadowMenu,
-          zIndex: 60
+        // The "entered session" bar, shown by the grid preset above the single card it drilled
+        // into. A right-hand drawer was tried first and rejected: it covers the board it is meant
+        // to complement. Replacing the board needs no overlay, no empty gap and no covering.
+        backBar: {
+          display: "flex", alignItems: "center", gap: "8px", flex: "0 0 auto",
+          height: "32px", padding: "0 10px", margin: "6px 10px 0",
+          borderRadius: c.radius.lg, background: c.bg
         },
-        drawerHead: {
-          display: "flex", alignItems: "center", gap: "8px",
-          height: "40px", padding: "0 12px", flex: "0 0 auto",
-          borderBottom: "1px solid " + c.borderSoft
+        backButton: {
+          display: "inline-flex", alignItems: "center", gap: "4px",
+          height: "22px", padding: "0 8px", border: "none", cursor: "pointer",
+          borderRadius: c.radius.sm, background: "transparent", color: c.accent,
+          fontSize: "12px", fontWeight: 600
         },
-        drawerTitle: {
-          flex: "1 1 auto", minWidth: 0, fontWeight: 700, fontSize: "13px",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+        backLabel: {
+          flex: "1 1 auto", minWidth: 0, color: c.textFaint, fontSize: "11px",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right"
         },
-        drawerClose: {
-          flex: "0 0 auto", width: "24px", height: "24px", padding: 0,
-          borderRadius: c.radius.sm, background: "transparent", color: c.textDim,
-          cursor: "pointer", fontSize: "14px", lineHeight: "24px", border: "none"
-        },
-        drawerBody: { flex: "1 1 auto", overflowY: "auto", padding: "6px 0 12px" },
-        drawerMeta: { padding: "6px 12px", color: c.textFaint, fontSize: "11px" },
-        scrim: { position: "absolute", inset: 0, background: "color-mix(in oklab, " + c.scrim + " 32%, transparent)", zIndex: 55 },
         modal: { position: "fixed", inset: 0, background: c.scrim, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: "24px" },
         modalBox: { background: c.bg, color: "inherit", borderRadius: c.radius.lg, width: "min(900px, 100%)", maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "visible", border: "1px solid " + c.border, boxShadow: c.shadowMenu },
         modalHead: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", minWidth: 0, flex: "0 0 auto", borderBottom: "1px solid " + c.borderSoft },
