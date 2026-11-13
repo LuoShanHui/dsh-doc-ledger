@@ -1319,12 +1319,19 @@ window.__ModuleLoader__.load({
          * `alignSelf: start` (already on `card`) keeps a short card from stretching to its row.
          */
         cardOpen: null,
+        // A session tile's header is the click target, so it reads as one: accent-tinted fill,
+        // accent title, hairline under it. The old neutral grey looked like a plain bar and made
+        // the tiles feel like a list of labels rather than a board of buttons.
         cardHead: Object.assign({}, base.cardHead, {
-          height: "32px", padding: "0 10px", background: c.bgSoft,
-          borderBottom: "1px solid " + c.borderSoft, gap: "6px"
+          height: "32px", padding: "0 10px", background: c.accentSoft,
+          borderBottom: "1px solid " + c.accentBorder, gap: "6px"
         }),
-        cardTitle: Object.assign({}, base.cardTitle, { fontSize: "12px", fontWeight: 600 }),
-        cardMeta: Object.assign({}, base.cardMeta, { fontSize: "10px" }),
+        cardTitle: Object.assign({}, base.cardTitle, {
+          color: c.accent, fontWeight: 700
+        }),
+        cardMeta: Object.assign({}, base.cardMeta, {
+          color: "color-mix(in oklab, " + c.accent + " 72%, transparent)"
+        }),
         sectionHead: Object.assign({}, base.sectionHead, {
           height: "24px", padding: "6px 10px 2px", fontSize: "10px", fontWeight: 700,
           textTransform: "uppercase", letterSpacing: "0.06em", color: c.textFaint
@@ -2596,7 +2603,7 @@ window.__ModuleLoader__.load({
       // Visual theme: compact (original) / airy / table / card. Persisted like the
       // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
       /** Stamped by tools/build-client.mjs as an ISO minute so a stale bundle is obvious. */
-    var BUILD_TAG = "2026-11-13 16:25";
+    var BUILD_TAG = "2026-11-13 17:42";
 
     var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
@@ -2671,6 +2678,11 @@ window.__ModuleLoader__.load({
       var enteredState = react.useState(null);
       var entered = enteredState[0];
       var setEntered = enteredState[1];
+      // The entered card starts open and can be collapsed with its own header. Kept separate from
+      // `cardOpen` so leaving and re-entering a session always starts expanded.
+      var enteredOpenState = react.useState(true);
+      var enteredOpen = enteredOpenState[0];
+      var setEnteredOpen = enteredOpenState[1];
 
       var cardOpenState = react.useState({});
       var cardOpen = cardOpenState[0];
@@ -3539,6 +3551,7 @@ window.__ModuleLoader__.load({
         // keeps the ordinary expansion below.
         if (styleThemeRef.current === "grid" && scopeRef.current !== "current") {
           setEntered(function (previous) { return previous === id ? null : id; });
+          setEnteredOpen(true);
           return;
         }
         // Clicking a card always mounts it, even when it is far below the fold.
@@ -3780,10 +3793,16 @@ window.__ModuleLoader__.load({
       }
       if (enteredSession !== null) {
         var enteredProps = cardProps(enteredSession, 0);
-        enteredProps.open = true;
+        // Its own collapsed/expanded state, independent of the board's. Reading it through the
+        // same `cardOpen` map would collide with the board entry for this session.
+        enteredProps.open = enteredOpen;
         enteredProps.near = true;
-        // Its head toggles back out, so clicking the card header is the same affordance as the bar.
-        enteredProps.onToggleCard = function () { setEntered(null); };
+        // The header collapses/expands this card only. Leaving the session has exactly one
+        // affordance — the back bar above — so a click on the title never throws the reader out
+        // of the session they just entered.
+        enteredProps.onToggleCard = function () {
+          setEnteredOpen(function (previous) { return previous !== true; });
+        };
         enteredProps.entered = true;
         cards = [h(SessionCard, enteredProps)];
       } else if (separate) {

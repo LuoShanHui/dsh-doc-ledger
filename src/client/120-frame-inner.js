@@ -136,6 +136,11 @@
       var enteredState = react.useState(null);
       var entered = enteredState[0];
       var setEntered = enteredState[1];
+      // The entered card starts open and can be collapsed with its own header. Kept separate from
+      // `cardOpen` so leaving and re-entering a session always starts expanded.
+      var enteredOpenState = react.useState(true);
+      var enteredOpen = enteredOpenState[0];
+      var setEnteredOpen = enteredOpenState[1];
 
       var cardOpenState = react.useState({});
       var cardOpen = cardOpenState[0];
@@ -1004,6 +1009,7 @@
         // keeps the ordinary expansion below.
         if (styleThemeRef.current === "grid" && scopeRef.current !== "current") {
           setEntered(function (previous) { return previous === id ? null : id; });
+          setEnteredOpen(true);
           return;
         }
         // Clicking a card always mounts it, even when it is far below the fold.
@@ -1245,10 +1251,16 @@
       }
       if (enteredSession !== null) {
         var enteredProps = cardProps(enteredSession, 0);
-        enteredProps.open = true;
+        // Its own collapsed/expanded state, independent of the board's. Reading it through the
+        // same `cardOpen` map would collide with the board entry for this session.
+        enteredProps.open = enteredOpen;
         enteredProps.near = true;
-        // Its head toggles back out, so clicking the card header is the same affordance as the bar.
-        enteredProps.onToggleCard = function () { setEntered(null); };
+        // The header collapses/expands this card only. Leaving the session has exactly one
+        // affordance — the back bar above — so a click on the title never throws the reader out
+        // of the session they just entered.
+        enteredProps.onToggleCard = function () {
+          setEnteredOpen(function (previous) { return previous !== true; });
+        };
         enteredProps.entered = true;
         cards = [h(SessionCard, enteredProps)];
       } else if (separate) {

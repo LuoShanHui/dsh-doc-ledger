@@ -387,12 +387,19 @@
          * `alignSelf: start` (already on `card`) keeps a short card from stretching to its row.
          */
         cardOpen: null,
+        // A session tile's header is the click target, so it reads as one: accent-tinted fill,
+        // accent title, hairline under it. The old neutral grey looked like a plain bar and made
+        // the tiles feel like a list of labels rather than a board of buttons.
         cardHead: Object.assign({}, base.cardHead, {
-          height: "32px", padding: "0 10px", background: c.bgSoft,
-          borderBottom: "1px solid " + c.borderSoft, gap: "6px"
+          height: "32px", padding: "0 10px", background: c.accentSoft,
+          borderBottom: "1px solid " + c.accentBorder, gap: "6px"
         }),
-        cardTitle: Object.assign({}, base.cardTitle, { fontSize: "12px", fontWeight: 600 }),
-        cardMeta: Object.assign({}, base.cardMeta, { fontSize: "10px" }),
+        cardTitle: Object.assign({}, base.cardTitle, {
+          color: c.accent, fontWeight: 700
+        }),
+        cardMeta: Object.assign({}, base.cardMeta, {
+          color: "color-mix(in oklab, " + c.accent + " 72%, transparent)"
+        }),
         sectionHead: Object.assign({}, base.sectionHead, {
           height: "24px", padding: "6px 10px 2px", fontSize: "10px", fontWeight: 700,
           textTransform: "uppercase", letterSpacing: "0.06em", color: c.textFaint
