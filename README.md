@@ -173,19 +173,26 @@ Verify:
 
 The plugin sits on the loopback port the host provides (`127.0.0.1`), but loopback is not safety: any page the
 user browses can send requests to `http://127.0.0.1:<port>/doc-ledger/api/...`. So the host side honours
-exactly three rules:
+exactly four rules, in this order:
 
-1. **Same-origin check**: `Sec-Fetch-Site` of `cross-site`/`same-site`, an `Origin`/`Referer` pointing at
+1. **Host must be a loopback literal** (`127.0.0.1`, `localhost`, `[::1]`). This is the DNS-rebinding guard.
+   Comparing `Origin` with the request's own `Host` proves nothing — an attacker page that resolves its own
+   domain to `127.0.0.1` sends `Host: attacker.test` *and* `Origin: http://attacker.test`, which are equal
+   and both attacker-controlled. Measured before this guard existed: `/api/file` returned a ledger
+   document's full text and `/icon` started PowerShell, from a rebinding origin.
+2. **Same-origin check**: `Sec-Fetch-Site` of `cross-site`/`same-site`, an `Origin`/`Referer` pointing at
    another site, or `Origin: null` all return 403.
-2. **Ledger paths only**: `/api/file`, `/api/open` and `/api/openwith` accept only files present in the
-   current cached ledger — `C:\Windows\win.ini` and friends return 403; `/icon` accepts only existing
-   `.exe/.ico/.lnk`.
-3. **Launching must be POST**: `/api/open` refuses GET, so `<img src=...>`, links and prefetches cannot start
+3. **Ledger paths only, checked before any `stat`**: `/api/file`, `/api/open` and `/api/openwith` accept only
+   files present in the current cached ledger — `C:\Windows\win.ini` and friends return 403. The allowlist
+   runs first on purpose: stat-ing the requested path first made the route an existence oracle (403 "not in
+   the ledger" / 404 "gone" / 400 "is a directory"). `/icon` accepts only executables the "open with"
+   enumeration actually listed, because extracting an icon starts a PowerShell process.
+4. **Launching must be POST**: `/api/open` refuses GET, so `<img src=...>`, links and prefetches cannot start
    a program.
 
-The plugin's routes do **not** go through the GUI's login state (the host only protects `/`), so those three
-rules are its entire defence. All three are pinned by `tools/route-check.mjs` (14 assertions) in CI, so a
-refactor cannot silently drop one of them.
+The plugin's routes do **not** go through the GUI's login state (the host only protects `/`), so those four
+rules are its entire defence. All four are pinned by `tools/route-check.mjs` (23 assertions, including the
+rebinding matrix) in CI, so a refactor cannot silently drop one of them.
 
 ## Known limitations
 
@@ -196,7 +203,7 @@ refactor cannot silently drop one of them.
   focus them. Dragging the scrollbar to the far end shows a few frames of titles before the rows fill in; that
   is the price of "build on demand" against a full first frame for 43 expanded cards.
 - **`exists` is cached for 20 seconds**: a file deleted on disk shows as "Deleted" up to 20 seconds later.
-- **UI is bilingual (zh / en)**: the `locale` dictionary covers every string in the panel (179 keys) and
+- **UI is bilingual (zh / en)**: the `locale` dictionary covers every string in the panel (198 keys) and
   follows the host's UI language. A language we do not ship (Japanese, Korean, …) shows **English**, because
   every host `addLanguage` fallback chain ends at English. Data itself (session titles, file names, paths,
   program names) is shown as-is and not translated. See [`docs/i18n.md`](docs/i18n.md).
@@ -205,7 +212,11 @@ refactor cannot silently drop one of them.
   reads it. Covering that would require the runtime to report shell file writes.
 - **A whole-file write counts as creation**: if a program overwrites an existing file without reading it
   first (PTC's `fs.writeFileSync` allows this), it is recorded as created. Checked against file birth times
-  across all 43 sessions on this machine: 0 false positives.
+  across all 64 sessions on this machine: 0 false positives.
+- **Presented without a write is not a creation**: `created: "confirmed"` now needs a write in the same
+  session. 14 of the 38 confirmed rows this machine used to report had `writes: 0` — they were documents the
+  session read and handed over, not ones it created. They still show as presented (`presented: 1`), with no
+  created time.
 - **Mixed encoding is heuristic**: if exactly one line of a UTF-8 file is left with a single bad byte, it may
   be read as "looks fine" GBK; bytes that truly cannot be decoded are reported as such.
 - **Quick look shows only the first 200 KB**: use "Sidebar" or "Open with" for the full content.
@@ -234,13 +245,19 @@ Each session's log is folded into one record per file:
 
 - **Used**: `read`-class tool calls (including `mcp__*__read_file`). Every call keeps a timestamp, which is
   what makes "first / latest / count" and the per-call timeline possible.
-- **Created / modified**: `write` and `edit` calls. `created` is tri-state:
-  - `confirmed` — delivered explicitly through the `present` tool (event `deliverables/presented` carries the path);
+- **Created / modified**: `write` and `edit` calls, plus the IDE writers (`apply_patch`, `create_new_file`,
+  `rename_refactoring`, `move_file`, `refactor_safe_delete`). `created` is tri-state:
+  - `confirmed` — written **and** delivered through the `present` tool (event `deliverables/presented`
+    carries the path). A path that was only presented is not a creation: it keeps `presented: 1` and
+    `created: null`;
   - `inferred` — the first write had no preceding read. The default observation policy reads before
     overwriting, so "wrote without reading" is effectively a new file;
   - `null` — modified only, not a creation.
+- **Reads include images**: `read`, `read_file`, `read_image` and the MCP/IDE readers; `stat`, `exists` and
+  `readdir` targets are containers, not documents, and are not recorded.
 - **Failed calls roll back**: a `tool/result` with `isError` is removed from the ledger, so errors never count
-  as "used".
+  as "used". A failed `run_code` call rolls back every row its program produced (it is recorded under the
+  call id the scanner saw), not just one path.
 - **Working directory**: starts from the session header's `cwd` and follows successful
   `working_directory` calls; relative paths are normalized against the cwd in effect at the time.
 
@@ -269,11 +286,13 @@ trimmed by `slimFile()`, because `uses` alone was 30% of the payload and the cli
   **C** is a drawn badge with the extension on a per-type tint — always available, and it sits
   under the tier-B image so it doubles as the loading placeholder and the 404 fallback. Icons are
   cached per extension in `~/.dsh/doc-ledger-fileicons/`, so one extraction covers every `.md`.
-- **Visual themes**: a "Theme" dropdown in the toolbar switches between four looks — **Compact** (the default),
-  **Airy** (whitespace and weight instead of hairlines), **Table** (zebra rows and tabular numbers) and
-  **Card** (floating cards with soft shadows). Pick any theme directly — the active one is ticked. The
-  choice is remembered across reloads, and every theme reads the host's color tokens so it follows
-  light/dark mode.
+- **Visual themes**: a "Theme" dropdown in the toolbar switches between three looks that differ in
+  *structure*, not tint — **Card** (the default: a tinted backdrop under white cards, each with a 3px
+  accent rail), **Compact** (VS Code density: 22px rows, hairline separators) and **Grid** (cards tiled into
+  as many columns as the panel can honour, with the session a row came from as a leading badge). Pick any
+  theme directly — the active one is ticked — and the choice is remembered across reloads. Light and dark
+  follow the host's own scheme marker rather than the OS, and every colour comes from the host's token
+  table, so a custom DSH theme carries over.
 - **Type filter**: a row of type chips under the summary (docs / sheets / slides / images / code / web /
   config / data / archives / other) showing the actual counts in the current data. Click to filter to one
   type, click again to clear; types with a count of 0 are not shown, and the selection is remembered.
@@ -661,18 +680,20 @@ rather than being scattered through the reference above.
 
 ## Verified / not verified
 
-Verified on this machine (Windows, DSH `>=0.2.0-rc.1 <0.3.0-0`, 43 sessions of which 32 are on disk):
+Verified on this machine (Windows, DSH `>=0.2.0-rc.1 <0.3.0-0`, 64 sessions on disk, 1 953 ledger rows):
 
-- the ledger engine: 7 PTC scenarios (`write`/`edit` tools, in-program `fs.writeFileSync`, absolute-path
-  literals, failed-call rollback, `working_directory` switching);
+- the ledger engine: 14 PTC scenarios (`write`/`edit` tools, in-program `fs.writeFileSync`, absolute-path
+  literals, one-use-per-fs-call, concatenated directory prefixes, stat/readdir containers, failed-program
+  rollback, `read_image` and IDE writers, confirmed-vs-presented, `working_directory` switching);
 - the decoder: 10 encoding scenarios (BOM, UTF-8, per-line GB18030, truncated tail);
-- host routes and the security matrix: 14 assertions (same-origin 403, ledger allowlist, POST-only,
-  400/404/405, unknown route 404);
-- cache decisions: 8 assertions (exact stamp, TTL fallback, live replay floor);
-- client pure functions: 43 assertions (AND search, sorting, cross-session merge, formatting, highlight range
-  merging, plurals, host locale snapshot, `dsh-resource://` addresses);
-- i18n: 179 keys with matching zh/en sets, references and placeholders;
-- the UI, in a browser via `npm run harness` in both languages.
+- host routes and the security matrix: 23 assertions (loopback `Host`, the rebinding matrix, same-origin 403,
+  ledger allowlist checked before any `stat`, POST-only, 400/404/405, unknown route 404);
+- cache decisions: 12 assertions (exact stamp, TTL fallback, live replay floor, engine fingerprint);
+- client pure functions: 61 assertions (AND search, sorting, cross-session merge, missing-timestamp handling,
+  formatting across years, highlight range merging, plurals, host locale snapshot, `dsh-resource://` addresses);
+- i18n: 198 keys with matching zh/en sets, references and placeholders;
+- the UI, in a browser via `npm run harness` in both languages;
+- the static report generator (it has its own suite now, on the real code path).
 
 Not verified:
 
@@ -680,18 +701,28 @@ Not verified:
   stands in; it uses the real `client.js` against a fake cordis context);
 - Linux and macOS (the launch and icon code is Windows-only by construction);
 - very large ledgers (thousands of files in one session).
+- **Replay cost, measured and accepted**: a 16.7 MB session costs 446–1 800 ms per replay, of which the
+  plugin's own fold is 17 ms — the rest is the host's `readSession` decoding the log. Moving the fold to a
+  `worker_threads` worker was implemented and then reverted: the event array is 54 MB of data (21 391
+  events), its structured clone cost 451 ms per replay, so the worker made every replay ~25× slower.
+  The lever that actually works is not replaying: exact `size:mtime` stamps for closed sessions and the
+  live replay floor for working ones (see [Requests and caching](#requests-and-caching-performance)).
 
 ## How a PTC preset session is recorded
 
 PTC (programmatic tool calling) sessions do not call `write`/`edit` as separate tool calls; they run a program
 that calls `fs.writeFileSync` inside it. The engine therefore reads three channels:
 
-1. tool calls with a `file_path` argument (`write`, `edit`, `mcp__*__read_file`, …);
+1. tool calls with a `file_path` argument (`write`, `edit`, `read_image`, `mcp__*__read_file`, the IDE
+   writers, …);
 2. `tools.xxx({ file_path })` calls inside a PTC program, found in the program text;
-3. absolute-path literals in the program text.
+3. absolute-path literals in the program text — but only when the path is actually *opened*: a literal
+   handed to `stat`/`exists`/`readdir` is a container, and `"dir/" + name` is a directory prefix, so neither
+   becomes a document.
 
 All three run through the same first-touch creation rule, so a PTC session and a plain tool-calling session
-produce the same ledger shape.
+produce the same ledger shape. One fs call produces exactly one use (the scanner used to record it twice),
+and a program that throws has its rows rolled back by call id.
 
 ## How the current session is located
 
@@ -714,19 +745,21 @@ tools/build-client.mjs      deterministic concatenation of src/client/*.js into 
 tools/i18n-check.mjs        i18n integrity: key sets, references, placeholders, plural coverage
 tools/i18n-extract.mjs      extracts remaining hard-coded Chinese strings into docs/i18n-strings.md
 tools/report.mjs     static report generator (reuses the same engine)
-tools/ledger-scan-check.mjs    engine regression: 7 PTC write scenarios
+tools/ledger-scan-check.mjs    engine regression: 14 PTC scenarios
 tools/preview-decode-check.mjs decoder regression: 10 encoding scenarios
 tools/harness/                 UI verification: real client.js + fake ctx + synthetic ledger (npm run harness)
-tools/route-check.mjs          host route and security regression: 14 assertions
-tools/cache-check.mjs          cache decisions + page-slice guard: 11 assertions
-tools/client-core-check.mjs    client pure functions: 56 assertions (search, sort, merge, format, plurals, locale, sections, glyph URLs)
-tools/theme-check.mjs          theme factory: 7 assertions (four themes, key parity, pairwise distinct)
+tools/route-check.mjs          host route and security regression: 23 assertions (incl. DNS rebinding)
+tools/cache-check.mjs          cache decisions + engine fingerprint + page-slice guard: 12 assertions
+tools/client-core-check.mjs    client pure functions: 61 assertions (search, sort, merge, timestamps, format, plurals, locale, sections, glyph URLs)
+tools/theme-check.mjs          theme factory: 9 assertions (three themes, key parity, pairwise distinct)
 tools/row-time-check.mjs       one timestamp per row and the size suffix: 6 assertions
-tools/readme-check.mjs         bilingual README parity: sections, links, anchors, image files, language prefixes
+tools/readme-check.mjs         bilingual README parity: sections, links, anchors, image files, language prefixes, npm `files`
 tools/release-notes-check.mjs  release-note parity: English twin, structure, tag-pinned images
+tools/registry-check.mjs       marketplace entry: icon path exists, bitmap icon for awesome-lint
+tools/report-check.mjs         static report generation + the zstd/engines contract
 ```
 
-`npm test` runs ten check scripts in order (engine 7 + decoder 10 + routes/security 14 + cache 11 + client 56 + theme 9 + row time 6 + i18n's 198-key + plural integrity check + README parity 10 + release notes 9 = **132 checks**, no external dependencies), and CI runs them on three Node versions. CI also runs `npm run check:client` to
+`npm test` runs twelve check scripts in order (engine 14 + decoder 10 + routes/security 23 + cache 12 + client 61 + theme 9 + row time 6 + i18n 1 + README parity 11 + release notes 13 + registry 3 + report 2 = **165 checks**, no external dependencies), and CI runs them on three Node versions. The i18n suite is one case covering 198 keys. CI also runs `npm run check:client` to
 prove that the committed `client.js` matches `src/client/*.js` byte for byte.
 
 For UI changes, look at the panel in a browser with `npm run harness`: it serves the real `client.js` against

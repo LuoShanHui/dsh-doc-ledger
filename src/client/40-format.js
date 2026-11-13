@@ -43,14 +43,19 @@
       return value < 10 ? "0" + value : String(value);
     }
 
-    var THIS_YEAR = new Date().getFullYear();
-
-    /** Recent stamps stay short; anything from another year keeps its year. */
+    /**
+     * Recent stamps stay short; anything from another year keeps its year.
+     *
+     * The current year is read per call, not captured at module evaluation. A panel left open
+     * across New Year (or a long-lived window) kept the old year: every January stamp lost its
+     * year and every December one gained a year it did not need.
+     */
     function fmtTime(ms) {
-      if (!ms) return "--";
+      if (!ms || !isFinite(ms)) return "--";
       var date = new Date(ms);
+      if (isNaN(date.getTime())) return "--";
       var stamp = pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + " " + pad(date.getHours()) + ":" + pad(date.getMinutes());
-      return date.getFullYear() === THIS_YEAR ? stamp : date.getFullYear() + "-" + stamp;
+      return date.getFullYear() === new Date().getFullYear() ? stamp : date.getFullYear() + "-" + stamp;
     }
 
     /** "76.8 KB" / "1.2 MB" for the preview header; bare bytes below 1 KB. */

@@ -768,14 +768,19 @@ window.__ModuleLoader__.load({
       return value < 10 ? "0" + value : String(value);
     }
 
-    var THIS_YEAR = new Date().getFullYear();
-
-    /** Recent stamps stay short; anything from another year keeps its year. */
+    /**
+     * Recent stamps stay short; anything from another year keeps its year.
+     *
+     * The current year is read per call, not captured at module evaluation. A panel left open
+     * across New Year (or a long-lived window) kept the old year: every January stamp lost its
+     * year and every December one gained a year it did not need.
+     */
     function fmtTime(ms) {
-      if (!ms) return "--";
+      if (!ms || !isFinite(ms)) return "--";
       var date = new Date(ms);
+      if (isNaN(date.getTime())) return "--";
       var stamp = pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + " " + pad(date.getHours()) + ":" + pad(date.getMinutes());
-      return date.getFullYear() === THIS_YEAR ? stamp : date.getFullYear() + "-" + stamp;
+      return date.getFullYear() === new Date().getFullYear() ? stamp : date.getFullYear() + "-" + stamp;
     }
 
     /** "76.8 KB" / "1.2 MB" for the preview header; bare bytes below 1 KB. */
@@ -1669,6 +1674,29 @@ window.__ModuleLoader__.load({
       return true;
     }
 
+    /**
+     * Timestamp helpers for merging: null/undefined stay null instead of becoming Infinity.
+     *
+     * `Math.min(a || Infinity, b || Infinity)` looks defensive but produces Infinity when both
+     * sides are missing, and Infinity is truthy — so it silently turned "never read" into
+     * "was read". These two keep a missing stamp missing.
+     */
+    function minStamp(left, right) {
+      var a = typeof left === "number" && isFinite(left) ? left : null;
+      var b = typeof right === "number" && isFinite(right) ? right : null;
+      if (a === null) return b;
+      if (b === null) return a;
+      return a < b ? a : b;
+    }
+
+    function maxStamp(left, right) {
+      var a = typeof left === "number" && isFinite(left) ? left : null;
+      var b = typeof right === "number" && isFinite(right) ? right : null;
+      if (a === null) return b;
+      if (b === null) return a;
+      return a > b ? a : b;
+    }
+
     function mergeSessions(sessions) {
       var byPath = new Map();
       sessions.forEach(function (session) {
@@ -1680,10 +1708,14 @@ window.__ModuleLoader__.load({
           }
           existing.reads = (existing.reads || 0) + (file.reads || 0);
           existing.writes = (existing.writes || 0) + (file.writes || 0);
-          existing.firstUsedAt = Math.min(existing.firstUsedAt || Infinity, file.firstUsedAt || Infinity);
-          existing.lastUsedAt = Math.max(existing.lastUsedAt || 0, file.lastUsedAt || 0);
-          existing.createdAt = existing.createdAt || file.createdAt;
-          existing.updatedAt = Math.max(existing.updatedAt || 0, file.updatedAt || 0) || null;
+          // A missing timestamp must stay missing. `|| Infinity` used to win the Math.min and
+          // leave Infinity on the row: `fmtTime` then printed "NaN-NaN-NaN NaN:NaN", the sort
+          // key became Infinity, and — because Infinity is truthy — a write-only file landed
+          // in the "Used" section with reads 0 (25 such rows on this machine's data).
+          existing.firstUsedAt = minStamp(existing.firstUsedAt, file.firstUsedAt);
+          existing.lastUsedAt = maxStamp(existing.lastUsedAt, file.lastUsedAt);
+          existing.createdAt = minStamp(existing.createdAt, file.createdAt);
+          existing.updatedAt = maxStamp(existing.updatedAt, file.updatedAt);
         });
       });
       return Array.from(byPath.values());
@@ -2172,7 +2204,9 @@ window.__ModuleLoader__.load({
         if (props.typeSet !== null && props.typeSet !== undefined && props.typeSet[String(file.category || "other")] !== true) return false;
         return matches(file, props.query);
       };
-      var usedAll = files.filter(function (file) { return (file.reads || 0) > 0 || file.firstUsedAt; });
+      // "Used" means a read happened. `|| file.firstUsedAt` looked equivalent and was not:
+      // a merged row whose stamp had gone bad (Infinity) put a write-only file into this list.
+      var usedAll = files.filter(function (file) { return (file.reads || 0) > 0; });
       // Merged view: everything written, created or not. Split view: the engine's
       // own distinction — files this session created vs files it only modified.
       var createdAll = files.filter(function (file) { return Boolean(file.createdAt) || (file.writes || 0) > 0; });

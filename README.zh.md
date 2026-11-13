@@ -145,15 +145,23 @@
 ## 安全模型
 
 插件挂在宿主提供的回环端口上（`127.0.0.1`），但回环不等于安全：用户浏览的任何网页都能向
-`http://127.0.0.1:<port>/doc-ledger/api/...` 发请求。所以宿主侧只认下面三条：
+`http://127.0.0.1:<port>/doc-ledger/api/...` 发请求。所以宿主侧按顺序只认下面四条：
 
-1. **同源校验**：`Sec-Fetch-Site` 是 `cross-site`/`same-site`、`Origin`/`Referer` 指向别的站点、
+1. **Host 必须是回环字面量**（`127.0.0.1` / `localhost` / `[::1]`）。这是 DNS rebinding 的防线。
+   把 `Origin` 和请求自带的 `Host` 相比毫无意义——攻击页面把自己的域名解析到 `127.0.0.1` 后，
+   发出的 `Host: attacker.test` 与 `Origin: http://attacker.test` 是相等的，两项都由攻击者决定。
+   加上这一条之前实测过：rebinding 页面拿 `/api/file` 读到了台账里文档的完整正文，
+   拿 `/icon` 拉起了 PowerShell。
+2. **同源校验**：`Sec-Fetch-Site` 是 `cross-site`/`same-site`、`Origin`/`Referer` 指向别的站点、
    或 `Origin: null` 的请求一律 403。
-2. **只认台账里的路径**：`/api/file`、`/api/open`、`/api/openwith` 只接受当前缓存台账中出现过的文件，
-   `C:\Windows\win.ini` 这类路径返回 403；`/icon` 只接受已存在的 `.exe/.ico/.lnk`。
-3. **启动程序必须是 POST**：`/api/open` 拒绝 GET，`<img src=...>`、链接、预取都不能把程序拉起来。
+3. **只认台账里的路径，且在任何 `stat` 之前**：`/api/file`、`/api/open`、`/api/openwith` 只接受当前缓存
+   台账中出现过的文件，`C:\Windows\win.ini` 这类路径返回 403。白名单必须排在 `stat` 前面：
+   先 stat 会让这条路由变成「路径是否存在」的探针（403 不在台账 / 404 不存在 / 400 是目录）。
+   `/icon` 只接受「打开方式」真正枚举出来的程序——提取图标会启动 PowerShell 进程。
+4. **启动程序必须是 POST**：`/api/open` 拒绝 GET，`<img src=...>`、链接、预取都不能把程序拉起来。
 
-插件路由**不经过** GUI 的登录态（宿主只保护 `/`），上面三条就是它自己的全部防线。
+插件路由**不经过** GUI 的登录态（宿主只保护 `/`），上面四条就是它自己的全部防线。
+`tools/route-check.mjs` 用 23 项断言（含 rebinding 矩阵）在 CI 里守着它们。
 
 ## 已知限制
 
@@ -162,13 +170,16 @@
 - **卡片懒挂载**：离视口很远的卡片只有标题，行要等滚动/聚焦上来才构建。
   拖滚动条瞬移时，会先看到几帧标题、随后补齐；这是用「按需构建」换 43 张卡全展开的首帧。
 - **`exists` 有 20 秒缓存**：刚在磁盘上删掉的文件，最多 20 秒后才会显示成「已删除」。
-- **界面双语（zh / en）**：`locale` 字典覆盖面板全部文案（159 个 key），跟随宿主的界面语言；数据本身
+- **界面双语（zh / en）**：`locale` 字典覆盖面板全部文案（198 个 key），跟随宿主的界面语言；数据本身
   （会话标题、文件名、路径、程序名）按原样显示、不翻译。实现与校验见 [`docs/i18n.md`](docs/i18n.md)。
 - **shell 产生的文件不算创建**：PTC 程序里用 `git diff > x.diff`、PowerShell 重定向、解压等命令写出的文件，
   没有路径参数可抓，只会因为后续被读而出现在「使用过」。要覆盖得让运行时把 Shell 的文件写入也报上来。
 - **整文件写入即视为创建**：如果某个程序不读就直接覆盖一个已存在的文件（PTC 的 `fs.writeFileSync` 允许），
-  这个文件会被记成该会话「创建」。本机用「文件出生时间早于会话开始」反查过全部 43 个会话，
+  这个文件会被记成该会话「创建」。本机用「文件出生时间早于会话开始」反查过全部 64 个会话，
   0 例误报（能被 `stat` 到的文件都对得上）。
+- **只展示、没写过，不算创建**：`created: "confirmed"` 现在要求同一会话里有写入。本机原先报出的 38 个
+  confirmed 行里有 14 行的 `writes` 是 0——那只是会话读过并交给用户的文档，不是它创建的。
+  这些行仍然保留 `presented: 1`，但没有创建时间。
 - **混编文件按行猜编码**：GB18030 与 UTF-8 在字节层面并不总是能区分，逐行取「替换字符更少」的那种是启发式——
   一个 UTF-8 文件里若恰好有一行只剩单个坏字节，那一行可能被读成看起来正常、实际不对的汉字；
   真正解不出的字节会如实标在提示行里，需要绝对准确时用「打开」交给编辑器。
@@ -194,11 +205,16 @@
 ```
 
 - **使用过**：`read` 类工具调用（含 `mcp__*__read_file`），每次调用都留时间戳，所以能给出「首次 / 最近 / 次数」和逐次时间轴。
-- **创建 / 修改**：`write`、`edit` 调用。`created` 是三态：
-  - `confirmed` — 走了 `present` 工具显式交付（事件 `deliverables/presented` 带路径）；
+- **创建 / 修改**：`write`、`edit` 调用，以及 IDE 的写工具（`apply_patch`、`create_new_file`、
+  `rename_refactoring`、`move_file`、`refactor_safe_delete`）。`created` 是三态：
+  - `confirmed` — **写过**并且走了 `present` 工具显式交付（事件 `deliverables/presented` 带路径）。
+    只展示、没写过的路径不算创建：它保留 `presented: 1`、`created: null`；
   - `inferred` — 首次写入前没有任何读取。默认观察策略要求覆盖前先读，所以「未读先写」在实践中约等于新建；
   - `null` — 只修改，不算创建。
+- **读取包含图片**：`read`、`read_file`、`read_image`、`modlens_read_image` 以及 MCP/IDE 的读工具；
+  而 `stat`、`exists`、`readdir` 的目标是容器不是文档，不记账。
 - **失败调用**回滚：`tool/result` 带 `isError` 的调用会从台账里剔除，不会把报错算成「使用过」。
+  失败的 `run_code` 会按调用 id 把它那段程序产生的所有行一并回滚，而不是只回滚一个路径。
 - **工作目录**：初始取会话 header 的 `cwd`，随成功的 `working_directory` 调用切换，相对路径按当时的 cwd 归一化。
 
 插件形态的 React 面板是**唯一在维护的 UI**；静态报告只在导出时用 `lib/ui.js` 拼一份自包含 HTML。
@@ -237,9 +253,10 @@
   `app.getFileIcon`，这是等效替代。只在 A 缺位时才渲染，也是宿主哪天不再 seed 该包时的第二档。
   **C** 是自绘徽标（扩展名前几位 + 类型色），永远可用，且垫在 B 的图片下面，同时兼任加载占位与
   404 兜底。图标按扩展名缓存在 `~/.dsh/doc-ledger-fileicons/`，一个 `.md` 提取一次就覆盖整本台账。
-- **视觉主题**：工具栏的「主题」下拉列表直接选择四套外观——**紧凑**（默认）/ **留白**（用留白和字重替代分隔线）/
-  **表格**（斑马纹 + 等宽数字）/ **卡片**（浮起卡片 + 柔和阴影）；当前生效的那套打勾。选择跨刷新记住，
-  每套都读宿主的颜色 token，深浅色自动跟随。
+- **视觉主题**：工具栏的「主题」下拉列表直接选择外观，差别在**结构**而非配色——
+  **卡片**（默认：浅灰底上的白卡片，每张左侧 3px 强调色竖条）/ **紧凑**（VS Code 密度：22px 行高 + 发丝分隔线）/
+  **网格**（卡片平铺成多列，每行开头带一个会话徽章）；当前生效的那套打勾，选择跨刷新记住。
+  明暗跟随 DSH 自己的标记（不是操作系统的），颜色从宿主 token 表读取，所以自定义 DSH 主题也能延续过来。
 - **类型过滤**：摘要行下方的类型 chip（文档 / 表格 / 演示 / 图片 / 代码 / 网页 / 配置 / 数据 / 压缩包 / 其他），
   按当前数据的实际分布显示数量，点一下只看该类型，再点取消；计数为 0 的类型不出现，选择会记住。
   chip 用「文字 + 小号计数」两级排版（计数 `tabular-nums`，选中时跟着变蓝），有底色和 120 ms 过渡，
@@ -639,8 +656,11 @@ PTC 会话的日志里没有逐个 `read`/`write` 的 `tool/call`，只有一段
 1. **`tool/ptc-dispatch` 事件**（首选，精确）：运行时把程序里每次 `tools.xxx` 调用的真实参数都记下来了，带 `isError`。命中就读参数里的 `file_path`，失败的回滚掉。
 2. **程序文本里的工具调用**：扫 `tools.read({file_path: "..."})` 这类字面量调用。
 3. **程序文本里的绝对路径字面量**（兜底，近似）：扫 `"C:\\a\\b\\X.java"` 这类字符串，按上下文（`writeFileSync` 之类）判读/写，并把 `.dsh` 这种点目录排除掉。
+   只对**真的被打开**的路径记账：交给 `stat`/`exists`/`readdir` 的是容器（目录、`app.asar` 这类包），
+   `"dir/" + name` 是目录前缀，两者都不再变成「文档」——之前它们会以打不开的文件夹形式进台账。
 
 三条都有 `via` 标记（`dispatch` / `code` / `literal`）。同一个文件如果后续被 `dispatch` 精确记录，早先的启发式记录会被替换掉，不重复计数。
+另外两条计数规则：同一次 fs 调用只记一次（扫描器曾经把它记两遍），程序抛错时按调用 id 把它产生的行全部回滚。
 
 文本扫描这一层有两处曾经读错、现已修好（`tools/ledger-scan-check.mjs` 是它们的回归用例）：
 
@@ -686,19 +706,21 @@ tools/build-client.mjs      确定性拼接 src/client/*.js -> client.js（--che
 tools/i18n-check.mjs        i18n 完整性回归：键集合 / 引用 / 占位符 / 复数覆盖
 tools/i18n-extract.mjs      抽取残留的硬编码中文串，生成 docs/i18n-strings.md
 tools/report.mjs     静态报告生成器（复用同一引擎）
-tools/ledger-scan-check.mjs    引擎回归：7 个 PTC 写文件场景
+tools/ledger-scan-check.mjs    引擎回归：14 个 PTC 场景
 tools/preview-decode-check.mjs 解码回归：10 个编码场景
 tools/harness/                  UI 验证工具：真 client.js + 假 ctx + 合成台账（npm run harness）
-tools/route-check.mjs          宿主路由与安全回归：14 项（同源 403、台账白名单、POST-only、400/404/405）
-tools/cache-check.mjs          缓存决策 + 分页保护：11 项（精确 stamp、TTL 回退、live 重放下限）
-tools/client-core-check.mjs    客户端纯函数回归：55 项（分词 AND、排序、合并、格式化、高亮、复数、语言快照、分区决策、图标地址、资源地址）
-tools/theme-check.mjs          主题工厂回归：7 项（四套主题、key 集合一致、两两可区分、宿主 token）
+tools/route-check.mjs          宿主路由与安全回归：23 项（回环 Host、rebinding 矩阵、同源 403、台账白名单先于 stat、POST-only、400/404/405）
+tools/cache-check.mjs          缓存决策 + 引擎指纹 + 分页保护：12 项（精确 stamp、TTL 回退、live 重放下限）
+tools/client-core-check.mjs    客户端纯函数回归：61 项（分词 AND、排序、合并、缺失时间戳、格式化、高亮、复数、语言快照、分区决策、图标地址、资源地址）
+tools/theme-check.mjs          主题工厂回归：9 项（三套主题、key 集合一致、两两可区分、宿主 token）
 tools/row-time-check.mjs       行时间回归：6 项（每行一个时间戳，按分区选择；文件大小后缀）
-tools/readme-check.mjs         双语 README 一致性：小节、互链、锚点、图片存在性、语言前缀
+tools/readme-check.mjs         双语 README 一致性：小节、互链、锚点、图片存在性、语言前缀、npm files 覆盖
 tools/release-notes-check.mjs  Release notes 一致性：英文孪生、结构、配图钉 tag
+tools/registry-check.mjs       市场条目：图标路径真实存在、awesome 列表要位图
+tools/report-check.mjs         静态报告生成 + zstd 与 engines 的契约
 ```
 
-`npm test` 依次跑十支检查（引擎 7 + 解码 10 + 路由/安全 14 + 缓存 11 + 客户端 56 + 主题 9 + 行时间 6 + i18n 198 个 key + 复数完整性 + 双语 README 一致性 10 + Release notes 一致性 9 = **132 项**，无外部依赖），CI 里三套 Node 各跑一遍。
+`npm test` 依次跑十二支检查（引擎 14 + 解码 10 + 路由/安全 23 + 缓存 12 + 客户端 61 + 主题 9 + 行时间 6 + i18n 1 + 双语 README 一致性 11 + Release notes 一致性 13 + 市场条目 3 + 报告 2 = **165 项**，无外部依赖），CI 里三套 Node 各跑一遍。i18n 这一支是一整个用例，覆盖 198 个 key。
 CI 还会执行 `npm run check:client`，确保提交的 `client.js` 与 `src/client/*.js` 逐字节一致。
 
 面板本身的 UI 变更用 `npm run harness` 在浏览器里看：它会用真实的 `client.js` + 假 cordis 上下文 + 合成台账起一个本地页，

@@ -20,7 +20,6 @@ import { dirname, extname, isAbsolute, join } from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { buildLedger } from "./lib/ledger.js";
 import { countLines, decodePreview } from "./lib/preview-text.js";
@@ -60,12 +59,47 @@ const TITLE_FILE = join(homedir(), ".dsh", "doc-ledger-titles.json");
  * it serves is current (unlike a snapshot of the previous response).
  */
 const LEDGER_FILE = join(homedir(), ".dsh", "doc-ledger-ledgers.json.gz");
-const LEDGER_VERSION = 2;
+/** Bumped when the persisted *shape* changes, so an old file is ignored instead of half-read. */
+const LEDGER_VERSION = 3;
 /**
- * Bumped whenever the ledger *meaning* changes (scanner rules, how created is decided):
- * cached ledgers carry it, so an upgraded plugin re-derives instead of trusting old rows.
+ * Bumped whenever the ledger *meaning* changes (scanner rules, how `created` is decided, the
+ * category table): cached ledgers carry it, so an upgraded plugin re-derives instead of
+ * trusting rows produced by older rules.
+ *
+ * This is a **manual** bump and it has been forgotten once, with visible damage: the 12-family
+ * classifier landed without touching it, so every already-cached ledger kept its pre-0.5
+ * labels — `.sql` still under `data`, `.gitignore` still under `other`, 113 of 1 760 live rows
+ * (6.4%) showing the wrong filter chip. `ENGINE_FINGERPRINT` below makes forgetting harmless.
  */
-const LEDGER_ENGINE = 2;
+const LEDGER_ENGINE = 3;
+
+/**
+ * Content hash of the rules that decide what a row means: the category tables in
+ * `lib/ledger.js` plus the engine number.
+ *
+ * A ledger cached by older code is only reused when its fingerprint matches, so editing the
+ * classifier invalidates every cached row even when nobody remembers to bump `LEDGER_ENGINE`.
+ * Keeping it as a literal (rather than importing the tables) avoids a second source of truth
+ * drifting from the first; `tools/cache-check.mjs` asserts this list still matches lib/ledger.js.
+ */
+const ENGINE_RULES = [
+  "doc:md,markdown,mdx,txt,rst,pdf,doc,docx,odt,rtf,epub,tex,adoc,org",
+  "sheet:xlsx,xls,csv,tsv,ods,numbers,xlsm,xlsb",
+  "slide:pptx,ppt,odp,key,pps,ppsx",
+  "image:png,jpg,jpeg,gif,webp,svg,bmp,ico,tif,tiff,avif,heic,psd,ai,fig,sketch",
+  "code:java,kt,kts,scala,groovy,ts,tsx,js,jsx,mjs,cjs,py,pyi,rb,go,rs,c,h,cc,cpp,cxx,hpp,cs,php,swift,m,mm,lua,dart,sh,bash,zsh,fish,ps1,bat,cmd,pl,r,jl,ex,exs,erl,hs,clj,vue,svelte,astro,sol,zig,sql,graphql,gql,proto,asm,s,vbs,ahk,tcl,awk",
+  "web:html,htm,css,scss,sass,less,styl,xhtml",
+  "config:json,jsonc,json5,yml,yaml,toml,ini,cfg,conf,xml,properties,env,plist,gradle,mk,cmake,lock,editorconfig,gitignore,gitattributes,npmrc,nvmrc,dockerignore,babelrc,eslintrc",
+  "data:db,sqlite,sqlite3,parquet,arrow,avro,orc,log,ndjson,jsonl,diff,patch,dump,bak",
+  "media:mp4,mov,avi,mkv,webm,mp3,wav,flac,aac,m4a,ogg,gifv,m4v",
+  "archive:zip,tar,gz,tgz,7z,rar,bz2,xz,zst,zstd,jar,war,ear,iso",
+  "binary:exe,dll,so,dylib,bin,o,obj,lib,a,pdb,msi,app,deb,rpm,class,pyc,wasm",
+  "filename:dockerfile=config,makefile=config,cmakelists.txt=config,procfile=config,vagrantfile=config,gemfile=config,rakefile=config,jenkinsfile=config,brewfile=config,license=doc,licence=doc,notice=doc,copying=doc,authors=doc,contributors=doc,changelog=doc,readme=doc"
+];
+export const ENGINE_FINGERPRINT = createHash("sha1")
+  .update(String(LEDGER_ENGINE) + "\n" + ENGINE_RULES.join("\n"))
+  .digest("hex")
+  .slice(0, 12);
 const LEDGER_KEEP_MAX = 250;
 const LEDGER_SAVE_DELAY_MS = 1500;
 /** Registry associations change when the user installs software, not every minute. */
@@ -182,17 +216,47 @@ export function cleanObsoleteFiles(dir) {
 
 export function apply(ctx, config = {}) {
   const maxSessions = Number(config.maxSessions ?? 40);
-  const base = typeof config.basePath === "string" ? config.basePath.replace(/\/$/, "") : "/doc-ledger";
+  // The client bundle hard-codes the same path (`var BASE = "/doc-ledger"` in 00-head.js), so a
+  // configurable base path could only ever half-work: the host would serve one prefix while the
+  // panel called another. Rather than advertise a setting that breaks the panel, the value is
+  // accepted only when it is the one the client was built with; anything else is ignored loudly.
+  const DEFAULT_BASE = "/doc-ledger";
+  let base = DEFAULT_BASE;
+  if (typeof config.basePath === "string" && config.basePath !== "" && config.basePath !== DEFAULT_BASE) {
+    const wanted = String(config.basePath).replace(/\/$/, "");
+    if (typeof ctx.logger?.warn === "function") {
+      ctx.logger.warn("[doc-ledger] basePath=" + wanted + " is ignored: the client bundle is built for " + DEFAULT_BASE);
+    }
+  }
   /** sessionId -> { ledger, live, at } */
   const cache = new Map();
 
-  // The panel is served from the same loopback origin as this route, so every request it
-  // makes carries Sec-Fetch-Site: same-origin. A cross-site one is either a page the user
-  // happened to visit (drive-by: an <img> to /api/open would launch a program) or a
-  // rebinding attempt that would make /api/all and /api/file readable. Reject those.
+  /** Host names this plugin answers to: the loopback literals the panel is served from. */
+  function isLoopbackHost(host) {
+    const name = String(host ?? "").trim().toLowerCase();
+    if (name === "") return false;
+    // Strip the port. A bracketed IPv6 literal keeps its brackets; "127.0.0.1:60580" -> "127.0.0.1".
+    const bare = name.startsWith("[") ? name.slice(0, name.indexOf("]") + 1) : name.split(":")[0];
+    return bare === "127.0.0.1" || bare === "localhost" || bare === "[::1]" || bare === "::1";
+  }
+
+  /**
+   * Reject anything that did not come from the panel on this loopback port.
+   *
+   * The guards, in the order they must run:
+   *  1. **Host must be a loopback literal.** This is the DNS-rebinding guard and it has to be
+   *     first: comparing `Origin` against the request's own `Host` proves nothing, because an
+   *     attacker page that resolves its domain to 127.0.0.1 sends `Host: attacker.test` *and*
+   *     `Origin: http://attacker.test` — equal, and both attacker-controlled. Measured before
+   *     this guard existed: `/api/file` returned the full body of a ledger document and
+   *     `/icon` launched PowerShell, all from a rebinding origin.
+   *  2. **Sec-Fetch-Site** must not be cross-site / same-site (a page the user visited).
+   *  3. **Origin / Referer**, when present, must name that same loopback host.
+   */
   function originProblem(req) {
     const headers = req?.headers ?? {};
     const host = String(headers.host ?? "");
+    if (!isLoopbackHost(host)) return "Host: " + (host === "" ? "(missing)" : host);
     const site = String(headers["sec-fetch-site"] ?? "").toLowerCase();
     if (site === "cross-site" || site === "same-site") return "Sec-Fetch-Site: " + site;
     const origin = headers.origin;
@@ -374,6 +438,10 @@ export function apply(ctx, config = {}) {
       return hit.ledger;
     }
     if (ledgerReusable(hit, { live, stamp, floor })) return hit.ledger;
+    // Folded inline on purpose: measured on this machine, handing the event array to a worker
+    // costs 451 ms of structured clone for a 21 391-event session, while the fold itself is
+    // 17 ms — the worker made every replay ~25x slower. The real cost of a replay is the
+    // host's own `readSession` decode (measured 446-1 800 ms), which a plugin cannot move.
     const ledger = buildLedger(readEvents(await query.readSession(sessionId)), { header: record.header });
     const fingerprint = ledgerFingerprint(ledger);
     const unchanged = hit !== undefined && hit.fingerprint === fingerprint.key;
@@ -521,9 +589,12 @@ export function apply(ctx, config = {}) {
       if (!existsSync(LEDGER_FILE)) return;
       const parsed = JSON.parse(gunzipSync(readFileSync(LEDGER_FILE)).toString("utf8"));
       if (parsed?.version !== LEDGER_VERSION) return;
+      // A file written by rules we no longer run is discarded wholesale: a partial trust would
+      // mix old and new category labels inside one table, which is worse than a slow first build.
+      if (parsed.engine !== ENGINE_FINGERPRINT) return;
       for (const [id, entry] of Object.entries(parsed.entries ?? {})) {
         if (typeof entry?.stamp !== "string" || entry?.ledger?.counts === undefined) continue;
-        if (entry.engine !== LEDGER_ENGINE) continue;
+        if (entry.engine !== ENGINE_FINGERPRINT) continue;
         // at: 0 keeps the TTL fallback from trusting a stale entry when no stamp is available.
         cache.set(id, { ledger: entry.ledger, live: false, at: 0, fingerprint: entry.fingerprint ?? "", idle: 0, ttl: COLD_TTL_MS, stamp: entry.stamp });
         ledgerEpoch += 1;
@@ -545,11 +616,11 @@ export function apply(ctx, config = {}) {
           .sort((left, right) => (right[1].at ?? 0) - (left[1].at ?? 0))
           .slice(0, LEDGER_KEEP_MAX);
         if (entries.length === 0) return;
-        const out = { version: LEDGER_VERSION, savedAt: Date.now(), entries: {} };
+        const out = { version: LEDGER_VERSION, engine: ENGINE_FINGERPRINT, savedAt: Date.now(), entries: {} };
         for (const [id, entry] of entries) {
           out.entries[id] = {
             stamp: entry.stamp,
-            engine: LEDGER_ENGINE,
+            engine: ENGINE_FINGERPRINT,
             fingerprint: entry.fingerprint ?? "",
             ledger: ledgerForDisk(entry.ledger),
           };
@@ -675,17 +746,63 @@ export function apply(ctx, config = {}) {
       return sessions;
     }
 
-    /** The response body: revision, scope flags and the truncation notice. */
+    /**
+     * How many sessions actually hold at least one document.
+     *
+     * Only sessions with documents are returned, so the page-size note has to count those or it
+     * lies in both directions: this machine lists 64 sessions of which 8 never produced a row,
+     * and the old note ("latest 40 of 64") promised 24 more that do not exist.
+     *
+     * Cost control: the page itself was just folded, and every other session that has ever been
+     * served sits in the ledger cache with its `counts.files`. A record with no cached ledger is
+     * counted as "may have documents" rather than replayed here — an overcount on a cold start
+     * is recoverable (one more click), an extra 20 log replays on every poll is not.
+     */
+    function countSessionsWithDocuments(allRecords, pageSessions, preferredId) {
+      const withFiles = new Set();
+      for (const session of pageSessions) {
+        if ((session.files?.length ?? 0) > 0) withFiles.add(session.sessionId);
+        else if (session.sessionId === preferredId) withFiles.add(session.sessionId);
+      }
+      let unknown = 0;
+      for (const record of allRecords) {
+        if (withFiles.has(record.id)) continue;
+        const hit = cache.get(record.id);
+        if (hit === undefined) {
+          // Never replayed here. A live session may grow documents at any moment, so it is
+          // counted; a cold one is only counted once its cache entry says it has some.
+          if (record.live === true) withFiles.add(record.id);
+          else unknown += 1;
+          continue;
+        }
+        if ((hit.ledger?.counts?.files ?? 0) > 0) withFiles.add(record.id);
+      }
+      // `unknown` records are not asserted either way: counting them keeps a cold start from
+      // hiding a page the user has not loaded yet.
+      return withFiles.size + unknown;
+    }
+
+    /**
+     * The response body: revision, scope flags and the truncation notice.
+     *
+     * `totalSessions` is the number of sessions that actually have documents, because that is
+     * what the panel counts down. It used to be the raw `listSessions()` length: this machine
+     * lists 64 sessions but only 56 hold a document, so the summary claimed "latest 40 of 64"
+     * while 8 of those can never appear, and a page that already showed everything still said
+     * it was truncated. Both numbers travel now so the note can be honest about the gap.
+     */
     function shapePayload(sessions, ctxInfo) {
       const { preferred, preferredId, listedCount, limit, scope } = ctxInfo;
+      const withDocuments = ctxInfo.withDocuments ?? sessions.length;
       return {
         generatedAt: Date.now(),
         rev: snapshotRev(sessions),
         currentSessionId: preferred ? preferredId : (sessions[0]?.sessionId ?? null),
         sessions,
         partial: scope === "current" && preferred,
-        totalSessions: listedCount,
-        truncated: listedCount > limit,
+        totalSessions: withDocuments,
+        listedSessions: listedCount,
+        truncated: withDocuments > limit,
         maxSessions: limit,
       };
     }
@@ -732,7 +849,13 @@ export function apply(ctx, config = {}) {
 
       const sessions = await foldSessions(query, wanted, { preferredId, titles, floor: options.floor ?? 0 });
       if (timing !== null) timing.replay = Date.now() - started - timing.listSessions - timing.titles;
-      const payload = shapePayload(sessions, { preferred, preferredId, listedCount, limit, scope });
+      // Sessions that silently produce no rows (a session with no file activity at all) must not
+      // be counted as "there is more to load": they can never appear, however often the user
+      // clicks "load earlier". The page slice is `limit` records wide, so the honest total for
+      // the truncation notice is the page plus however many of the remaining records still have
+      // documents — counted with the cheap "has any document" probe, not a full fold.
+      const withDocuments = countSessionsWithDocuments(allRecords, sessions, preferredId);
+      const payload = shapePayload(sessions, { preferred, preferredId, listedCount, limit, scope, withDocuments });
       if (timing !== null) payload.timings = Object.assign({}, timing, { total: Date.now() - started });
       saveLedgerCacheSoon();
       return payload;
@@ -1226,10 +1349,43 @@ export function apply(ctx, config = {}) {
     return resolveIcons([exe]).then((map) => map.get(exe) ?? null);
   }
 
+  /**
+   * Executables this plugin may extract an icon from: the ones the "open with" enumeration
+   * actually returned for an extension in the ledger.
+   *
+   * The route used to accept *any* existing .exe on disk, and extracting an icon starts a
+   * PowerShell process, so `?path=C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`
+   * was a free "spawn a process" primitive for anything that could reach the port (a DNS
+   * rebinding page reached it in testing). A program is allowed only after the enumeration
+   * that the panel itself triggers has listed it.
+   */
+  function isKnownExecutable(exe) {
+    const wanted = String(exe ?? "").toLowerCase();
+    if (wanted === "") return false;
+    for (const entry of openWithCache.values()) {
+      for (const app of entry.list ?? []) {
+        if (String(app.exe ?? "").toLowerCase() === wanted) return true;
+      }
+    }
+    return false;
+  }
+
   /** Serve the cached PNG icon of one executable. */
   async function handleIcon(res, url) {
     const exe = url.searchParams.get("path") ?? "";
-    if (exe === "" || !isAbsolute(exe) || !/\.(exe|ico|lnk)$/i.test(exe) || !existsSync(exe)) {
+    if (exe === "" || !isAbsolute(exe) || !/\.(exe|ico|lnk)$/i.test(exe)) {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      res.end("no icon");
+      return;
+    }
+    // The panel asks for these right after /api/openwith listed them for a ledger file, so a
+    // legitimate request always finds its entry here. Anything else gets the fallback badge.
+    if (!isKnownExecutable(exe)) {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      res.end("no icon");
+      return;
+    }
+    if (!existsSync(exe)) {
       res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       res.end("no icon");
       return;
@@ -1590,10 +1746,31 @@ export function apply(ctx, config = {}) {
     res.end(json);
   }
 
-  /** Snapshot cache: the panel polls, so identical requests within the TTL must be free. */
+  /**
+   * Snapshot cache: the panel polls, so identical requests within the TTL must be free.
+   *
+   * Bounded on purpose. The key carries the limit and the session id, so a panel that pages a
+   * few times ("load earlier" walks 40 → 80 → 120) leaves one full payload per step, and a user
+   * who steps through sessions leaves one per session — all of them held forever, each up to
+   * ~900 KB for the all-sessions view. Entries are dropped oldest-first, and anything past its
+   * TTL is dropped before that.
+   */
+  const SNAPSHOT_CACHE_MAX = 8;
   const snapshotCache = new Map();
 
-
+  function rememberSnapshot(key, payload) {
+    const now = Date.now();
+    snapshotCache.delete(key);
+    snapshotCache.set(key, { at: now, payload });
+    for (const [stored, entry] of snapshotCache) {
+      if (now - entry.at >= SNAPSHOT_TTL_MS) snapshotCache.delete(stored);
+    }
+    while (snapshotCache.size > SNAPSHOT_CACHE_MAX) {
+      const oldest = snapshotCache.keys().next().value;
+      if (oldest === undefined) break;
+      snapshotCache.delete(oldest);
+    }
+  }
 
   async function handleAll(res, url) {
     const session = url.searchParams.get("session");
@@ -1613,7 +1790,7 @@ export function apply(ctx, config = {}) {
         // Only a silent poll gets the floor; 刷新 (force=1) and diagnostics (timing=1) replay.
         const floor = force || timing ? 0 : LIVE_REPLAY_FLOOR_MS;
         data = await snapshot(session, { scope, timing, limit, floor });
-        if (!timing) snapshotCache.set(key, { at: Date.now(), payload: data });
+        if (!timing) rememberSnapshot(key, data);
       }
       sendJson(res, 200, { ok: true, data });
     } catch (error) {
@@ -1627,6 +1804,13 @@ export function apply(ctx, config = {}) {
       sendJson(res, 400, { ok: false, error: "缺少 path 参数" });
       return;
     }
+    // The allowlist runs FIRST. Stat-ing whatever the caller named turned this route into an
+    // existence oracle: 403 "not in the ledger" / 404 "gone" / 400 "is a directory" let a page
+    // probe arbitrary paths on disk without ever getting a byte of content back.
+    if (!isKnownPath(path)) {
+      sendJson(res, 403, { ok: false, error: "只能预览台账里出现过的文件" });
+      return;
+    }
     let stat;
     try {
       stat = statSync(path);
@@ -1636,10 +1820,6 @@ export function apply(ctx, config = {}) {
     }
     if (!stat.isFile()) {
       sendJson(res, 400, { ok: false, error: "不是文件：" + path });
-      return;
-    }
-    if (!isKnownPath(path)) {
-      sendJson(res, 403, { ok: false, error: "只能预览台账里出现过的文件" });
       return;
     }
     // The preview is read-only and keyed by size+mtime, so a repeat open can be a 304.

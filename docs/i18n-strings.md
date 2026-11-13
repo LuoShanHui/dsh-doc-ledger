@@ -7,7 +7,7 @@ occurrence in the source fragments; `count` is how many times the exact literal 
 
 | # | count | first occurrence | string |
 |---|---|---|---|
-| 1 | 1 | `130-apply.js:103` | "文档" |
-| 2 | 1 | `130-apply.js:103` | "文档台账" |
+| 1 | 1 | `130-apply.js:179` | "文档" |
+| 2 | 1 | `130-apply.js:179` | "文档台账" |
 
 Total literals: 2 (2 unique).

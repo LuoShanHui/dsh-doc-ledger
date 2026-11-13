@@ -182,6 +182,29 @@
       return true;
     }
 
+    /**
+     * Timestamp helpers for merging: null/undefined stay null instead of becoming Infinity.
+     *
+     * `Math.min(a || Infinity, b || Infinity)` looks defensive but produces Infinity when both
+     * sides are missing, and Infinity is truthy — so it silently turned "never read" into
+     * "was read". These two keep a missing stamp missing.
+     */
+    function minStamp(left, right) {
+      var a = typeof left === "number" && isFinite(left) ? left : null;
+      var b = typeof right === "number" && isFinite(right) ? right : null;
+      if (a === null) return b;
+      if (b === null) return a;
+      return a < b ? a : b;
+    }
+
+    function maxStamp(left, right) {
+      var a = typeof left === "number" && isFinite(left) ? left : null;
+      var b = typeof right === "number" && isFinite(right) ? right : null;
+      if (a === null) return b;
+      if (b === null) return a;
+      return a > b ? a : b;
+    }
+
     function mergeSessions(sessions) {
       var byPath = new Map();
       sessions.forEach(function (session) {
@@ -193,10 +216,14 @@
           }
           existing.reads = (existing.reads || 0) + (file.reads || 0);
           existing.writes = (existing.writes || 0) + (file.writes || 0);
-          existing.firstUsedAt = Math.min(existing.firstUsedAt || Infinity, file.firstUsedAt || Infinity);
-          existing.lastUsedAt = Math.max(existing.lastUsedAt || 0, file.lastUsedAt || 0);
-          existing.createdAt = existing.createdAt || file.createdAt;
-          existing.updatedAt = Math.max(existing.updatedAt || 0, file.updatedAt || 0) || null;
+          // A missing timestamp must stay missing. `|| Infinity` used to win the Math.min and
+          // leave Infinity on the row: `fmtTime` then printed "NaN-NaN-NaN NaN:NaN", the sort
+          // key became Infinity, and — because Infinity is truthy — a write-only file landed
+          // in the "Used" section with reads 0 (25 such rows on this machine's data).
+          existing.firstUsedAt = minStamp(existing.firstUsedAt, file.firstUsedAt);
+          existing.lastUsedAt = maxStamp(existing.lastUsedAt, file.lastUsedAt);
+          existing.createdAt = minStamp(existing.createdAt, file.createdAt);
+          existing.updatedAt = maxStamp(existing.updatedAt, file.updatedAt);
         });
       });
       return Array.from(byPath.values());

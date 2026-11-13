@@ -11,7 +11,8 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cleanObsoleteFiles, ledgerReusable, normalizeRecords } from "../index.js";
+import { ENGINE_FINGERPRINT, cleanObsoleteFiles, ledgerReusable, normalizeRecords } from "../index.js";
+import { categoryOf } from "../lib/ledger.js";
 
 const NOW = 1_000_000;
 const hit = (extra = {}) => Object.assign({ at: NOW - 2000, live: true, ttl: 5000, stamp: "10:20" }, extra);
@@ -52,6 +53,25 @@ check("floor=0 时下限不生效（force / timing 路径）", () => {
 
 check("磁盘恢复的条目 at=0 不会被误判为新鲜", () => {
   assert.equal(ledgerReusable(hit({ at: 0 }), { live: true, stamp: "10:99", floor: 15000, now: NOW }), false);
+});
+
+// --- cache invalidation on rule changes ------------------------------------
+// A cached ledger carries the fingerprint of the rules that produced it. The 12-family
+// classifier once shipped without any bump, so every cached table kept its old labels: 113 of
+// 1760 live rows showed the wrong filter chip (".sql" under data, ".gitignore" under other).
+check("引擎指纹随分类规则变化（写死的规则表仍与 lib/ledger.js 一致）", () => {
+  // The fingerprint input is a literal copy of lib/ledger.js's tables; if someone edits the
+  // classifier without updating this list, the two disagree and this fails.
+  assert.match(ENGINE_FINGERPRINT, /^[0-9a-f]{12}$/);
+  const EXPECTED = {
+    "a.sql": "code", "a.md": "doc", "a.xlsx": "sheet", "a.exe": "binary",
+    "a.diff": "data", "a.zst": "archive", ".gitignore": "config", "LICENSE": "doc",
+    "Dockerfile": "config", "CMakeLists.txt": "config", "a.tar.gz": "archive",
+    "noext": "other", "a.unknown": "other"
+  };
+  for (const [name, want] of Object.entries(EXPECTED)) {
+    assert.equal(categoryOf(name), want, name + " 的分类必须与 ENGINE_RULES 里写的一致");
+  }
 });
 
 // --- obsolete-file cleanup -------------------------------------------------

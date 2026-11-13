@@ -93,6 +93,26 @@ check("英文版只用 en-* 截图，中文版用 zh-*（首图除外）", () =>
   assert.deepEqual(pngs(en).filter((p) => !p.includes("en-")), [], "README.md must use en-* screenshots only");
   assert.deepEqual(pngs(zh).filter((p) => p.includes("en-")), [], "README.zh.md must not use en-* screenshots");
 });
+check("npm 包会把 README 引用的每张图都带上", () => {
+  // 只有 docs 整个目录进了 `files`，两版 README 的 9 张 en-*/zh-* 截图才不会在 npm 包里裂掉。
+  // 之前只列了 en-overview / zh-overview 两张，其余 7 张发布后是死链。
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const files = pkg.files ?? [];
+  const covered = (rel) => files.some((entry) => rel === entry || rel.startsWith(entry.replace(/\/$/, "") + "/"));
+  const referenced = new Set();
+  for (const text of [en, zh]) {
+    for (const m of text.matchAll(/!\[[^\]]*\]\(([^)#?]+)/g)) {
+      const target = m[1].trim();
+      if (/^[a-z]+:\/\//i.test(target)) continue;
+      referenced.add(target.replace(/^\.\//, ""));
+    }
+  }
+  assert.ok(referenced.size > 0, "README 里应当有图片引用");
+  for (const rel of referenced) {
+    assert.ok(existsSync(join(root, rel)), rel + " 不存在");
+    assert.ok(covered(rel), rel + " 没有进 package.json 的 files，发布后会是死图");
+  }
+});
 check("两版都提到当前的安装版本号", () => {
   const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
   for (const [name, text] of [["README.md", en], ["README.zh.md", zh]]) {

@@ -51,7 +51,7 @@ vm.runInContext("setFallback(zh)", sandbox);
 
 const f = (name) => sandbox[name];
 for (const name of [
-  "termsOf", "matches", "sortFiles", "defaultDir", "mergeSessions",
+  "termsOf", "matches", "sortFiles", "defaultDir", "mergeSessions", "minStamp", "maxStamp",
   "fmtTime", "fmtBytes", "encodingLabel", "categoryColor", "categoryLabel",
   "shortPath", "highlight", "hostFileAddress", "iconUrl", "pad",
   "sortSpecOf", "rowModeOf", "rowsReachable", "rowLimitOf", "clampRowIndex",
@@ -176,6 +176,44 @@ check("mergeSessions: 不同路径保留", () => {
   assert.equal(f("mergeSessions")(sessions).length, 2);
 });
 
+check("mergeSessions: 缺时间戳保持 null，不变成 Infinity", () => {
+  // 真实缺陷：Math.min(a || Infinity, b || Infinity) 两边都缺时得到 Infinity。
+  // Infinity 是真值，于是「只写过、从未读过」的文件跑进了「使用过」分区，
+  // 时间戳渲染成 NaN-NaN-NaN NaN:NaN（本机真实数据里 25 行）。
+  const sessions = [
+    { sessionId: "s1", files: [file({ path: "w.py", reads: 0, writes: 1, firstUsedAt: null, lastUsedAt: null, createdAt: 100 })] },
+    { sessionId: "s2", files: [file({ path: "w.py", reads: 0, writes: 3, firstUsedAt: null, lastUsedAt: null, createdAt: 200 })] }
+  ];
+  const out = f("mergeSessions")(sessions);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].firstUsedAt, null, "firstUsedAt 必须是 null，不能是 Infinity");
+  assert.equal(out[0].lastUsedAt, null);
+  assert.equal(out[0].writes, 4);
+  assert.equal(Number.isFinite(out[0].createdAt), true);
+  // 只写过 → 不应被判为「活动」以外的语义；isActiveRow 允许它存在，但 usedAll 只看 reads。
+  assert.equal((out[0].reads || 0) > 0, false);
+});
+check("mergeSessions: 一侧有时间戳时取那一侧", () => {
+  const sessions = [
+    { sessionId: "s1", files: [file({ path: "a.md", reads: 1, firstUsedAt: null, lastUsedAt: null })] },
+    { sessionId: "s2", files: [file({ path: "a.md", reads: 2, firstUsedAt: 500, lastUsedAt: 900 })] }
+  ];
+  const out = f("mergeSessions")(sessions)[0];
+  assert.equal(out.firstUsedAt, 500);
+  assert.equal(out.lastUsedAt, 900);
+});
+check("minStamp / maxStamp: 忽略 null、NaN、Infinity", () => {
+  const { minStamp, maxStamp } = { minStamp: f("minStamp"), maxStamp: f("maxStamp") };
+  assert.equal(minStamp(null, 5), 5);
+  assert.equal(minStamp(5, null), 5);
+  assert.equal(minStamp(null, null), null);
+  assert.equal(minStamp(Infinity, 7), 7);
+  assert.equal(minStamp(3, 9), 3);
+  assert.equal(maxStamp(null, 5), 5);
+  assert.equal(maxStamp(null, null), null);
+  assert.equal(maxStamp(Infinity, 7), 7);
+  assert.equal(maxStamp(3, 9), 9);
+});
 // --- formatting -------------------------------------------------------------
 check("pad: 个位补零", () => {
   assert.equal(f("pad")(3), "03");
@@ -191,6 +229,21 @@ check("fmtTime: 本年省略年份，跨年带年份", () => {
   const oldOne = new Date(year - 1, 2, 4, 9, 5).getTime();
   assert.equal(f("fmtTime")(thisOne), "03-04 09:05");
   assert.ok(f("fmtTime")(oldOne).startsWith(String(year - 1) + "-"));
+});
+check("fmtTime: 跨年判断按调用时的那一年，不按模块加载时", () => {
+  // 真实缺陷：THIS_YEAR 在模块求值时捕获，长驻窗口跨年后，1 月的记录会被当成往年
+  // 而多印一个年份。这里只能验证「当年时间戳不带年份」与「非当年带年份」两端，
+  // 因为测试进程的年份就是调用时的年份。
+  const now = new Date();
+  const sameYear = new Date(now.getFullYear(), 0, 2, 3, 4).getTime();
+  assert.match(f("fmtTime")(sameYear), /^\d{2}-\d{2} \d{2}:\d{2}$/, "当年不应带年份");
+  const otherYear = new Date(now.getFullYear() - 1, 5, 6, 7, 8).getTime();
+  assert.match(f("fmtTime")(otherYear), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/, "往年必须带年份");
+});
+check("fmtTime: Infinity / NaN 返回占位符而不是 NaN-NaN", () => {
+  assert.equal(f("fmtTime")(Infinity), "--");
+  assert.equal(f("fmtTime")(NaN), "--");
+  assert.equal(f("fmtTime")(undefined), "--");
 });
 check("fmtBytes: 非法值返回空串", () => {
   assert.equal(f("fmtBytes")(-1), "");

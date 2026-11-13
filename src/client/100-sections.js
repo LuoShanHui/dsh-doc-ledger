@@ -103,7 +103,9 @@
         if (props.typeSet !== null && props.typeSet !== undefined && props.typeSet[String(file.category || "other")] !== true) return false;
         return matches(file, props.query);
       };
-      var usedAll = files.filter(function (file) { return (file.reads || 0) > 0 || file.firstUsedAt; });
+      // "Used" means a read happened. `|| file.firstUsedAt` looked equivalent and was not:
+      // a merged row whose stamp had gone bad (Infinity) put a write-only file into this list.
+      var usedAll = files.filter(function (file) { return (file.reads || 0) > 0; });
       // Merged view: everything written, created or not. Split view: the engine's
       // own distinction — files this session created vs files it only modified.
       var createdAll = files.filter(function (file) { return Boolean(file.createdAt) || (file.writes || 0) > 0; });
