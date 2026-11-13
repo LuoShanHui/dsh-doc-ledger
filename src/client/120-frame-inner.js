@@ -130,6 +130,29 @@
       var drawerState = react.useState(null);
       var drawer = drawerState[0];
       var setDrawer = drawerState[1];
+      // The drawer's own roving index. Separate from the board's active row so opening the drawer
+      // does not disturb where the reader was in the list behind it.
+      var drawerRowState = react.useState(null);
+      var drawerRow = drawerRowState[0];
+      var setDrawerRow = drawerRowState[1];
+      var drawerRowsRef = react.useRef(0);
+      var drawerBoxRef = react.useRef(null);
+      var drawerFocus = function (index) {
+        var box = drawerBoxRef.current;
+        if (box === null) return;
+        var nodes = box.querySelectorAll("[data-row-index]");
+        for (var i = 0; i < nodes.length; i += 1) {
+          if (String(i) === String(index)) { setDrawerRow(index); nodes[i].focus(); return; }
+        }
+      };
+      var drawerMove = function (from, delta) {
+        var total = drawerRowsRef.current;
+        var next = clampRowIndex(from, delta, total);
+        if (next !== from) drawerFocus(next);
+      };
+      var drawerEdge = function (which) {
+        drawerFocus(which === "first" ? 0 : Math.max(0, drawerRowsRef.current - 1));
+      };
 
       var cardOpenState = react.useState({});
       var cardOpen = cardOpenState[0];
@@ -1243,6 +1266,11 @@
         flatProps.createdSort = createdSort;
         flatProps.open = cardOpen.__flat__ !== false;
         flatProps.onToggleCard = function () {
+          // The merged card overrides the toggle, so it has to honour the grid preset's drawer
+          // itself — routing through `toggleCard` is not possible here because the merged card
+          // has no session id. Without this, clicking the only card on a merged grid board did
+          // nothing at all.
+          if (styleThemeRef.current === "grid") { toggleCard("__flat__"); return; }
           setCardOpen(function (previous) {
             var next = Object.assign({}, previous);
             next.__flat__ = previous.__flat__ === false ? true : false;
@@ -1402,26 +1430,42 @@
        */
       var renderDrawer = function () {
         if (drawer === null) return null;
+        // The merged view's card id is "__flat__", which is not a session. It still has to open
+        // something, otherwise clicking the only card on the board does nothing at all (that was
+        // the reported "no reaction" case). Resolve "__flat__" to the merged list itself.
         var found = null;
-        for (var i = 0; i < sessions.length; i += 1) {
-          if (sessions[i].sessionId === drawer.sessionId) { found = sessions[i]; break; }
+        if (drawer.sessionId === "__flat__") {
+          found = { sessionId: "__flat__", title: t("empty.mergeAll"), files: mergeSessions(sessions) };
+        } else {
+          for (var i = 0; i < sessions.length; i += 1) {
+            if (sessions[i].sessionId === drawer.sessionId) { found = sessions[i]; break; }
+          }
         }
         if (found === null) return null;
         var files = found.files || [];
-        var rows = files.filter(passesFilters).slice(0, 200).map(function (file, ordinal) {
+        var shown = files.filter(passesFilters).slice(0, 200);
+        drawerRowsRef.current = shown.length;
+        var rows = shown.map(function (file, ordinal) {
           return h(FileRow, {
             key: "drawer:" + (file.path || "") + ":" + ordinal,
             file: file,
-            // -1: these rows are outside the keyboard-navigable list, so they take no tab stop
-            // and never collide with the main list's active-row index.
-            index: -1,
+            // A real index: FileRow omits `data-row-index` entirely for -1, which broke arrow-key
+            // navigation inside the drawer (focusRow queries that attribute) and made every row
+            // unreachable by keyboard. The drawer keeps its own roving index so it cannot collide
+            // with the board's.
+            index: ordinal,
             mode: usedSort,
             parity: ordinal % 2,
-            active: false,
+            // With nothing selected yet the first row is the Tab stop, matching the board's
+            // roving-tabindex rule (exactly one reachable row per container).
+            active: drawerRow === null ? ordinal === 0 : drawerRow === ordinal,
             query: query,
             onOpen: rowHandlers.open,
             onQuick: rowHandlers.quick,
-            onMenu: rowHandlers.menu
+            onMenu: rowHandlers.menu,
+            onFocusIndex: setDrawerRow,
+            onMove: drawerMove,
+            onEdge: drawerEdge
           });
         });
         return h(react.Fragment, null,
@@ -1434,7 +1478,7 @@
                 style: S.drawerClose,
                 title: t("preview.close"),
                 "aria-label": t("preview.close"),
-                onClick: function () { setDrawer(null); }
+                onClick: function () { setDrawer(null); setDrawerRow(null); }
               }, "\u2715")
             ),
             h("div", { style: S.drawerMeta }, t("drawer.meta", {
@@ -1442,7 +1486,7 @@
               created: (found.counts && found.counts.created) || 0,
               files: files.length
             })),
-            h("div", { style: S.drawerBody }, rows.length === 0
+            h("div", { style: S.drawerBody, ref: drawerBoxRef }, rows.length === 0
               ? h("div", { style: S.empty }, t("empty.noMatch"))
               : rows)
           )

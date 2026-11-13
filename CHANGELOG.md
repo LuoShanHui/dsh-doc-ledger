@@ -7,6 +7,17 @@
 
 ### Fixed
 
+- **网格主题重要漏洞：合并视图点一下没反应**。合并视图只有一张卡片，它的 id 是
+  `__flat__`，而抽屉按 id 到 `sessions` 里找会话——找不到就 `return null`，于是点击
+  完全没有反应。现在 `__flat__` 解析为合并后的文件列表本身。
+  同时合并卡片的 `onToggleCard` 是被单独覆盖的，它绕过了网格判断，
+  现在那个覆盖也走抽屉。
+- **抽屉里的行键盘不可达**：行传的是 `index: -1`，而 `FileRow` 对 -1 会完全省略
+  `data-row-index`，于是箭头键导航（`focusRow` 查就是这个属性）在抽屉里全部失效、
+  每行 `tabindex=-1`。现在抽屉拥有自己的 roving index，与看板互不干扰。
+
+### Fixed
+
 - **DNS rebinding 能让任意网页读到台账、并启动本机程序**：同源校验把 `Origin` 和请求自带的
   `Host` 相比，两项都由攻击者决定，等于没校验。实测（手工 HTTP 报文）：`Host: attacker.test` +
   `Origin: http://attacker.test` 的请求让 `/api/file` 返回了台账文档的完整正文，
