@@ -343,11 +343,21 @@
         // floor at or below 240. At 300px and 270px the grid silently collapsed to one column —
         // a list with extra steps — while 230px keeps two columns down to a ~490px panel and
         // still gives the name the tile's full width, because this theme drops the path column.
+        // One card (the merged view) must span the whole row; several cards tile.
+        //
+        // `repeat(auto-fill, minmax(230px, 1fr))` gave every card exactly one 230px column, so the
+        // merged view — which is a SINGLE card holding every session — filled one narrow strip on
+        // the left and left the rest of the panel empty. `auto-fit` collapses the empty tracks, and
+        // the single-card case is pinned to full width explicitly.
         list: Object.assign({}, base.list, {
           padding: "10px 10px 20px",
-          display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
           gap: "10px", alignContent: "start"
         }),
+        // No explicit `grid-column` here: with `auto-fit` a lone card already stretches across the
+        // whole row (the empty tracks collapse), while several cards tile into columns. Forcing
+        // `1 / -1` would stack every card full width and destroy the board.
         card: Object.assign({}, base.card, {
           border: "1px solid " + c.borderSoft, borderRadius: c.radius.lg,
           background: c.bg, marginBottom: "0", overflow: "hidden",
@@ -387,39 +397,49 @@
         // Three lines was tried and measured at 60px per row, which halves how many files a tile
         // can show — the opposite of what a board is for. Putting the chip inline before the name
         // keeps the affiliation visible while staying at 40px.
+        // Two lines in a narrow tile, one line in a wide card.
+        //
+        // The merged view is a single full-width card, and there the two-line row wasted most of
+        // its second line (only the counters and the time). At 420px and up the row collapses to a
+        // single line, which doubles how many files fit on screen — the whole point of this theme.
         row: Object.assign({}, base.row, {
           display: "grid",
-          gridTemplateColumns: "auto auto minmax(0, 1fr) auto",
-          gridTemplateRows: "auto auto",
-          alignItems: "center", columnGap: "5px", rowGap: "1px",
-          height: "auto", minHeight: "40px", lineHeight: "15px",
-          padding: "4px 10px 5px", borderRadius: 0,
+          gridTemplateColumns: "auto auto minmax(0, 1fr) auto auto auto",
+          gridTemplateRows: "auto",
+          alignItems: "center", columnGap: "8px", rowGap: "0",
+          height: "30px", minHeight: "0", lineHeight: "30px",
+          padding: "0 10px", borderRadius: 0,
           borderTop: "1px solid color-mix(in oklab, " + c.borderSoft + " 55%, transparent)"
         }),
         name: Object.assign({}, base.name, {
           gridColumn: "3", gridRow: "1", maxWidth: "none", minWidth: 0,
           fontSize: "12px", fontWeight: 600
         }),
-        dir: Object.assign({}, base.dir, { display: "none", gridColumn: "1", gridRow: "2" }),
+        dir: Object.assign({}, base.dir, { display: "none", gridColumn: "1", gridRow: "1" }),
         // The glyph is the first cell; keep it centred across the three text lines.
-        dot: Object.assign({}, base.dot, { gridRow: "1 / 4" }),
+        dot: Object.assign({}, base.dot, { gridColumn: "1", gridRow: "1" }),
         // The session tag becomes a real label: filled, tinted, and the first thing on line 2.
         // Row 2, left: the session this file came from. Spanning the name and counter columns
         // keeps it from being clipped by them when the title is long.
         // The session chip leads line 1, right before the name: a coloured badge is easier to
         // scan down a tile than a suffix, and it cannot collide with the counters on line 2.
+        // One row: glyph | session | name (flexible) | deleted | counters | time.
         tag: {
           gridColumn: "2", gridRow: "1", justifySelf: "start",
           padding: "0 5px", borderRadius: "3px", background: c.accentSoft, color: c.accent,
-          whiteSpace: "nowrap", maxWidth: "90px", overflow: "hidden", textOverflow: "ellipsis",
-          fontSize: "10px", lineHeight: "14px", fontWeight: 600
+          whiteSpace: "nowrap", maxWidth: "110px", overflow: "hidden", textOverflow: "ellipsis",
+          fontSize: "10px", lineHeight: "15px", fontWeight: 600
         },
+        // The deleted marker needs a fixed column. Without one it participates in auto-placement,
+        // so rows that carry it push the name and the counters one column to the right — which is
+        // exactly what made half the rows look misaligned.
+        tagMissing: Object.assign({}, base.tagMissing, { gridColumn: "4", gridRow: "1", justifySelf: "end" }),
         io: Object.assign({}, base.io, {
-          gridColumn: "3", gridRow: "2", justifySelf: "end",
+          gridColumn: "5", gridRow: "1", justifySelf: "end",
           fontSize: "10px", minWidth: "auto", textAlign: "right"
         }),
         times: Object.assign({}, base.times, {
-          gridColumn: "4", gridRow: "2", justifySelf: "end",
+          gridColumn: "6", gridRow: "1", justifySelf: "end",
           fontSize: "10px", minWidth: "auto", textAlign: "right"
         }),
         filterBar: Object.assign({}, base.filterBar, { gap: "6px", padding: "6px 12px", borderBottom: "none" }),
