@@ -195,7 +195,11 @@
       rowCountRef.current = rowCursor;
       return react.createElement("div", {
         ref: cardRef,
-        style: S.card,
+        // An open card spans the grid row so an expanded board does not leave a tall gap beside
+        // it (see the cardOpen style). Only the grid theme defines it; elsewhere it stays null.
+        style: props.open === true && S.cardOpen !== null && S.cardOpen !== undefined
+          ? Object.assign({}, S.card, S.cardOpen)
+          : S.card,
         "data-card": props.sessionId,
         // Focus (keyboard or click) mounts the card, so Tab never lands on a blank body.
         onFocusCapture: function () { props.onMount(); }

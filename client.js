@@ -1198,6 +1198,8 @@ window.__ModuleLoader__.load({
         // Present in every theme (the parity check compares key sets); only "card" gives it a
         // visible value, the rest leave it null so the head renders no rail.
         cardRail: null,
+        // Only the grid preset spans an expanded card; null means "place it normally".
+        cardOpen: null,
         // Gutter parts (the timeline preset was removed; the row still guards on these, so
         // they stay as nulls rather than dragging the drawing code out of the row).
         rowDot: null,
@@ -1291,6 +1293,18 @@ window.__ModuleLoader__.load({
           background: c.bg, marginBottom: "0", overflow: "hidden",
           boxShadow: c.shadowCard, alignSelf: "start"
         }),
+
+        /**
+         * An expanded card spans the whole row.
+         *
+         * With equal-height tiles the board reads as columns, but as soon as one card is expanded
+         * it is many times taller than its neighbours: the grid keeps it in its own column, leaves
+         * a tall empty gap beside it, and pushes the next card below that gap. In the reported
+         * screenshot the third card had been pushed from y=201 to y=725. Spanning the row makes
+         * the expanded card a full-width section with the remaining tiles continuing underneath,
+         * which is what "expanding" is expected to look like.
+         */
+        cardOpen: { gridColumn: "1 / -1" },
         // A filled strip with the counts right-aligned: on a narrow tile the title and the meta
         // compete, so the meta is pinned to the right and never wraps.
         cardHead: Object.assign({}, base.cardHead, {
@@ -2296,7 +2310,11 @@ window.__ModuleLoader__.load({
       rowCountRef.current = rowCursor;
       return react.createElement("div", {
         ref: cardRef,
-        style: S.card,
+        // An open card spans the grid row so an expanded board does not leave a tall gap beside
+        // it (see the cardOpen style). Only the grid theme defines it; elsewhere it stays null.
+        style: props.open === true && S.cardOpen !== null && S.cardOpen !== undefined
+          ? Object.assign({}, S.card, S.cardOpen)
+          : S.card,
         "data-card": props.sessionId,
         // Focus (keyboard or click) mounts the card, so Tab never lands on a blank body.
         onFocusCapture: function () { props.onMount(); }
