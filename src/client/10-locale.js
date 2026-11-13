@@ -192,6 +192,7 @@
       "preview.esc": "　·　Esc 关闭",
 
       // summary line
+      "drawer.meta": "使用 {used} · 创建 {created} · {files} 个文件",
       "summary.line": "会话 {sessions} · 使用 {used} · 创建 {created} · 读 {reads} 次 · 写 {writes} 次",
       "summary.filteredLine": "　·　筛选后{files} /{sessions}",
       "summary.countFiles": " {n} 个文件",
@@ -408,6 +409,7 @@
       "preview.copyPathHint": " (click to copy the full path)",
       "preview.esc": "  ·  Esc to close",
 
+      "drawer.meta": "{used} used · {created} created · {files} files",
       "summary.line": "Sessions {sessions} · used {used} · created {created} · R {reads} · W {writes}",
       "summary.filteredLine": "  ·  filtered{files} /{sessions}",
       "summary.countFiles": " {n} files",

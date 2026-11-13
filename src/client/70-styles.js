@@ -284,6 +284,36 @@
         times: { color: c.textFaint, whiteSpace: "nowrap", flex: "0 0 auto", fontVariantNumeric: "tabular-nums", fontSize: "10px", textAlign: "right", minWidth: "70px" },
         tag: { padding: "0 5px", borderRadius: "3px", background: c.accentSoft, color: c.accent, whiteSpace: "nowrap", maxWidth: "88px", overflow: "hidden", textOverflow: "ellipsis", flex: "0 0 auto", fontSize: "10px" },
         empty: { padding: "24px 12px", textAlign: "center", color: c.textFaint, fontSize: "12px" },
+        // A right-hand drawer, used by the grid preset instead of expanding a tile in place.
+        //
+        // Expanding a tile in a board is what looked broken: one card grows many times taller
+        // than its neighbours, the grid cannot backfill the hole beside it, and every card after
+        // it moves down. A drawer leaves the board untouched and shows the session beside it.
+        drawer: {
+          position: "absolute", top: 0, right: 0, bottom: 0, width: "min(420px, 88%)",
+          display: "flex", flexDirection: "column",
+          // `bgBase` is the raised surface (the one cards sit on), so the drawer reads as a layer
+          // above the panel instead of dissolving into the panel's tinted background.
+          background: c.bgBase, borderLeft: "1px solid " + c.border, boxShadow: c.shadowMenu,
+          zIndex: 60
+        },
+        drawerHead: {
+          display: "flex", alignItems: "center", gap: "8px",
+          height: "40px", padding: "0 12px", flex: "0 0 auto",
+          borderBottom: "1px solid " + c.borderSoft
+        },
+        drawerTitle: {
+          flex: "1 1 auto", minWidth: 0, fontWeight: 700, fontSize: "13px",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+        },
+        drawerClose: {
+          flex: "0 0 auto", width: "24px", height: "24px", padding: 0,
+          borderRadius: c.radius.sm, background: "transparent", color: c.textDim,
+          cursor: "pointer", fontSize: "14px", lineHeight: "24px", border: "none"
+        },
+        drawerBody: { flex: "1 1 auto", overflowY: "auto", padding: "6px 0 12px" },
+        drawerMeta: { padding: "6px 12px", color: c.textFaint, fontSize: "11px" },
+        scrim: { position: "absolute", inset: 0, background: "color-mix(in oklab, " + c.scrim + " 32%, transparent)", zIndex: 55 },
         modal: { position: "fixed", inset: 0, background: c.scrim, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: "24px" },
         modalBox: { background: c.bg, color: "inherit", borderRadius: c.radius.lg, width: "min(900px, 100%)", maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "visible", border: "1px solid " + c.border, boxShadow: c.shadowMenu },
         modalHead: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", minWidth: 0, flex: "0 0 auto", borderBottom: "1px solid " + c.borderSoft },
@@ -340,45 +370,35 @@
         notice: Object.assign({}, base.notice, { padding: "7px 12px", borderRadius: c.radius.lg, margin: "0 8px 6px" }),
         // The board: as many columns as the panel can honour, and never a tile too narrow to read.
         //
-        // The floor is 230px, measured rather than guessed: a 520px sidebar minus 20px of list
-        // padding and a 10px gap leaves 490px, which fits two 240px tiles and therefore needs a
-        // floor at or below 240. At 300px and 270px the grid silently collapsed to one column —
-        // a list with extra steps — while 230px keeps two columns down to a ~490px panel and
-        // still gives the name the tile's full width, because this theme drops the path column.
-        // One card (the merged view) must span the whole row; several cards tile.
-        //
-        // `repeat(auto-fill, minmax(230px, 1fr))` gave every card exactly one 230px column, so the
-        // merged view — which is a SINGLE card holding every session — filled one narrow strip on
-        // the left and left the rest of the panel empty. `auto-fit` collapses the empty tracks, and
-        // the single-card case is pinned to full width explicitly.
+        // Floor is 230px, measured: a 520px sidebar minus 20px padding and a 10px gap leaves
+        // 490px, which fits two 240px tiles. `auto-fit` (not auto-fill) collapses the empty tracks,
+        // so a lone card — the merged view — stretches across the panel instead of sitting in one
+        // 230px strip with the rest of the row blank.
         list: Object.assign({}, base.list, {
           padding: "10px 10px 20px",
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+          // `dense` lets a later short card backfill the hole left beside a tall, expanded card.
+          // Without it the board leaves a column-sized gap exactly as tall as the expanded card
+          // and pushes everything after it below that gap.
+          gridAutoFlow: "row dense",
           gap: "10px", alignContent: "start"
         }),
-        // No explicit `grid-column` here: with `auto-fit` a lone card already stretches across the
-        // whole row (the empty tracks collapse), while several cards tile into columns. Forcing
-        // `1 / -1` would stack every card full width and destroy the board.
         card: Object.assign({}, base.card, {
           border: "1px solid " + c.borderSoft, borderRadius: c.radius.lg,
           background: c.bg, marginBottom: "0", overflow: "hidden",
           boxShadow: c.shadowCard, alignSelf: "start"
         }),
-
         /**
-         * An expanded card spans the whole row.
+         * An expanded card keeps its column; the board flows around it.
          *
-         * With equal-height tiles the board reads as columns, but as soon as one card is expanded
-         * it is many times taller than its neighbours: the grid keeps it in its own column, leaves
-         * a tall empty gap beside it, and pushes the next card below that gap. In the reported
-         * screenshot the third card had been pushed from y=201 to y=725. Spanning the row makes
-         * the expanded card a full-width section with the remaining tiles continuing underneath,
-         * which is what "expanding" is expected to look like.
+         * Making it span the full row was tried first and was wrong: every card on the board is
+         * the same width by design, so a click that blows one card up to 700px reads as the
+         * layout breaking rather than as that card opening. `grid-auto-flow: row dense` on the
+         * list is what removes the tall empty gap this used to leave — later cards backfill it.
+         * `alignSelf: start` (already on `card`) keeps a short card from stretching to its row.
          */
-        cardOpen: { gridColumn: "1 / -1" },
-        // A filled strip with the counts right-aligned: on a narrow tile the title and the meta
-        // compete, so the meta is pinned to the right and never wraps.
+        cardOpen: null,
         cardHead: Object.assign({}, base.cardHead, {
           height: "32px", padding: "0 10px", background: c.bgSoft,
           borderBottom: "1px solid " + c.borderSoft, gap: "6px"
@@ -389,72 +409,39 @@
           height: "24px", padding: "6px 10px 2px", fontSize: "10px", fontWeight: 700,
           textTransform: "uppercase", letterSpacing: "0.06em", color: c.textFaint
         }),
-        // A tile is ~245px, so the row is a two-line block:
-        //   line 1  the file name (full width, ellipsised) plus the deleted marker
-        //   line 2  the session this row came from, then reads/writes and the time
-        // The session sits on its own line because in the merged view it is the only thing that
-        // tells two identical-looking names apart, and it used to be a 10px chip squeezed
-        // between the name and the counters with no room to read.
-        // Two lines per row, laid out as a 3-column, 2-row grid:
-        //
-        //   [glyph] [name ....................] [deleted?]
-        //           [session] [R/W · size] [time]
-        //
-        // A flex wrap could not express this: with the name at `flex: 1 1 100%` the glyph was
-        // pushed onto a line of its own, so every row became three lines and a tile held six
-        // files instead of ten. A grid keeps the glyph spanning both rows, which is what a list
-        // with a leading icon wants.
-        // Two lines, with the session chip as a leading badge on the FIRST line:
-        //   row 1  glyph | [session] name ....... | deleted
-        //   row 2  ....................... | R/W · size | time
-        //
-        // Three lines was tried and measured at 60px per row, which halves how many files a tile
-        // can show — the opposite of what a board is for. Putting the chip inline before the name
-        // keeps the affiliation visible while staying at 40px.
-        // Two lines in a narrow tile, one line in a wide card.
-        //
-        // The merged view is a single full-width card, and there the two-line row wasted most of
-        // its second line (only the counters and the time). At 420px and up the row collapses to a
-        // single line, which doubles how many files fit on screen — the whole point of this theme.
+        /**
+         * One line per file, laid out with flex — not a numbered grid.
+         *
+         * The grid version assigned each cell an explicit column (glyph 1, tag 2, name 3,
+         * deleted 4, counters 5, time 6). That is only correct while every cell exists. The
+         * merged view has no session tag, so column 2 was empty and the name — still forced into
+         * column 3 — received the 1fr: measured 467px of a 679px row, with the counters and the
+         * time squeezed into the remaining 136px. A flex row has no such failure mode: absent
+         * cells simply do not occupy space, and `flex: 1` on the name takes exactly what is left.
+         */
         row: Object.assign({}, base.row, {
-          display: "grid",
-          gridTemplateColumns: "auto auto minmax(0, 1fr) auto auto auto",
-          gridTemplateRows: "auto",
-          alignItems: "center", columnGap: "8px", rowGap: "0",
-          height: "30px", minHeight: "0", lineHeight: "30px",
+          display: "flex", alignItems: "center", flexWrap: "nowrap",
+          gap: "6px", height: "30px", minHeight: "0", lineHeight: "30px",
           padding: "0 10px", borderRadius: 0,
           borderTop: "1px solid color-mix(in oklab, " + c.borderSoft + " 55%, transparent)"
         }),
+        // The name is the only flexible cell: it takes the leftover width and ellipsises.
         name: Object.assign({}, base.name, {
-          gridColumn: "3", gridRow: "1", maxWidth: "none", minWidth: 0,
+          flex: "1 1 auto", maxWidth: "none", minWidth: "40px",
           fontSize: "12px", fontWeight: 600
         }),
-        dir: Object.assign({}, base.dir, { display: "none", gridColumn: "1", gridRow: "1" }),
-        // The glyph is the first cell; keep it centred across the three text lines.
-        dot: Object.assign({}, base.dot, { gridColumn: "1", gridRow: "1" }),
-        // The session tag becomes a real label: filled, tinted, and the first thing on line 2.
-        // Row 2, left: the session this file came from. Spanning the name and counter columns
-        // keeps it from being clipped by them when the title is long.
-        // The session chip leads line 1, right before the name: a coloured badge is easier to
-        // scan down a tile than a suffix, and it cannot collide with the counters on line 2.
-        // One row: glyph | session | name (flexible) | deleted | counters | time.
-        tag: {
-          gridColumn: "2", gridRow: "1", justifySelf: "start",
-          padding: "0 5px", borderRadius: "3px", background: c.accentSoft, color: c.accent,
-          whiteSpace: "nowrap", maxWidth: "110px", overflow: "hidden", textOverflow: "ellipsis",
-          fontSize: "10px", lineHeight: "15px", fontWeight: 600
-        },
-        // The deleted marker needs a fixed column. Without one it participates in auto-placement,
-        // so rows that carry it push the name and the counters one column to the right — which is
-        // exactly what made half the rows look misaligned.
-        tagMissing: Object.assign({}, base.tagMissing, { gridColumn: "4", gridRow: "1", justifySelf: "end" }),
+        // The path column is dropped in this theme; `display: none` also keeps it out of the flow.
+        dir: Object.assign({}, base.dir, { display: "none" }),
+        // Session badge: a fixed-width pill so long titles cannot crowd out the name.
+        tag: Object.assign({}, base.tag, {
+          flex: "0 0 auto", maxWidth: "96px", fontSize: "10px", padding: "0 5px"
+        }),
+        tagMissing: Object.assign({}, base.tagMissing, { flex: "0 0 auto" }),
         io: Object.assign({}, base.io, {
-          gridColumn: "5", gridRow: "1", justifySelf: "end",
-          fontSize: "10px", minWidth: "auto", textAlign: "right"
+          flex: "0 0 auto", fontSize: "10px", minWidth: "auto", textAlign: "right"
         }),
         times: Object.assign({}, base.times, {
-          gridColumn: "6", gridRow: "1", justifySelf: "end",
-          fontSize: "10px", minWidth: "auto", textAlign: "right"
+          flex: "0 0 auto", fontSize: "10px", minWidth: "auto", textAlign: "right"
         }),
         filterBar: Object.assign({}, base.filterBar, { gap: "6px", padding: "6px 12px", borderBottom: "none" }),
         filterChip: Object.assign({}, base.filterChip, { height: "20px", padding: "0 9px", background: c.bg, border: "1px solid " + c.borderSoft }),

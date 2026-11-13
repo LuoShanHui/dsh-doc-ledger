@@ -65,6 +65,10 @@
 
     var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
+      // Read through a ref inside memoised callbacks: recreating them on every theme change would
+      // invalidate every memoised card.
+      var styleThemeRef = react.useRef(theme);
+      styleThemeRef.current = theme;
       var setTheme = themeState[1];
       react.useEffect(function () {
         setStyleTheme(theme);
@@ -120,6 +124,12 @@
       var limitState = react.useState(function () { return Number(loadPref("sessionLimit", 0)) || 0; });
       var sessionLimit = limitState[0];
       var setSessionLimit = limitState[1];
+
+      // The grid preset opens a session in a right-hand drawer instead of expanding its tile.
+      // Holds the session object (or null when closed).
+      var drawerState = react.useState(null);
+      var drawer = drawerState[0];
+      var setDrawer = drawerState[1];
 
       var cardOpenState = react.useState({});
       var cardOpen = cardOpenState[0];
@@ -983,6 +993,17 @@
       // Stable dispatchers: memoised cards must not see a new callback on every render.
       var rowHandlers = useHandlers({ open: openDefault, quick: openPreview, menu: openFileMenu, sortMenu: openSortMenu, sessionMenu: openSessionMenu });
       var toggleCard = react.useCallback(function (id) {
+        // The grid preset does not expand in place: a tile that grows many times taller than its
+        // neighbours leaves a hole the grid cannot backfill and shoves every later card down,
+        // which reads as the board breaking. The drawer shows the session beside an untouched
+        // board instead. Every other preset keeps the in-place expansion.
+        if (styleThemeRef.current === "grid") {
+          setDrawer(function (previous) {
+            if (previous !== null && previous.sessionId === id) return null;
+            return { sessionId: id };
+          });
+          return;
+        }
         // Clicking a card always mounts it, even when it is far below the fold.
         var list = listRef.current;
         if (list !== null && list !== undefined) {
@@ -1372,6 +1393,62 @@
         }, everyOpen === true || bulkBusy === true ? t("expand.collapse") : t("expand.expand")) : null
       );
 
+      /**
+       * The session drawer, for the grid preset.
+       *
+       * It lists the same rows the expanded card would have shown, but leaves the board alone.
+       * The session is looked up by id so a refresh that replaces every object cannot leave the
+       * drawer pointing at stale files.
+       */
+      var renderDrawer = function () {
+        if (drawer === null) return null;
+        var found = null;
+        for (var i = 0; i < sessions.length; i += 1) {
+          if (sessions[i].sessionId === drawer.sessionId) { found = sessions[i]; break; }
+        }
+        if (found === null) return null;
+        var files = found.files || [];
+        var rows = files.filter(passesFilters).slice(0, 200).map(function (file, ordinal) {
+          return h(FileRow, {
+            key: "drawer:" + (file.path || "") + ":" + ordinal,
+            file: file,
+            // -1: these rows are outside the keyboard-navigable list, so they take no tab stop
+            // and never collide with the main list's active-row index.
+            index: -1,
+            mode: usedSort,
+            parity: ordinal % 2,
+            active: false,
+            query: query,
+            onOpen: rowHandlers.open,
+            onQuick: rowHandlers.quick,
+            onMenu: rowHandlers.menu
+          });
+        });
+        return h(react.Fragment, null,
+          h("div", { style: S.scrim, onClick: function () { setDrawer(null); } }),
+          h("div", { style: S.drawer, role: "dialog", "aria-label": found.title || found.sessionId },
+            h("div", { style: S.drawerHead },
+              h("span", { style: S.drawerTitle, title: found.title || found.sessionId }, found.title || found.sessionId),
+              h("button", {
+                type: "button",
+                style: S.drawerClose,
+                title: t("preview.close"),
+                "aria-label": t("preview.close"),
+                onClick: function () { setDrawer(null); }
+              }, "\u2715")
+            ),
+            h("div", { style: S.drawerMeta }, t("drawer.meta", {
+              used: (found.counts && found.counts.used) || 0,
+              created: (found.counts && found.counts.created) || 0,
+              files: files.length
+            })),
+            h("div", { style: S.drawerBody }, rows.length === 0
+              ? h("div", { style: S.empty }, t("empty.noMatch"))
+              : rows)
+          )
+        );
+      };
+
       return h("div", { "data-doc-ledger-root": "1", style: S.root, onClick: function () { if (menu !== null) setMenu(null); } },
         header,
         summaryLine,
@@ -1381,6 +1458,7 @@
         h("div", { ref: listRef, style: S.list, onScroll: onListScroll }, body),
         h(Menu, { menu: menu, onPick: act, onClose: function () { setMenu(null); } }),
         renderModal(),
+        renderDrawer(),
         toast === null ? null : h("div", {
           style: Object.assign({}, S.toast, toast.kind === "error" ? S.toastError : S.toastOk),
           role: "status",
