@@ -41,6 +41,21 @@ check("report 生成器能把一份日志折成 HTML 报告", async () => {
   assert.equal(result.data.sessions[0].files.length, 2);
 });
 
+check("CI 矩阵不得低于 engines 声明的下限", () => {
+  // The matrix used to run 18/20/22 while `engines` said >=22.15, so two of the three legs
+  // failed for a reason that had nothing to do with the change under test. Pin the two together.
+  const ci = readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf8");
+  const matrix = ci.match(/node:\s*\[([^\]]+)\]/);
+  assert.ok(matrix !== null, "ci.yml must declare a node matrix");
+  const versions = matrix[1].split(",").map((s) => Number(s.replace(/["'\s]/g, "").split(".")[0]));
+  const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const min = Number(String(manifest.engines?.node ?? "").replace(/^>=/, "").split(".")[0]);
+  for (const v of versions) {
+    assert.ok(Number.isFinite(v), "matrix entry must parse");
+    assert.ok(v >= min, "matrix node " + v + " is below engines floor " + min);
+  }
+});
+
 check("engines 声明的 Node 版本真的带 zstd 解压", async () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const min = String(pkg.engines?.node ?? "").replace(/^>=/, "").split(".").map(Number);
