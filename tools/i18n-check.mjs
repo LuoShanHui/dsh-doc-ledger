@@ -54,7 +54,23 @@ const DYNAMIC = new Set([
   "category.doc", "category.sheet", "category.slide", "category.image", "category.code",
   "category.web", "category.config", "category.data", "category.archive", "category.other",
   "sort.lastUsed", "sort.firstUsed", "sort.reads", "sort.exists", "sort.type", "sort.path",
-  "sort.createdAt", "sort.updatedAt", "sort.writes"
+  "sort.createdAt", "sort.updatedAt", "sort.writes",
+  // reached through a lookup table (categoryLabel / theme.<id>)
+  "category.doc",
+  "category.sheet",
+  "category.slide",
+  "category.image",
+  "category.code",
+  "category.web",
+  "category.config",
+  "category.data",
+  "category.media",
+  "category.archive",
+  "category.binary",
+  "category.other",
+  "theme.card",
+  "theme.compact",
+  "theme.grid"
 ]);
 
 const referenced = new Set();

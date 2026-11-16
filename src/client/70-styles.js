@@ -266,6 +266,20 @@
         // row: a left rail plus an indent ties it to the family above it. Without that, two
         // wrapping rows look like two independent filter bars.
         extBar: { display: "flex", alignItems: "center", gap: "4px", padding: "4px 8px 4px 10px", flexWrap: "wrap", marginLeft: "8px", borderLeft: "2px solid " + c.accentSoft },
+        // The type picker is a tree, not a flat menu: a family row has a checkbox and, when it has
+        // more than one extension, a nested list of extensions under it. It stays open while rows
+        // are ticked, because choosing a type is usually a few clicks in a row.
+        typePanel: { position: "absolute", zIndex: 80, width: "260px", padding: "4px", borderRadius: c.radius.md, background: c.bg, border: "1px solid " + c.border, boxShadow: c.shadowMenu },
+        typePanelHead: { display: "flex", alignItems: "center", gap: "6px", padding: "4px 6px 6px", borderBottom: "1px solid " + c.borderSoft, color: c.textFaint, fontSize: "11px" },
+        typeRow: { display: "flex", alignItems: "center", gap: "6px", height: "26px", padding: "0 6px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "12px", color: c.text },
+        typeRowOn: { display: "flex", alignItems: "center", gap: "6px", height: "26px", padding: "0 6px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "12px", color: c.accent, fontWeight: 600, background: c.accentSoft },
+        typeCount: { color: c.textFaint, fontSize: "11px", fontVariantNumeric: "tabular-nums" },
+        typeCountOn: { color: c.accent, fontSize: "11px", fontVariantNumeric: "tabular-nums", opacity: 0.85 },
+        typeTwisty: { width: "12px", flex: "0 0 auto", color: c.textFaint, fontSize: "10px" },
+        // Extensions sit indented under their family, so the hierarchy is visible at a glance.
+        typeExtRow: { display: "flex", alignItems: "center", gap: "6px", height: "24px", padding: "0 6px 0 26px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "11px", color: c.textDim },
+        typeExtRowOn: { display: "flex", alignItems: "center", gap: "6px", height: "24px", padding: "0 6px 0 26px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "11px", color: c.accent, fontWeight: 600, background: c.accentSoft },
+        typeEmpty: { padding: "10px 8px", color: c.textFaint, fontSize: "11px" },
         filterLabel: { color: c.textFaint, fontSize: "11px", marginRight: "1px" },
         filterChip: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: "transparent", color: c.textDim, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
         filterChipOn: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: c.accent, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },

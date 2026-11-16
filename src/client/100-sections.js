@@ -302,6 +302,143 @@
         && prev.modifiedLabel === next.modifiedLabel;
     });
 
+    /**
+     * The type picker: a two-level tree in one popup.
+     *
+     * Why a popup rather than rows of chips: on a real ledger one extension dominates (`.java` was
+     * 46% of 2262 files and 81% of its family), so an always-visible second row spent its width on
+     * one-to-three-file chips, and five of nine families had exactly one extension — a second level
+     * with nothing to choose. A tree shows the hierarchy once, expands only where there is a choice,
+     * and costs no height in the toolbar.
+     *
+     * It is a controlled multi-select: rows stay open while ticking, because narrowing by type is
+     * usually several clicks in a row, and closing after each one would force a re-open every time.
+     */
+    function TypePanel(props) {
+      var h = react.createElement;
+      useStyles();
+      var boxRef = react.useRef(null);
+      var open = props.panel !== null && props.panel !== undefined;
+      // Which families are expanded. Kept here rather than in the parent so a re-render of the
+      // frame (a refresh tick, say) does not collapse what the reader just opened.
+      var treeState = react.useState({});
+      var expanded = treeState[0];
+      var setExpanded = treeState[1];
+
+      react.useEffect(function () {
+        if (open !== true) return undefined;
+        var box = boxRef.current;
+        if (box !== null) {
+          var first = box.querySelector("[data-type-row='1']");
+          (first !== null ? first : box).focus();
+        }
+        var trigger = props.panel && props.panel.returnFocus ? props.panel.returnFocus : null;
+        return function () {
+          if (trigger !== null && typeof trigger.focus === "function") {
+            try { trigger.focus(); } catch (error) { /* the trigger may be gone after a refresh */ }
+          }
+        };
+      }, [open]);
+
+      if (open !== true) return null;
+      var panel = props.panel;
+      var bounds = panel.bounds || { w: 420, h: 640 };
+      var top = Math.min(panel.y, Math.max(4, bounds.h - 260));
+      var maxHeight = Math.max(140, bounds.h - top - 8);
+      var tree = panel.tree || [];
+
+      var renderExt = function (family, entry) {
+        var on = panel.ext === entry.ext;
+        var label = entry.ext === "" ? t("filter.noExt") : entry.ext;
+        return h("div", {
+          key: "x:" + family + ":" + entry.ext,
+          style: on ? S.typeExtRowOn : S.typeExtRow,
+          role: "menuitemcheckbox",
+          "aria-checked": on,
+          tabIndex: -1,
+          "data-type-row": "1",
+          onMouseEnter: function (event) { if (on !== true) event.currentTarget.style.background = S.menuHover; },
+          onMouseLeave: function (event) { if (on !== true) event.currentTarget.style.background = "transparent"; },
+          onClick: function (event) {
+            event.stopPropagation();
+            props.onPickExt(on ? "" : entry.ext);
+          }
+        },
+          h("span", { style: S.typeTwisty }, on ? "\u2713" : ""),
+          h("span", { style: { flex: "1", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, label),
+          h("span", { style: on ? S.typeCountOn : S.typeCount }, String(entry.count))
+        );
+      };
+
+      var rows = [];
+      tree.forEach(function (family) {
+        var on = panel.families[family.key] === true;
+        var isOpen = expanded[family.key] === true;
+        // Only offer a second level where there is an actual choice to make.
+        var nestable = (family.exts || []).length >= 2;
+        rows.push(h("div", {
+          key: "f:" + family.key,
+          style: on ? S.typeRowOn : S.typeRow,
+          role: "menuitemcheckbox",
+          "aria-checked": on,
+          tabIndex: -1,
+          "data-type-row": "1",
+          onMouseEnter: function (event) { if (on !== true) event.currentTarget.style.background = S.menuHover; },
+          onMouseLeave: function (event) { if (on !== true) event.currentTarget.style.background = "transparent"; },
+          onClick: function (event) {
+            event.stopPropagation();
+            // The twisty has its own hit area, so expanding never changes the selection.
+            if (nestable && event.target === event.currentTarget.firstChild) {
+              setExpanded(function (previous) {
+                var next = Object.assign({}, previous);
+                next[family.key] = previous[family.key] !== true;
+                return next;
+              });
+              return;
+            }
+            props.onPickFamily(family.key);
+          }
+        },
+          h("span", {
+            style: Object.assign({}, S.typeTwisty, { cursor: nestable ? "pointer" : "default" }),
+            onClick: function (event) {
+              if (!nestable) return;
+              event.stopPropagation();
+              setExpanded(function (previous) {
+                var next = Object.assign({}, previous);
+                next[family.key] = previous[family.key] !== true;
+                return next;
+              });
+            }
+          }, nestable ? (isOpen ? "\u25be" : "\u25b8") : ""),
+          h("span", { style: { flex: "1", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, categoryLabel(family.key)),
+          h("span", { style: on ? S.typeCountOn : S.typeCount }, String(family.count))
+        ));
+        if (nestable && isOpen) {
+          (family.exts || []).forEach(function (entry) { rows.push(renderExt(family.key, entry)); });
+        }
+      });
+
+      return h("div", {
+        ref: boxRef,
+        style: Object.assign({}, S.typePanel, { left: Math.max(4, Math.min(panel.x, bounds.w - 268)) + "px", top: top + "px", maxHeight: maxHeight + "px", overflowY: "auto" }),
+        role: "menu",
+        "aria-label": t("filter.typePick"),
+        tabIndex: -1,
+        onClick: function (event) { event.stopPropagation(); }
+      },
+        h("div", { style: S.typePanelHead },
+          h("span", { style: { flex: 1 } }, t("filter.typePick")),
+          (props.active === true ? h("button", {
+            type: "button",
+            style: S.filterAction,
+            onClick: function (event) { event.stopPropagation(); props.onClear(); }
+          }, t("filter.clear")) : null)
+        ),
+        rows.length === 0 ? h("div", { style: S.typeEmpty }, t("filter.noTypes")) : rows
+      );
+    }
+
     /** One popup for both the row context menu and the sort picker. */
     function Menu(props) {
       var h = react.createElement;

@@ -759,7 +759,7 @@ tools/registry-check.mjs       marketplace entry: icon path exists, bitmap icon 
 tools/report-check.mjs         static report generation + the zstd/engines contract
 ```
 
-`npm test` runs twelve check scripts in order (engine 14 + decoder 10 + routes/security 23 + cache 12 + client 64 + theme 9 + row time 6 + i18n 1 + README parity 11 + release notes 13 + registry 3 + report 2 = **168 checks**, no external dependencies), and CI runs them on three Node versions. The i18n suite is one case covering 201 keys. CI also runs `npm run check:client` to
+`npm test` runs twelve check scripts in order (engine 14 + decoder 10 + routes/security 23 + cache 12 + client 64 + theme 9 + row time 6 + i18n 1 + README parity 11 + release notes 13 + registry 3 + report 2 = **168 checks**, no external dependencies), and CI runs them on three Node versions. The i18n suite is one case covering 197 keys. CI also runs `npm run check:client` to
 prove that the committed `client.js` matches `src/client/*.js` byte for byte.
 
 For UI changes, look at the panel in a browser with `npm run harness`: it serves the real `client.js` against
