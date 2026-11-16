@@ -164,7 +164,9 @@
       // Drop the session as soon as the view that shows it is gone, so the state can never
       // outlive its own rendering condition.
       react.useEffect(function () {
-        if (entered !== null && enteredVisible !== true) setEntered(null);
+        if (entered !== null && enteredVisible !== true) {
+          setEntered(null);
+        }
       }, [entered, enteredVisible]);
 
       var cardOpenState = react.useState({});
@@ -1015,23 +1017,6 @@
       }
       var enteredCounts = (enteredSession !== null && enteredSession.counts) || null;
 
-      var summaryLine = ready ? h("div", { style: S.summary },
-        (enteredCounts !== null
-          ? t("enter.summary", {
-              used: enteredCounts.used || 0,
-              created: enteredCounts.created || 0,
-              reads: enteredCounts.reads || 0,
-              writes: enteredCounts.writes || 0
-            })
-          : t("summary.line", { sessions: summary.sessions || 0, used: summary.used || 0, created: summary.created || 0, reads: summary.reads || 0, writes: summary.writes || 0 })) +
-        (filterActive && enteredCounts === null ? t("summary.filteredLine", { files: t("summary.countFiles", { n: visible.files }), sessions: t("summary.countSessions", { n: visible.sessions }) }) : "") +
-        (payload.truncated === true && enteredCounts === null ? t("summary.onlyRecentLine", { shown: payload.maxSessions, total: payload.totalSessions }) : ""),
-        payload.truncated === true && scope === "all" ? h("button", {
-          type: "button",
-          style: Object.assign({}, S.button, { marginLeft: "8px", padding: "1px 8px", fontSize: "11px" }),
-          onClick: function () { loadEarlier(payload.maxSessions || 40); }
-        }, t("summary.loadEarlier")) : null
-      ) : null;
 
       // What the export actions copy: the rows currently visible after scope + search.
       var exportRows = [];
@@ -1231,6 +1216,44 @@
         };
         step();
       };
+
+      // Built here, after `everyOpen` and `toggleAllCards`, because this row carries the
+      // "expand all" control and both of those are declared below the data summary.
+      //
+      // That control used to end the filter row. The filter row wraps, so an auto-margined last
+      // child lands on whatever line the chips finish on: measured, the row grew 32px -> 56px and
+      // the control moved to a second line, shifting everything below it. This row does not wrap.
+      var expandAllButton = scope === "all" && separate ? h("button", {
+        type: "button",
+        style: Object.assign({}, S.filterAction, { flex: "0 0 auto" }),
+        title: everyOpen === true || bulkBusy === true ? t("expand.collapseTitle") : t("expand.expandTitle"),
+        "aria-busy": bulkBusy === true,
+        onMouseEnter: hoverOn,
+        onMouseLeave: hoverOff,
+        onFocus: ringOn,
+        onBlur: ringOff,
+        onClick: toggleAllCards
+      }, everyOpen === true || bulkBusy === true ? t("expand.collapse") : t("expand.expand")) : null;
+
+      var summaryLine = ready ? h("div", { style: S.summary },
+        h("span", { style: S.summaryText },
+          (enteredCounts !== null
+            ? t("enter.summary", {
+                used: enteredCounts.used || 0,
+                created: enteredCounts.created || 0,
+                reads: enteredCounts.reads || 0,
+                writes: enteredCounts.writes || 0
+              })
+            : t("summary.line", { sessions: summary.sessions || 0, used: summary.used || 0, created: summary.created || 0, reads: summary.reads || 0, writes: summary.writes || 0 })) +
+          (filterActive && enteredCounts === null ? t("summary.filteredLine", { files: t("summary.countFiles", { n: visible.files }), sessions: t("summary.countSessions", { n: visible.sessions }) }) : "") +
+          (payload.truncated === true && enteredCounts === null ? t("summary.onlyRecentLine", { shown: payload.maxSessions, total: payload.totalSessions }) : "")),
+        payload.truncated === true && scope === "all" ? h("button", {
+          type: "button",
+          style: Object.assign({}, S.button, { flex: "0 0 auto", padding: "1px 8px", fontSize: "11px" }),
+          onClick: function () { loadEarlier(payload.maxSessions || 40); }
+        }, t("summary.loadEarlier")) : null,
+        expandAllButton
+      ) : null;
 
       var sectionsOf = function (id) {
         return {
@@ -1482,17 +1505,6 @@
             setDeletedOnly(false);
           }
         }, h("span", { style: S.filterActionGlyph, "aria-hidden": "true" }, "✕"), t("filter.clear")) : null,
-        scope === "all" && separate ? h("button", {
-          type: "button",
-          style: Object.assign({}, S.filterAction, { marginLeft: "auto" }),
-          title: everyOpen === true || bulkBusy === true ? t("expand.collapseTitle") : t("expand.expandTitle"),
-          "aria-busy": bulkBusy === true,
-          onMouseEnter: hoverOn,
-          onMouseLeave: hoverOff,
-          onFocus: ringOn,
-          onBlur: ringOff,
-          onClick: toggleAllCards
-        }, everyOpen === true || bulkBusy === true ? t("expand.collapse") : t("expand.expand")) : null
       );
 
       return h("div", { "data-doc-ledger-root": "1", style: S.root, onClick: function () { if (menu !== null) setMenu(null); } },

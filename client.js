@@ -1173,7 +1173,12 @@ window.__ModuleLoader__.load({
         input: { flex: "1 1 120px", minWidth: "80px", height: "22px", padding: "0 7px", borderRadius: c.radius.sm, border: "1px solid " + c.border, background: "transparent", color: "inherit", fontSize: "12px" },
         button: { height: "22px", padding: "0 8px", borderRadius: c.radius.sm, border: "1px solid transparent", background: "transparent", color: c.textDim, fontSize: "12px", cursor: "pointer", minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
         buttonOn: { height: "22px", padding: "0 8px", borderRadius: c.radius.sm, border: "1px solid transparent", background: c.accentSoft, color: c.accent, fontWeight: 600, fontSize: "12px", cursor: "pointer", minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-        summary: { padding: "4px 8px", color: c.textDim, fontSize: "11px", borderBottom: "1px solid " + c.borderSoft },
+        // A flex row that never wraps: the "expand all" control sits at its right end, and a
+        // wrapping row would push that control onto another line (that was the layout shift).
+        summary: { display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", color: c.textDim, fontSize: "11px", borderBottom: "1px solid " + c.borderSoft },
+        // The text is the only flexible cell, so a long summary ellipsises instead of pushing the
+        // control off the row.
+        summaryText: { flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
         notice: { padding: "4px 8px", fontSize: "11px", color: c.warn, background: c.warnSoft, cursor: "pointer" },
         list: { flex: 1, overflowY: "auto", padding: "2px 4px 12px" },
         card: { border: "1px solid " + c.borderSoft, borderRadius: c.radius.sm, marginBottom: "6px", overflow: "hidden", background: c.bg },
@@ -2372,8 +2377,20 @@ window.__ModuleLoader__.load({
         ) : null
       );
     }, function (prev, next) {
+      // Every prop that changes what this card *does* has to be compared, not only the ones that
+      // change what it looks like. `entered` and `headInert` were missing, and so was
+      // `onToggleCard` — which is the prop that decides whether a click enters the session or
+      // collapses the card. React reuses the element by `key`, so leaving the board after entering
+      // a session reused that session's element with its entered-mode handler still attached: the
+      // comparator saw "no change", skipped the update, and the card could never be entered again.
+      // `index` is compared because `onMount` closes over it (comparing the closure itself would
+      // defeat memoisation for every card).
       return prev.session === next.session
         && prev.sessionId === next.sessionId
+        && prev.index === next.index
+        && prev.entered === next.entered
+        && prev.headInert === next.headInert
+        && prev.onToggleCard === next.onToggleCard
         && prev.query === next.query
         && prev.typeSet === next.typeSet
         && prev.deletedOnly === next.deletedOnly
@@ -2610,7 +2627,7 @@ window.__ModuleLoader__.load({
       // Visual theme: compact (original) / airy / table / card. Persisted like the
       // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
       /** Stamped by tools/build-client.mjs as an ISO minute so a stale bundle is obvious. */
-    var BUILD_TAG = "2026-11-16 11:04";
+    var BUILD_TAG = "2026-11-16 11:44";
 
     var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
@@ -2713,7 +2730,9 @@ window.__ModuleLoader__.load({
       // Drop the session as soon as the view that shows it is gone, so the state can never
       // outlive its own rendering condition.
       react.useEffect(function () {
-        if (entered !== null && enteredVisible !== true) setEntered(null);
+        if (entered !== null && enteredVisible !== true) {
+          setEntered(null);
+        }
       }, [entered, enteredVisible]);
 
       var cardOpenState = react.useState({});
@@ -3564,23 +3583,6 @@ window.__ModuleLoader__.load({
       }
       var enteredCounts = (enteredSession !== null && enteredSession.counts) || null;
 
-      var summaryLine = ready ? h("div", { style: S.summary },
-        (enteredCounts !== null
-          ? t("enter.summary", {
-              used: enteredCounts.used || 0,
-              created: enteredCounts.created || 0,
-              reads: enteredCounts.reads || 0,
-              writes: enteredCounts.writes || 0
-            })
-          : t("summary.line", { sessions: summary.sessions || 0, used: summary.used || 0, created: summary.created || 0, reads: summary.reads || 0, writes: summary.writes || 0 })) +
-        (filterActive && enteredCounts === null ? t("summary.filteredLine", { files: t("summary.countFiles", { n: visible.files }), sessions: t("summary.countSessions", { n: visible.sessions }) }) : "") +
-        (payload.truncated === true && enteredCounts === null ? t("summary.onlyRecentLine", { shown: payload.maxSessions, total: payload.totalSessions }) : ""),
-        payload.truncated === true && scope === "all" ? h("button", {
-          type: "button",
-          style: Object.assign({}, S.button, { marginLeft: "8px", padding: "1px 8px", fontSize: "11px" }),
-          onClick: function () { loadEarlier(payload.maxSessions || 40); }
-        }, t("summary.loadEarlier")) : null
-      ) : null;
 
       // What the export actions copy: the rows currently visible after scope + search.
       var exportRows = [];
@@ -3780,6 +3782,44 @@ window.__ModuleLoader__.load({
         };
         step();
       };
+
+      // Built here, after `everyOpen` and `toggleAllCards`, because this row carries the
+      // "expand all" control and both of those are declared below the data summary.
+      //
+      // That control used to end the filter row. The filter row wraps, so an auto-margined last
+      // child lands on whatever line the chips finish on: measured, the row grew 32px -> 56px and
+      // the control moved to a second line, shifting everything below it. This row does not wrap.
+      var expandAllButton = scope === "all" && separate ? h("button", {
+        type: "button",
+        style: Object.assign({}, S.filterAction, { flex: "0 0 auto" }),
+        title: everyOpen === true || bulkBusy === true ? t("expand.collapseTitle") : t("expand.expandTitle"),
+        "aria-busy": bulkBusy === true,
+        onMouseEnter: hoverOn,
+        onMouseLeave: hoverOff,
+        onFocus: ringOn,
+        onBlur: ringOff,
+        onClick: toggleAllCards
+      }, everyOpen === true || bulkBusy === true ? t("expand.collapse") : t("expand.expand")) : null;
+
+      var summaryLine = ready ? h("div", { style: S.summary },
+        h("span", { style: S.summaryText },
+          (enteredCounts !== null
+            ? t("enter.summary", {
+                used: enteredCounts.used || 0,
+                created: enteredCounts.created || 0,
+                reads: enteredCounts.reads || 0,
+                writes: enteredCounts.writes || 0
+              })
+            : t("summary.line", { sessions: summary.sessions || 0, used: summary.used || 0, created: summary.created || 0, reads: summary.reads || 0, writes: summary.writes || 0 })) +
+          (filterActive && enteredCounts === null ? t("summary.filteredLine", { files: t("summary.countFiles", { n: visible.files }), sessions: t("summary.countSessions", { n: visible.sessions }) }) : "") +
+          (payload.truncated === true && enteredCounts === null ? t("summary.onlyRecentLine", { shown: payload.maxSessions, total: payload.totalSessions }) : "")),
+        payload.truncated === true && scope === "all" ? h("button", {
+          type: "button",
+          style: Object.assign({}, S.button, { flex: "0 0 auto", padding: "1px 8px", fontSize: "11px" }),
+          onClick: function () { loadEarlier(payload.maxSessions || 40); }
+        }, t("summary.loadEarlier")) : null,
+        expandAllButton
+      ) : null;
 
       var sectionsOf = function (id) {
         return {
@@ -4031,17 +4071,6 @@ window.__ModuleLoader__.load({
             setDeletedOnly(false);
           }
         }, h("span", { style: S.filterActionGlyph, "aria-hidden": "true" }, "✕"), t("filter.clear")) : null,
-        scope === "all" && separate ? h("button", {
-          type: "button",
-          style: Object.assign({}, S.filterAction, { marginLeft: "auto" }),
-          title: everyOpen === true || bulkBusy === true ? t("expand.collapseTitle") : t("expand.expandTitle"),
-          "aria-busy": bulkBusy === true,
-          onMouseEnter: hoverOn,
-          onMouseLeave: hoverOff,
-          onFocus: ringOn,
-          onBlur: ringOff,
-          onClick: toggleAllCards
-        }, everyOpen === true || bulkBusy === true ? t("expand.collapse") : t("expand.expand")) : null
       );
 
       return h("div", { "data-doc-ledger-root": "1", style: S.root, onClick: function () { if (menu !== null) setMenu(null); } },

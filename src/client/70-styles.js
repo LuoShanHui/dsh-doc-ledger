@@ -239,7 +239,12 @@
         input: { flex: "1 1 120px", minWidth: "80px", height: "22px", padding: "0 7px", borderRadius: c.radius.sm, border: "1px solid " + c.border, background: "transparent", color: "inherit", fontSize: "12px" },
         button: { height: "22px", padding: "0 8px", borderRadius: c.radius.sm, border: "1px solid transparent", background: "transparent", color: c.textDim, fontSize: "12px", cursor: "pointer", minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
         buttonOn: { height: "22px", padding: "0 8px", borderRadius: c.radius.sm, border: "1px solid transparent", background: c.accentSoft, color: c.accent, fontWeight: 600, fontSize: "12px", cursor: "pointer", minWidth: 0, flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-        summary: { padding: "4px 8px", color: c.textDim, fontSize: "11px", borderBottom: "1px solid " + c.borderSoft },
+        // A flex row that never wraps: the "expand all" control sits at its right end, and a
+        // wrapping row would push that control onto another line (that was the layout shift).
+        summary: { display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", color: c.textDim, fontSize: "11px", borderBottom: "1px solid " + c.borderSoft },
+        // The text is the only flexible cell, so a long summary ellipsises instead of pushing the
+        // control off the row.
+        summaryText: { flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
         notice: { padding: "4px 8px", fontSize: "11px", color: c.warn, background: c.warnSoft, cursor: "pointer" },
         list: { flex: 1, overflowY: "auto", padding: "2px 4px 12px" },
         card: { border: "1px solid " + c.borderSoft, borderRadius: c.radius.sm, marginBottom: "6px", overflow: "hidden", background: c.bg },

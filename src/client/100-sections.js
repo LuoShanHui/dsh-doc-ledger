@@ -271,8 +271,20 @@
         ) : null
       );
     }, function (prev, next) {
+      // Every prop that changes what this card *does* has to be compared, not only the ones that
+      // change what it looks like. `entered` and `headInert` were missing, and so was
+      // `onToggleCard` — which is the prop that decides whether a click enters the session or
+      // collapses the card. React reuses the element by `key`, so leaving the board after entering
+      // a session reused that session's element with its entered-mode handler still attached: the
+      // comparator saw "no change", skipped the update, and the card could never be entered again.
+      // `index` is compared because `onMount` closes over it (comparing the closure itself would
+      // defeat memoisation for every card).
       return prev.session === next.session
         && prev.sessionId === next.sessionId
+        && prev.index === next.index
+        && prev.entered === next.entered
+        && prev.headInert === next.headInert
+        && prev.onToggleCard === next.onToggleCard
         && prev.query === next.query
         && prev.typeSet === next.typeSet
         && prev.deletedOnly === next.deletedOnly
