@@ -1196,6 +1196,10 @@ window.__ModuleLoader__.load({
         mark: { background: c.mark, color: "inherit", borderRadius: "2px", padding: "0 1px" },
         tagMissing: { padding: "0 4px", borderRadius: "3px", background: c.dangerSoft, color: c.danger, whiteSpace: "nowrap", flex: "0 0 auto", fontSize: "10px", lineHeight: "14px" },
         filterBar: { display: "flex", alignItems: "center", gap: "4px", padding: "4px 8px", borderBottom: "1px solid " + c.borderSoft, flexWrap: "wrap" },
+        // Level 2 refines level 1, so it is drawn as a nested row instead of a second peer filter
+        // row: a left rail plus an indent ties it to the family above it. Without that, two
+        // wrapping rows look like two independent filter bars.
+        extBar: { display: "flex", alignItems: "center", gap: "4px", padding: "4px 8px 4px 10px", flexWrap: "wrap", marginLeft: "8px", borderLeft: "2px solid " + c.accentSoft },
         filterLabel: { color: c.textFaint, fontSize: "11px", marginRight: "1px" },
         filterChip: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: "transparent", color: c.textDim, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
         filterChipOn: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: c.accent, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
@@ -2627,7 +2631,7 @@ window.__ModuleLoader__.load({
       // Visual theme: compact (original) / airy / table / card. Persisted like the
       // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
       /** Stamped by tools/build-client.mjs as an ISO minute so a stale bundle is obvious. */
-    var BUILD_TAG = "2026-11-16 11:44";
+    var BUILD_TAG = "2026-11-16 13:55";
 
     var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
@@ -3638,6 +3642,13 @@ window.__ModuleLoader__.load({
         if (next[key] === true) delete next[key]; else next[key] = true;
         setTypeSelection(next);
         savePref("typeFilter", Object.keys(next).filter(function (name) { return next[name] === true; }));
+        // The chosen extension belongs to the family selection that produced it. Changing the
+        // selection invalidates it, and leaving it set made the filter invisible: with the family
+        // cleared (or replaced by a family that has no such extension) nothing on screen showed
+        // which extension was still narrowing the list — measured as a board of zero cards reading
+        // "no documents" while the data was there all along.
+        setExtFilter("");
+        savePref("extFilter", "");
       };
 
       /** Widen the all-sessions page and refetch it, keeping the current scroll target. */
@@ -3970,21 +3981,39 @@ window.__ModuleLoader__.load({
       // The second level appears only when a single family is selected AND that family actually
       // has more than one extension in the current data. Otherwise it would be a row of one chip
       // repeating the family the reader just clicked.
+      // Level 2 covers every selected family, not just a single one. The family row has always
+      // allowed several families at once, so restricting the extension row to exactly one left the
+      // second level vanishing the moment a second family was picked.
       var selectedFamilies = typeSet === null ? [] : Object.keys(typeSet);
-      var showExtRow = selectedFamilies.length === 1;
+      var showExtRow = selectedFamilies.length > 0;
+
+      // Count what the reader would actually see: same predicate as the list, minus the extension
+      // term itself (otherwise picking an extension would zero out every other chip's count).
       var familyFiles = [];
       if (showExtRow) {
-        var onlyFamily = selectedFamilies[0];
+        var familyFilter = {};
+        selectedFamilies.forEach(function (name) { familyFilter[name] = true; });
         sessions.forEach(function (session) {
           (session.files || []).forEach(function (file) {
-            if (String(file.category || "other") === onlyFamily) familyFiles.push(file);
+            if (familyFilter[String(file.category || "other")] !== true) return;
+            if (deletedOnly === true && file.exists !== false) return;
+            if (!matches(file, query)) return;
+            familyFiles.push(file);
           });
         });
       }
       var census = showExtRow ? extensionCensus(familyFiles, null) : [];
       var extChipsPartition = showExtRow ? extensionChips(census, EXT_CHIP_MAX) : { shown: [], hidden: 0, hiddenFiles: 0 };
-      var acceptExtFilter = showExtRow && extChipsPartition.shown.length >= 2;
-      var extRow = acceptExtFilter ? h("div", { style: S.filterBar },
+      /**
+       * Whether the second level is worth a row.
+       *
+       * "Two or more extensions" was the original rule, and it made the row flicker away while
+       * typing: narrowing the search to one extension left nothing to choose, so the row vanished
+       * and then came back when the query was cleared. The row now stays for as long as a family is
+       * selected, unless the census is empty — an empty row would be a label with no choices.
+       */
+      var acceptExtFilter = showExtRow && census.length > 0;
+      var extRow = acceptExtFilter ? h("div", { style: S.extBar },
         h("span", { style: S.filterLabel }, t("filter.extLabel")),
         h("button", {
           type: "button",
@@ -4053,8 +4082,10 @@ window.__ModuleLoader__.load({
           h("span", { style: deletedOnly === true ? S.chipCountOn : S.chipCount }, String(visible.deleted))
         ),
         // A reset is an action, not a filter: a hairline divider plus a ghost button.
-        typeSet !== null || deletedOnly === true ? h("span", { style: S.filterDivider, "aria-hidden": "true" }) : null,
-        typeSet !== null || deletedOnly === true ? h("button", {
+        // `extFilter` counts too: it is a filter, and when it is the only one left the reset must
+        // still be reachable. Previously it could be set with no visible way to clear it.
+        typeSet !== null || deletedOnly === true || extFilter !== "" ? h("span", { style: S.filterDivider, "aria-hidden": "true" }) : null,
+        typeSet !== null || deletedOnly === true || extFilter !== "" ? h("button", {
           type: "button",
           style: S.filterAction,
           title: t("filter.clearTitle"),

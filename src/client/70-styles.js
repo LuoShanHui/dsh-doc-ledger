@@ -262,6 +262,10 @@
         mark: { background: c.mark, color: "inherit", borderRadius: "2px", padding: "0 1px" },
         tagMissing: { padding: "0 4px", borderRadius: "3px", background: c.dangerSoft, color: c.danger, whiteSpace: "nowrap", flex: "0 0 auto", fontSize: "10px", lineHeight: "14px" },
         filterBar: { display: "flex", alignItems: "center", gap: "4px", padding: "4px 8px", borderBottom: "1px solid " + c.borderSoft, flexWrap: "wrap" },
+        // Level 2 refines level 1, so it is drawn as a nested row instead of a second peer filter
+        // row: a left rail plus an indent ties it to the family above it. Without that, two
+        // wrapping rows look like two independent filter bars.
+        extBar: { display: "flex", alignItems: "center", gap: "4px", padding: "4px 8px 4px 10px", flexWrap: "wrap", marginLeft: "8px", borderLeft: "2px solid " + c.accentSoft },
         filterLabel: { color: c.textFaint, fontSize: "11px", marginRight: "1px" },
         filterChip: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: "transparent", color: c.textDim, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
         filterChipOn: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: c.accent, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },

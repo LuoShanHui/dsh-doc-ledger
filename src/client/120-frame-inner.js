@@ -1072,6 +1072,13 @@
         if (next[key] === true) delete next[key]; else next[key] = true;
         setTypeSelection(next);
         savePref("typeFilter", Object.keys(next).filter(function (name) { return next[name] === true; }));
+        // The chosen extension belongs to the family selection that produced it. Changing the
+        // selection invalidates it, and leaving it set made the filter invisible: with the family
+        // cleared (or replaced by a family that has no such extension) nothing on screen showed
+        // which extension was still narrowing the list — measured as a board of zero cards reading
+        // "no documents" while the data was there all along.
+        setExtFilter("");
+        savePref("extFilter", "");
       };
 
       /** Widen the all-sessions page and refetch it, keeping the current scroll target. */
@@ -1404,21 +1411,39 @@
       // The second level appears only when a single family is selected AND that family actually
       // has more than one extension in the current data. Otherwise it would be a row of one chip
       // repeating the family the reader just clicked.
+      // Level 2 covers every selected family, not just a single one. The family row has always
+      // allowed several families at once, so restricting the extension row to exactly one left the
+      // second level vanishing the moment a second family was picked.
       var selectedFamilies = typeSet === null ? [] : Object.keys(typeSet);
-      var showExtRow = selectedFamilies.length === 1;
+      var showExtRow = selectedFamilies.length > 0;
+
+      // Count what the reader would actually see: same predicate as the list, minus the extension
+      // term itself (otherwise picking an extension would zero out every other chip's count).
       var familyFiles = [];
       if (showExtRow) {
-        var onlyFamily = selectedFamilies[0];
+        var familyFilter = {};
+        selectedFamilies.forEach(function (name) { familyFilter[name] = true; });
         sessions.forEach(function (session) {
           (session.files || []).forEach(function (file) {
-            if (String(file.category || "other") === onlyFamily) familyFiles.push(file);
+            if (familyFilter[String(file.category || "other")] !== true) return;
+            if (deletedOnly === true && file.exists !== false) return;
+            if (!matches(file, query)) return;
+            familyFiles.push(file);
           });
         });
       }
       var census = showExtRow ? extensionCensus(familyFiles, null) : [];
       var extChipsPartition = showExtRow ? extensionChips(census, EXT_CHIP_MAX) : { shown: [], hidden: 0, hiddenFiles: 0 };
-      var acceptExtFilter = showExtRow && extChipsPartition.shown.length >= 2;
-      var extRow = acceptExtFilter ? h("div", { style: S.filterBar },
+      /**
+       * Whether the second level is worth a row.
+       *
+       * "Two or more extensions" was the original rule, and it made the row flicker away while
+       * typing: narrowing the search to one extension left nothing to choose, so the row vanished
+       * and then came back when the query was cleared. The row now stays for as long as a family is
+       * selected, unless the census is empty — an empty row would be a label with no choices.
+       */
+      var acceptExtFilter = showExtRow && census.length > 0;
+      var extRow = acceptExtFilter ? h("div", { style: S.extBar },
         h("span", { style: S.filterLabel }, t("filter.extLabel")),
         h("button", {
           type: "button",
@@ -1487,8 +1512,10 @@
           h("span", { style: deletedOnly === true ? S.chipCountOn : S.chipCount }, String(visible.deleted))
         ),
         // A reset is an action, not a filter: a hairline divider plus a ghost button.
-        typeSet !== null || deletedOnly === true ? h("span", { style: S.filterDivider, "aria-hidden": "true" }) : null,
-        typeSet !== null || deletedOnly === true ? h("button", {
+        // `extFilter` counts too: it is a filter, and when it is the only one left the reset must
+        // still be reachable. Previously it could be set with no visible way to clear it.
+        typeSet !== null || deletedOnly === true || extFilter !== "" ? h("span", { style: S.filterDivider, "aria-hidden": "true" }) : null,
+        typeSet !== null || deletedOnly === true || extFilter !== "" ? h("button", {
           type: "button",
           style: S.filterAction,
           title: t("filter.clearTitle"),
