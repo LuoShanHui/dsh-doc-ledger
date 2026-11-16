@@ -69,6 +69,10 @@
       // invalidate every memoised card.
       var styleThemeRef = react.useRef(theme);
       styleThemeRef.current = theme;
+      // Same reason as styleThemeRef: the memoised card callbacks must see the current grouping
+      // mode without being recreated on every toggle.
+      var separateRef = react.useRef(separate);
+      separateRef.current = separate;
       var setTheme = themeState[1];
       react.useEffect(function () {
         setStyleTheme(theme);
@@ -141,6 +145,27 @@
       var enteredOpenState = react.useState(true);
       var enteredOpen = enteredOpenState[0];
       var setEnteredOpen = enteredOpenState[1];
+
+      /**
+       * The single answer to "is a session being shown in place of the board".
+       *
+       * This used to be two different conditions: the click handler required
+       * `theme === "grid" && scope !== "current"` while the renderer required
+       * `theme === "grid" && separate`. Nothing kept them in step, so `entered` could outlive the
+       * view that shows it. Two reported bugs came straight out of that gap:
+       *   - switching theme away and back silently re-entered the session (the state had merely
+       *     been hidden, never cleared);
+       *   - after switching to "current session" the entered card was still shown and the back bar
+       *     still said "all sessions".
+       * Both sides now read this one value.
+       */
+      var enteredVisible = entered !== null && theme === "grid" && separate && scope !== "current";
+
+      // Drop the session as soon as the view that shows it is gone, so the state can never
+      // outlive its own rendering condition.
+      react.useEffect(function () {
+        if (entered !== null && enteredVisible !== true) setEntered(null);
+      }, [entered, enteredVisible]);
 
       var cardOpenState = react.useState({});
       var cardOpen = cardOpenState[0];
@@ -979,10 +1004,28 @@
         return right.count - left.count || left.key.localeCompare(right.key);
       });
 
+      // Resolved here rather than beside the cards because the summary needs it too: while a
+      // session is entered the card list is that one session, and a header still reporting the whole
+      // board ("3 sessions · …") contradicted what was on screen.
+      var enteredSession = null;
+      if (enteredVisible === true) {
+        for (var ei = 0; ei < sessions.length; ei += 1) {
+          if (sessions[ei].sessionId === entered) { enteredSession = sessions[ei]; break; }
+        }
+      }
+      var enteredCounts = (enteredSession !== null && enteredSession.counts) || null;
+
       var summaryLine = ready ? h("div", { style: S.summary },
-        t("summary.line", { sessions: summary.sessions || 0, used: summary.used || 0, created: summary.created || 0, reads: summary.reads || 0, writes: summary.writes || 0 }) +
-        (filterActive ? t("summary.filteredLine", { files: t("summary.countFiles", { n: visible.files }), sessions: t("summary.countSessions", { n: visible.sessions }) }) : "") +
-        (payload.truncated === true ? t("summary.onlyRecentLine", { shown: payload.maxSessions, total: payload.totalSessions }) : ""),
+        (enteredCounts !== null
+          ? t("enter.summary", {
+              used: enteredCounts.used || 0,
+              created: enteredCounts.created || 0,
+              reads: enteredCounts.reads || 0,
+              writes: enteredCounts.writes || 0
+            })
+          : t("summary.line", { sessions: summary.sessions || 0, used: summary.used || 0, created: summary.created || 0, reads: summary.reads || 0, writes: summary.writes || 0 })) +
+        (filterActive && enteredCounts === null ? t("summary.filteredLine", { files: t("summary.countFiles", { n: visible.files }), sessions: t("summary.countSessions", { n: visible.sessions }) }) : "") +
+        (payload.truncated === true && enteredCounts === null ? t("summary.onlyRecentLine", { shown: payload.maxSessions, total: payload.totalSessions }) : ""),
         payload.truncated === true && scope === "all" ? h("button", {
           type: "button",
           style: Object.assign({}, S.button, { marginLeft: "8px", padding: "1px 8px", fontSize: "11px" }),
@@ -1007,7 +1050,7 @@
         // In the grid preset a click enters the session: the board is replaced by that session's
         // card. Only "all sessions" is affected; "current session" already is a single card and
         // keeps the ordinary expansion below.
-        if (styleThemeRef.current === "grid" && scopeRef.current !== "current") {
+        if (styleThemeRef.current === "grid" && separateRef.current === true && scopeRef.current !== "current") {
           setEntered(function (previous) { return previous === id ? null : id; });
           setEnteredOpen(true);
           return;
@@ -1217,7 +1260,14 @@
           usedLabel: labelOf(USED_KEYS, usedSort),
           createdLabel: labelOf(CREATED_KEYS, createdSort),
           modifiedLabel: labelOf(MODIFIED_KEYS, modifiedSort),
-          open: override !== undefined ? override : (scope === "current"),
+          // A grid board card is never expanded: clicking it enters the session instead (see
+          // toggleCard). Honouring a stale `cardOpen` entry left over from another preset made one
+          // card 595px tall beside 35px neighbours — measured exactly that — which is the hole this
+          // preset exists to avoid. "current session" keeps the ordinary behaviour: one card, and
+          // it is open by default.
+          open: (theme === "grid" && scope !== "current" && separate === true)
+            ? false
+            : (override !== undefined ? override : (scope === "current")),
           usedOpen: sections.usedOpen,
           createdOpen: sections.createdOpen,
           modifiedOpen: sections.modifiedOpen,
@@ -1243,12 +1293,7 @@
       // Grid preset, "all sessions", a session entered: exactly one full-width card, always open,
       // with a back affordance above it. The board is not rendered at all, so nothing is covered
       // and nothing shifts.
-      var enteredSession = null;
-      if (entered !== null && theme === "grid" && separate) {
-        for (var ei = 0; ei < sessions.length; ei += 1) {
-          if (sessions[ei].sessionId === entered) { enteredSession = sessions[ei]; break; }
-        }
-      }
+      // `enteredSession` was resolved above, next to the summary that also needs it.
       if (enteredSession !== null) {
         var enteredProps = cardProps(enteredSession, 0);
         // Its own collapsed/expanded state, independent of the board's. Reading it through the
@@ -1262,7 +1307,12 @@
           setEnteredOpen(function (previous) { return previous !== true; });
         };
         enteredProps.entered = true;
-        cards = [h(SessionCard, enteredProps)];
+        // Apply the same rule the board uses before it creates a card. SessionCard returns null when
+        // nothing inside it matches, so without this check a filter that matched nothing in this
+        // session deleted the card but left the back bar sitting over a blank area — measured: card
+        // absent, back bar present, no empty-state text anywhere. With the card withheld, `body`
+        // falls through to the normal empty message and the back bar remains as the way out.
+        cards = hasVisibleRow(enteredSession.files) ? [h(SessionCard, enteredProps)] : [];
       } else if (separate) {
         cards = sessions
           .filter(function (session) { return hasVisibleRow(session.files); })
@@ -1273,6 +1323,9 @@
         flatProps.usedSort = usedSort;
         flatProps.createdSort = createdSort;
         flatProps.open = cardOpen.__flat__ !== false;
+        // Under the grid preset this head does nothing (its toggle returns early), so render it as
+        // a plain element instead of a focusable button.
+        flatProps.headInert = theme === "grid";
         flatProps.onToggleCard = function () {
           // The merged card has nothing to enter, and toggling it in the grid preset is a trap:
           // its header looks like every other card's, so a reader clicks it and the whole list

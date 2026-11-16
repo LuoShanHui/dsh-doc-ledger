@@ -195,36 +195,43 @@
       rowCountRef.current = rowCursor;
       return react.createElement("div", {
         ref: cardRef,
-        // An open card spans the grid row so an expanded board does not leave a tall gap beside
-        // it (see the cardOpen style). Only the grid theme defines it; elsewhere it stays null.
-        style: props.open === true && S.cardOpen !== null && S.cardOpen !== undefined
-          ? Object.assign({}, S.card, S.cardOpen)
-          : S.card,
+        style: S.card,
         "data-card": props.sessionId,
         // Focus (keyboard or click) mounts the card, so Tab never lands on a blank body.
         onFocusCapture: function () { props.onMount(); }
       },
-        react.createElement("div", {
-          style: S.cardHead,
-          role: "button",
-          tabIndex: 0,
-          "aria-expanded": props.open === true,
-          "aria-label": (session.title || session.sessionId) + t("section.cardAria"),
-          onFocus: ringOn,
-          onBlur: ringOff,
-          onClick: function () { props.onToggleCard(props.sessionId); },
-          onKeyDown: onActivate(function () { props.onToggleCard(props.sessionId); }),
-          onContextMenu: function (event) {
-            // Right-click on the header is the session menu; the rows keep their own.
-            event.preventDefault();
-            event.stopPropagation();
-            if (typeof props.onSessionMenu === "function") props.onSessionMenu(event, session);
+        react.createElement("div", (function () {
+          // The head is a control only when clicking it does something. The grid preset keeps the
+          // merged card's head deliberately inert, and an inert head must not advertise itself as a
+          // button: it measured role=button, tabIndex=0, aria-expanded=true, with a click that had
+          // no effect — a focusable control that lies about what it does. Right-click still opens
+          // the session menu in both cases.
+          var head = {
+            style: S.cardHead,
+            onContextMenu: function (event) {
+              // Right-click on the header is the session menu; the rows keep their own.
+              event.preventDefault();
+              event.stopPropagation();
+              if (typeof props.onSessionMenu === "function") props.onSessionMenu(event, session);
+            }
+          };
+          if (props.headInert !== true) {
+            head.role = "button";
+            head.tabIndex = 0;
+            head["aria-expanded"] = props.open === true;
+            head["aria-label"] = (session.title || session.sessionId) + t("section.cardAria");
+            head.onFocus = ringOn;
+            head.onBlur = ringOff;
+            head.onClick = function () { props.onToggleCard(props.sessionId); };
+            head.onKeyDown = onActivate(function () { props.onToggleCard(props.sessionId); });
           }
-        },
+          return head;
+        })(),
           // The accent rail is a real element, not a border or an inset shadow: both of those
           // were clipped by the card's 14px radius plus overflow:hidden and never appeared.
           S.cardRail ? react.createElement("span", { style: S.cardRail, "aria-hidden": "true" }) : null,
-          react.createElement("span", { style: S.cardTitle, title: session.title }, (props.open ? "▾ " : "▸ ") + (session.title || session.sessionId)),
+          react.createElement("span", { style: S.cardTitle, title: session.title },
+            (props.headInert === true ? "" : (props.open ? "▾ " : "▸ ")) + (session.title || session.sessionId)),
           react.createElement("span", { style: S.cardMeta },
             split
               ? t("section.usedShort") + used.length + t("section.createdShort") + createdSplit.length + t("section.modifiedShort") + modifiedSplit.length

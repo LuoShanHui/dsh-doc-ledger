@@ -193,6 +193,7 @@
 
       // summary line
       "enter.back": "返回全部会话",
+      "enter.summary": "本会话 · 使用 {used} · 创建 {created} · 读 {reads} 次 · 写 {writes} 次",
       "enter.hint": "当前只显示这一个会话",
       "summary.line": "会话 {sessions} · 使用 {used} · 创建 {created} · 读 {reads} 次 · 写 {writes} 次",
       "summary.filteredLine": "　·　筛选后{files} /{sessions}",
@@ -411,6 +412,7 @@
       "preview.esc": "  ·  Esc to close",
 
       "enter.back": "All sessions",
+      "enter.summary": "This session · {used} used · {created} created · {reads} reads · {writes} writes",
       "enter.hint": "Showing this session only",
       "summary.line": "Sessions {sessions} · used {used} · created {created} · R {reads} · W {writes}",
       "summary.filteredLine": "  ·  filtered{files} /{sessions}",

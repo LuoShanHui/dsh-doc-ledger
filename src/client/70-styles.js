@@ -271,7 +271,6 @@
         // visible value, the rest leave it null so the head renders no rail.
         cardRail: null,
         // Only the grid preset spans an expanded card; null means "place it normally".
-        cardOpen: null,
         // Gutter parts (the timeline preset was removed; the row still guards on these, so
         // they stay as nulls rather than dragging the drawing code out of the row).
         rowDot: null,
@@ -386,7 +385,6 @@
          * list is what removes the tall empty gap this used to leave — later cards backfill it.
          * `alignSelf: start` (already on `card`) keeps a short card from stretching to its row.
          */
-        cardOpen: null,
         // A session tile's header is the click target, so it reads as one: accent-tinted fill,
         // accent title, hairline under it. The old neutral grey looked like a plain bar and made
         // the tiles feel like a list of labels rather than a board of buttons.
