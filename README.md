@@ -689,7 +689,7 @@ Verified on this machine (Windows, DSH `>=0.2.0-rc.1 <0.3.0-0`, 64 sessions on d
 - host routes and the security matrix: 23 assertions (loopback `Host`, the rebinding matrix, same-origin 403,
   ledger allowlist checked before any `stat`, POST-only, 400/404/405, unknown route 404);
 - cache decisions: 12 assertions (exact stamp, TTL fallback, live replay floor, engine fingerprint);
-- client pure functions: 61 assertions (AND search, sorting, cross-session merge, missing-timestamp handling,
+- client pure functions: 64 assertions (AND search, sorting, cross-session merge, missing-timestamp handling,
   formatting across years, highlight range merging, plurals, host locale snapshot, `dsh-resource://` addresses);
 - i18n: 198 keys with matching zh/en sets, references and placeholders;
 - the UI, in a browser via `npm run harness` in both languages;
@@ -750,7 +750,7 @@ tools/preview-decode-check.mjs decoder regression: 10 encoding scenarios
 tools/harness/                 UI verification: real client.js + fake ctx + synthetic ledger (npm run harness)
 tools/route-check.mjs          host route and security regression: 23 assertions (incl. DNS rebinding)
 tools/cache-check.mjs          cache decisions + engine fingerprint + page-slice guard: 12 assertions
-tools/client-core-check.mjs    client pure functions: 61 assertions (search, sort, merge, timestamps, format, plurals, locale, sections, glyph URLs)
+tools/client-core-check.mjs    client pure functions: 64 assertions (search, sort, merge, timestamps, format, plurals, locale, sections, glyph URLs)
 tools/theme-check.mjs          theme factory: 9 assertions (three themes, key parity, pairwise distinct)
 tools/row-time-check.mjs       one timestamp per row and the size suffix: 6 assertions
 tools/readme-check.mjs         bilingual README parity: sections, links, anchors, image files, language prefixes, npm `files`
@@ -759,7 +759,7 @@ tools/registry-check.mjs       marketplace entry: icon path exists, bitmap icon 
 tools/report-check.mjs         static report generation + the zstd/engines contract
 ```
 
-`npm test` runs twelve check scripts in order (engine 14 + decoder 10 + routes/security 23 + cache 12 + client 61 + theme 9 + row time 6 + i18n 1 + README parity 11 + release notes 13 + registry 3 + report 2 = **165 checks**, no external dependencies), and CI runs them on three Node versions. The i18n suite is one case covering 198 keys. CI also runs `npm run check:client` to
+`npm test` runs twelve check scripts in order (engine 14 + decoder 10 + routes/security 23 + cache 12 + client 64 + theme 9 + row time 6 + i18n 1 + README parity 11 + release notes 13 + registry 3 + report 2 = **168 checks**, no external dependencies), and CI runs them on three Node versions. The i18n suite is one case covering 201 keys. CI also runs `npm run check:client` to
 prove that the committed `client.js` matches `src/client/*.js` byte for byte.
 
 For UI changes, look at the panel in a browser with `npm run harness`: it serves the real `client.js` against

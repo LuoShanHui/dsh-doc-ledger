@@ -56,7 +56,8 @@ for (const name of [
   "shortPath", "highlight", "hostFileAddress", "iconUrl", "pad",
   "sortSpecOf", "rowModeOf", "rowsReachable", "rowLimitOf", "clampRowIndex",
   "isActiveRow", "hasActiveRow", "nextRowLimit", "extOf", "fileIconUrl",
-  "extensionCensus", "extensionChips"
+  "extensionCensus", "extensionChips",
+  "typeFilterOf", "withFamilyToggled", "withExtensionChosen", "familiesOf", "typeFilterActive"
 ]) {
   assert.equal(typeof f(name), "function", "missing function from fragments: " + name);
 }
@@ -426,6 +427,70 @@ check("clampRowIndex: 到边界停住，不环绕", () => {
   assert.equal(f("clampRowIndex")(0, -1, 5), 0, "before the first row stays on the first row");
   assert.equal(f("clampRowIndex")(2, -1, 5), 1);
   assert.equal(f("clampRowIndex")(0, 1, 0), 0, "an empty section has nowhere to move");
+});
+
+check("typeFilterOf: 没有家族时扩展名一定被清空（不变式）", () => {
+  // The whole point of the refactor: this relationship is applied in one place, so no caller can
+  // forget it. Before, the two levels were separate state and every writer had to remember.
+  const empty = f("typeFilterOf")(null, "");
+  assert.deepEqual(f("familiesOf")(empty), []);
+  assert.equal(empty.ext, "");
+  assert.equal(f("typeFilterActive")(empty), false);
+
+  // An extension without a family is impossible, however it is passed in.
+  const orphan = f("typeFilterOf")({}, "java");
+  assert.equal(orphan.ext, "", "an extension cannot survive without a family");
+  assert.equal(f("typeFilterActive")(orphan), false);
+
+  // With a family it survives.
+  const kept = f("typeFilterOf")({ code: true }, "java");
+  assert.deepEqual(f("familiesOf")(kept), ["code"]);
+  assert.equal(kept.ext, "java");
+  assert.equal(f("typeFilterActive")(kept), true);
+
+  // Only true entries count.
+  const sparse = f("typeFilterOf")({ code: false, doc: true }, "");
+  assert.deepEqual(f("familiesOf")(sparse), ["doc"]);
+});
+
+check("withFamilyToggled: 一级一变，二级必清", () => {
+  let state = f("typeFilterOf")(null, "");
+  state = f("withFamilyToggled")(state, "code");
+  assert.deepEqual(f("familiesOf")(state), ["code"]);
+
+  state = f("withExtensionChosen")(state, "java");
+  assert.equal(state.ext, "java", "an extension can be chosen inside a family");
+
+  // Removing the last family must drop the extension with it.
+  state = f("withFamilyToggled")(state, "code");
+  assert.deepEqual(f("familiesOf")(state), []);
+  assert.equal(state.ext, "", "removing the last family clears the extension");
+
+  // Adding a second family also clears it: the extension belonged to the previous selection.
+  let two = f("typeFilterOf")({ code: true }, "java");
+  two = f("withFamilyToggled")(two, "doc");
+  assert.deepEqual(f("familiesOf")(two), ["code", "doc"]);
+  assert.equal(two.ext, "", "changing the family set invalidates the extension");
+
+  // Toggling a family off while another remains still clears it.
+  let pair = f("typeFilterOf")({ code: true, doc: true }, "md");
+  pair = f("withFamilyToggled")(pair, "doc");
+  assert.deepEqual(f("familiesOf")(pair), ["code"]);
+  assert.equal(pair.ext, "");
+});
+
+check("withExtensionChosen: 不能凭空造出扩展名", () => {
+  // No family selected: choosing an extension is a no-op, not a hidden filter.
+  const none = f("withExtensionChosen")(f("typeFilterOf")(null, ""), "java");
+  assert.equal(none.ext, "");
+  assert.equal(f("typeFilterActive")(none), false);
+
+  // Clearing is always allowed.
+  const chosen = f("withExtensionChosen")(f("typeFilterOf")({ code: true }, ""), "java");
+  assert.equal(chosen.ext, "java");
+  const cleared = f("withExtensionChosen")(chosen, "");
+  assert.equal(cleared.ext, "");
+  assert.deepEqual(f("familiesOf")(cleared), ["code"], "clearing the extension keeps the family");
 });
 
 check("extensionCensus: 按数据统计，不预设任何语言", () => {

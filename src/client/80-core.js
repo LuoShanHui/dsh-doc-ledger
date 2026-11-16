@@ -58,6 +58,63 @@
     }
 
     /**
+     * The type filter as one value instead of two independent ones.
+     *
+     * The two levels used to live in separate `useState` calls, so nothing enforced their
+     * relationship: every code path that changed the families had to remember to clear the
+     * extension, and the ones that forgot left an invisible filter narrowing the list (a board of
+     * zero cards reading "no documents", with no chip or button showing why). Keeping both in one
+     * object means the invariant cannot be omitted — it is applied by `typeFilterOf`, which every
+     * state change goes through, and can be asserted on its own.
+     *
+     * Shape: `{ families: { [family]: true }, ext: string }` where `ext === ""` means "all of them".
+     * The invariant: **if no family is selected, `ext` is always ""**. An extension is only
+     * meaningful inside a family, so it is dropped the moment the last family goes away.
+     */
+    function typeFilterOf(families, ext) {
+      var name = String(ext === null || ext === undefined ? "" : ext);
+      var map = {};
+      var any = false;
+      var source = families === null || families === undefined ? null : families;
+      if (source !== null && typeof source === "object") {
+        var keys = Object.keys(source);
+        for (var i = 0; i < keys.length; i += 1) {
+          if (source[keys[i]] === true && keys[i] !== "") { map[keys[i]] = true; any = true; }
+        }
+      }
+      return { families: map, ext: any === true ? name : "" };
+    }
+
+    /** Toggle one family, keeping the extension only while a family remains selected. */
+    function withFamilyToggled(state, family) {
+      var current = state === null || state === undefined ? typeFilterOf(null, "") : state;
+      var next = Object.assign({}, current.families);
+      if (next[family] === true) delete next[family]; else next[family] = true;
+      // Any change to the family selection invalidates the extension that was chosen inside it.
+      return typeFilterOf(next, "");
+    }
+
+    /** Choose (or clear, with "") the extension of the current family selection. */
+    function withExtensionChosen(state, ext) {
+      var current = state === null || state === undefined ? typeFilterOf(null, "") : state;
+      return typeFilterOf(current.families, ext);
+    }
+
+    /** The selected family names, sorted, so a stable key can be derived from them. */
+    function familiesOf(state) {
+      if (state === null || state === undefined) return [];
+      return Object.keys(state.families || {}).filter(function (name) {
+        return state.families[name] === true;
+      }).sort();
+    }
+
+    /** True when anything in either level is narrowing the list. */
+    function typeFilterActive(state) {
+      if (state === null || state === undefined) return false;
+      return familiesOf(state).length > 0 || String(state.ext || "") !== "";
+    }
+
+    /**
      * Extensions inside one family, counted from the live data.
      *
      * This is the second filter level, and it is deliberately derived rather than declared: a

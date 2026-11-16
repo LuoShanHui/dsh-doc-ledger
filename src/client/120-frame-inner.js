@@ -78,24 +78,29 @@
         setStyleTheme(theme);
       }, [theme]);
 
-      // Active type chips: an empty object means "no type filter".
-      var typeSelState = react.useState(function () {
-        var saved = loadPref("typeFilter", []);
+      // Both filter levels are one value, so their relationship cannot be forgotten: see
+      // `typeFilterOf` in 80-core. `ext` is always "" while no family is selected.
+      var typeFilterState = react.useState(function () {
+        var savedFamilies = loadPref("typeFilter", []);
         var map = {};
-        if (Array.isArray(saved)) saved.forEach(function (key) { if (typeof key === "string" && key !== "") map[key] = true; });
-        return map;
+        if (Array.isArray(savedFamilies)) {
+          savedFamilies.forEach(function (key) { if (typeof key === "string" && key !== "") map[key] = true; });
+        }
+        return typeFilterOf(map, String(loadPref("extFilter", "")));
       });
-      var typeSelection = typeSelState[0];
-      var setTypeSelection = typeSelState[1];
-      // Second filter level: one extension inside the selected family, or "" for all of them.
-      // Kept separate from `typeSelection` so clearing the family clears the extension too,
-      // and so the extension can be "all" without inventing a sentinel in the family map.
-      var extState = react.useState(function () { return String(loadPref("extFilter", "")); });
-      var extFilter = extState[0];
-      var setExtFilter = extState[1];
+      var typeFilter = typeFilterState[0];
+      var setTypeFilter = typeFilterState[1];
 
-      var typeKeys = Object.keys(typeSelection).filter(function (key) { return typeSelection[key] === true; }).sort();
-      var typeKey = typeKeys.join(",");
+      var families = familiesOf(typeFilter);
+      var familyKey = families.join(",");
+      var typeKeys = families;
+      var typeKey = familyKey;
+      var extFilter = String(typeFilter.ext || "");
+      // Persisted separately so a future version can read either without a migration step.
+      var persistTypeFilter = function (next) {
+        savePref("typeFilter", familiesOf(next));
+        savePref("extFilter", String(next.ext || ""));
+      };
       // One stable object per selection, so memoised cards are not invalidated by a re-render.
       var typeSet = react.useMemo(function () {
         if (typeKey === "") return null;
@@ -977,7 +982,7 @@
         if (extFilter !== "" && extOf(file.name || file.path || "") !== extFilter) return false;
         return matches(file, query);
       };
-      var filterActive = query !== "" || typeSet !== null || deletedOnly === true || extFilter !== "";
+      var filterActive = query !== "" || typeFilterActive(typeFilter) || deletedOnly === true;
       var visible = { files: 0, sessions: 0, deleted: 0 };
       sessions.forEach(function (session) {
         var counts = session.counts || {};
@@ -1068,17 +1073,9 @@
       }, []);
 
       var toggleType = function (key) {
-        var next = Object.assign({}, typeSelection);
-        if (next[key] === true) delete next[key]; else next[key] = true;
-        setTypeSelection(next);
-        savePref("typeFilter", Object.keys(next).filter(function (name) { return next[name] === true; }));
-        // The chosen extension belongs to the family selection that produced it. Changing the
-        // selection invalidates it, and leaving it set made the filter invisible: with the family
-        // cleared (or replaced by a family that has no such extension) nothing on screen showed
-        // which extension was still narrowing the list — measured as a board of zero cards reading
-        // "no documents" while the data was there all along.
-        setExtFilter("");
-        savePref("extFilter", "");
+        var next = withFamilyToggled(typeFilter, key);
+        setTypeFilter(next);
+        persistTypeFilter(next);
       };
 
       /** Widen the all-sessions page and refetch it, keeping the current scroll target. */
@@ -1414,7 +1411,9 @@
       // Level 2 covers every selected family, not just a single one. The family row has always
       // allowed several families at once, so restricting the extension row to exactly one left the
       // second level vanishing the moment a second family was picked.
-      var selectedFamilies = typeSet === null ? [] : Object.keys(typeSet);
+      // One flag for the reset control: either level counts, including a lone extension.
+      var anyFilter = typeFilterActive(typeFilter) || deletedOnly === true;
+      var selectedFamilies = families;
       var showExtRow = selectedFamilies.length > 0;
 
       // Count what the reader would actually see: same predicate as the list, minus the extension
@@ -1451,7 +1450,11 @@
           "aria-pressed": extFilter === "",
           onFocus: ringOn,
           onBlur: ringOff,
-          onClick: function () { setExtFilter(""); savePref("extFilter", ""); }
+          onClick: function () {
+            var next = withExtensionChosen(typeFilter, "");
+            setTypeFilter(next);
+            persistTypeFilter(next);
+          }
         },
           h("span", null, t("filter.allExts")),
           h("span", { style: extFilter === "" ? S.chipCountOn : S.chipCount }, String(familyFiles.length))
@@ -1468,9 +1471,9 @@
             onFocus: ringOn,
             onBlur: ringOff,
             onClick: function () {
-              var next = on ? "" : entry.ext;
-              setExtFilter(next);
-              savePref("extFilter", next);
+              var next = withExtensionChosen(typeFilter, on ? "" : entry.ext);
+              setTypeFilter(next);
+              persistTypeFilter(next);
             }
           },
             h("span", null, label),
@@ -1514,8 +1517,8 @@
         // A reset is an action, not a filter: a hairline divider plus a ghost button.
         // `extFilter` counts too: it is a filter, and when it is the only one left the reset must
         // still be reachable. Previously it could be set with no visible way to clear it.
-        typeSet !== null || deletedOnly === true || extFilter !== "" ? h("span", { style: S.filterDivider, "aria-hidden": "true" }) : null,
-        typeSet !== null || deletedOnly === true || extFilter !== "" ? h("button", {
+        anyFilter ? h("span", { style: S.filterDivider, "aria-hidden": "true" }) : null,
+        anyFilter ? h("button", {
           type: "button",
           style: S.filterAction,
           title: t("filter.clearTitle"),
@@ -1525,10 +1528,9 @@
           onFocus: ringOn,
           onBlur: ringOff,
           onClick: function () {
-            setTypeSelection({});
-            savePref("typeFilter", []);
-            setExtFilter("");
-            savePref("extFilter", "");
+            var cleared = typeFilterOf(null, "");
+            setTypeFilter(cleared);
+            persistTypeFilter(cleared);
             setDeletedOnly(false);
           }
         }, h("span", { style: S.filterActionGlyph, "aria-hidden": "true" }, "✕"), t("filter.clear")) : null,
