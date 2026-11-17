@@ -385,6 +385,8 @@ window.__ModuleLoader__.load({
       "filter.nFamilies_one": "已选 {n} 类",
       "filter.nFamilies_other": "已选 {n} 类",
       "filter.noTypes": "没有可选类型",
+      "filter.chosenExt": "已选扩展名",
+      "filter.clearExt": "取消扩展名筛选",
       "filter.noExt": "无扩展名",
       "filter.missingTitle": "只看磁盘上已经不存在的文件",
       "filter.clearTitle": "清除类型与「已删除」筛选（搜索框里的词保留）",
@@ -599,6 +601,8 @@ window.__ModuleLoader__.load({
       "filter.nFamilies_one": "{n} selected",
       "filter.nFamilies_other": "{n} selected",
       "filter.noTypes": "No types to pick",
+      "filter.chosenExt": "Chosen extension",
+      "filter.clearExt": "Clear the extension filter",
       "filter.noExt": "(none)",
       "filter.missingTitle": "Only files that no longer exist on disk",
       "filter.clearTitle": "Clear type / deleted filters (keeps the search text)",
@@ -1206,6 +1210,13 @@ window.__ModuleLoader__.load({
         typeExtRow: { display: "flex", alignItems: "center", gap: "6px", height: "24px", padding: "0 6px 0 26px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "11px", color: c.textDim },
         typeExtRowOn: { display: "flex", alignItems: "center", gap: "6px", height: "24px", padding: "0 6px 0 26px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "11px", color: c.accent, fontWeight: 600, background: c.accentSoft },
         typeEmpty: { padding: "10px 8px", color: c.textFaint, fontSize: "11px" },
+        // A fixed tick column so family names line up whether or not they are selected.
+        typeTick: { width: "12px", flex: "0 0 auto", color: "inherit", fontSize: "11px" },
+        // Pinned to the bottom of the panel: the chosen extension stays visible even when its
+        // family is collapsed, and carries its own clear button.
+        typeFooter: { display: "flex", alignItems: "center", gap: "6px", marginTop: "4px", padding: "6px 6px 2px", borderTop: "1px solid " + c.borderSoft, color: c.textDim, fontSize: "11px" },
+        typeFooterChip: { display: "inline-flex", alignItems: "center", gap: "4px", padding: "0 6px", height: "18px", borderRadius: "999px", background: c.accentSoft, color: c.accent, fontSize: "11px", fontWeight: 600 },
+        typeFooterClear: { border: "none", background: "transparent", color: c.textFaint, cursor: "pointer", fontSize: "11px", padding: "0 2px" },
         filterLabel: { color: c.textFaint, fontSize: "11px", marginRight: "1px" },
         filterChip: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: "transparent", color: c.textDim, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
         filterChipOn: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: c.accent, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
@@ -1574,12 +1585,19 @@ window.__ModuleLoader__.load({
      * object means the invariant cannot be omitted — it is applied by `typeFilterOf`, which every
      * state change goes through, and can be asserted on its own.
      *
-     * Shape: `{ families: { [family]: true }, ext: string }` where `ext === ""` means "all of them".
-     * The invariant: **if no family is selected, `ext` is always ""**. An extension is only
+     * Shape: `{ families: { [family]: true }, ext: string | null }`.
+     *
+     * `ext === null` means "no extension chosen"; `ext === ""` is a *real* value meaning "the files
+     * with no extension at all". Those two used to share the empty string, which made the
+     * "no extension" row impossible to un-tick: clicking it passed "" to clear the filter, but ""
+     * was also the key being filtered on, so the state never changed and the tick stayed on.
+     *
+     * The invariant: **if no family is selected, `ext` is always null**. An extension is only
      * meaningful inside a family, so it is dropped the moment the last family goes away.
      */
     function typeFilterOf(families, ext) {
-      var name = String(ext === null || ext === undefined ? "" : ext);
+      // Only null/undefined mean "none"; "" is kept as the no-extension bucket.
+      var name = ext === null || ext === undefined ? null : String(ext);
       var map = {};
       var any = false;
       var source = families === null || families === undefined ? null : families;
@@ -1589,22 +1607,38 @@ window.__ModuleLoader__.load({
           if (source[keys[i]] === true && keys[i] !== "") { map[keys[i]] = true; any = true; }
         }
       }
-      return { families: map, ext: any === true ? name : "" };
+      return { families: map, ext: any === true ? name : null };
     }
 
     /** Toggle one family, keeping the extension only while a family remains selected. */
     function withFamilyToggled(state, family) {
-      var current = state === null || state === undefined ? typeFilterOf(null, "") : state;
+      var current = state === null || state === undefined ? typeFilterOf(null, null) : state;
       var next = Object.assign({}, current.families);
       if (next[family] === true) delete next[family]; else next[family] = true;
       // Any change to the family selection invalidates the extension that was chosen inside it.
-      return typeFilterOf(next, "");
+      return typeFilterOf(next, null);
     }
 
-    /** Choose (or clear, with "") the extension of the current family selection. */
+    /** Choose an extension ("" = the no-extension bucket), or pass null to clear the choice. */
     function withExtensionChosen(state, ext) {
-      var current = state === null || state === undefined ? typeFilterOf(null, "") : state;
+      var current = state === null || state === undefined ? typeFilterOf(null, null) : state;
       return typeFilterOf(current.families, ext);
+    }
+
+    /**
+     * Choose an extension *inside a family*, selecting that family if it was not already selected.
+     *
+     * Without this, ticking an extension under an un-ticked family did nothing at all: the
+     * invariant above drops an extension that has no family, so the click was silently discarded.
+     * Wanting `.yml` implies wanting the config family, and selecting it makes that visible.
+     * Passing `null` clears the choice and never touches the family selection.
+     */
+    function withExtensionInFamily(state, family, ext) {
+      var current = state === null || state === undefined ? typeFilterOf(null, null) : state;
+      if (ext === null || ext === undefined) return typeFilterOf(current.families, null);
+      var families = Object.assign({}, current.families);
+      families[family] = true;
+      return typeFilterOf(families, ext);
     }
 
     /** The selected family names, sorted, so a stable key can be derived from them. */
@@ -1618,7 +1652,7 @@ window.__ModuleLoader__.load({
     /** True when anything in either level is narrowing the list. */
     function typeFilterActive(state) {
       if (state === null || state === undefined) return false;
-      return familiesOf(state).length > 0 || String(state.ext || "") !== "";
+      return familiesOf(state).length > 0 || state.ext !== null && state.ext !== undefined;
     }
 
     /**
@@ -2492,11 +2526,14 @@ window.__ModuleLoader__.load({
       useStyles();
       var boxRef = react.useRef(null);
       var open = props.panel !== null && props.panel !== undefined;
-      // Which families are expanded. Kept here rather than in the parent so a re-render of the
-      // frame (a refresh tick, say) does not collapse what the reader just opened.
-      var treeState = react.useState({});
-      var expanded = treeState[0];
-      var setExpanded = treeState[1];
+      // Expanded families are owned by the frame, so closing and reopening the panel does not
+      // collapse what the reader had opened.
+      var expanded = props.panel && props.panel.expanded ? props.panel.expanded : {};
+      var toggleFamily = function (key) {
+        if (props.panel && typeof props.panel.onToggleFamily === "function") {
+          props.panel.onToggleFamily(key);
+        }
+      };
 
       react.useEffect(function () {
         if (open !== true) return undefined;
@@ -2534,7 +2571,9 @@ window.__ModuleLoader__.load({
           onMouseLeave: function (event) { if (on !== true) event.currentTarget.style.background = "transparent"; },
           onClick: function (event) {
             event.stopPropagation();
-            props.onPickExt(on ? "" : entry.ext);
+            // null clears the choice; "" is the no-extension bucket and must survive as itself,
+            // otherwise this row could never be un-ticked (it re-selected its own key).
+            props.onPickExt(on ? null : entry.ext, family);
           }
         },
           h("span", { style: S.typeTwisty }, on ? "\u2713" : ""),
@@ -2562,11 +2601,7 @@ window.__ModuleLoader__.load({
             event.stopPropagation();
             // The twisty has its own hit area, so expanding never changes the selection.
             if (nestable && event.target === event.currentTarget.firstChild) {
-              setExpanded(function (previous) {
-                var next = Object.assign({}, previous);
-                next[family.key] = previous[family.key] !== true;
-                return next;
-              });
+              toggleFamily(family.key);
               return;
             }
             props.onPickFamily(family.key);
@@ -2577,13 +2612,12 @@ window.__ModuleLoader__.load({
             onClick: function (event) {
               if (!nestable) return;
               event.stopPropagation();
-              setExpanded(function (previous) {
-                var next = Object.assign({}, previous);
-                next[family.key] = previous[family.key] !== true;
-                return next;
-              });
+              toggleFamily(family.key);
             }
           }, nestable ? (isOpen ? "\u25be" : "\u25b8") : ""),
+          // A tick, not only a tinted background: the extension rows use a tick, and relying on
+          // colour alone made the family's state easy to misread.
+          h("span", { style: S.typeTick }, on ? "\u2713" : ""),
           h("span", { style: { flex: "1", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, categoryLabel(family.key)),
           h("span", { style: on ? S.typeCountOn : S.typeCount }, String(family.count))
         ));
@@ -2608,7 +2642,20 @@ window.__ModuleLoader__.load({
             onClick: function (event) { event.stopPropagation(); props.onClear(); }
           }, t("filter.clear")) : null)
         ),
-        rows.length === 0 ? h("div", { style: S.typeEmpty }, t("filter.noTypes")) : rows
+        rows.length === 0 ? h("div", { style: S.typeEmpty }, t("filter.noTypes")) : rows,
+        // The chosen extension is pinned here so it stays visible even when its family is
+        // collapsed — the row it lives under can be folded away, the choice cannot be hidden.
+        panel.ext !== null && panel.ext !== undefined ? h("div", { style: S.typeFooter },
+          h("span", { style: { flex: "1" } }, t("filter.chosenExt")),
+          h("span", { style: S.typeFooterChip }, panel.ext === "" ? t("filter.noExt") : panel.ext),
+          h("button", {
+            type: "button",
+            style: S.typeFooterClear,
+            title: t("filter.clearExt"),
+            "aria-label": t("filter.clearExt"),
+            onClick: function (event) { event.stopPropagation(); props.onPickExt(null); }
+          }, "\u2715")
+        ) : null
       );
     }
 
@@ -2831,7 +2878,7 @@ window.__ModuleLoader__.load({
       // Visual theme: compact (original) / airy / table / card. Persisted like the
       // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
       /** Stamped by tools/build-client.mjs as an ISO minute so a stale bundle is obvious. */
-    var BUILD_TAG = "2026-11-16 16:47";
+    var BUILD_TAG = "2026-11-17 10:10";
 
     var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
@@ -2856,7 +2903,12 @@ window.__ModuleLoader__.load({
         if (Array.isArray(savedFamilies)) {
           savedFamilies.forEach(function (key) { if (typeof key === "string" && key !== "") map[key] = true; });
         }
-        return typeFilterOf(map, String(loadPref("extFilter", "")));
+        // The stored value is "" both for "none" and for "the no-extension bucket", so it is
+        // resolved against the families: without a family there is no choice to restore.
+        var savedExt = loadPref("extFilter", "");
+        var hasExt = typeof savedExt === "string" && savedExt !== "";
+        var noExtBucket = savedExt === "" && loadPref("extFilterNoExt", false) === true;
+        return typeFilterOf(map, noExtBucket ? "" : (hasExt ? savedExt : null));
       });
       var typeFilter = typeFilterState[0];
       var setTypeFilter = typeFilterState[1];
@@ -2865,11 +2917,14 @@ window.__ModuleLoader__.load({
       var familyKey = families.join(",");
       var typeKeys = families;
       var typeKey = familyKey;
-      var extFilter = String(typeFilter.ext || "");
+      // `null` = no extension chosen; `""` = the no-extension bucket (a real choice).
+      var extFilter = typeFilter.ext === undefined ? null : typeFilter.ext;
       // Persisted separately so a future version can read either without a migration step.
       var persistTypeFilter = function (next) {
         savePref("typeFilter", familiesOf(next));
-        savePref("extFilter", String(next.ext || ""));
+        savePref("extFilter", next.ext === null || next.ext === undefined ? "" : next.ext);
+        // Tells the two meanings of a stored "" apart on the next load.
+        savePref("extFilterNoExt", next.ext === "");
       };
       // One stable object per selection, so memoised cards are not invalidated by a re-render.
       var typeSet = react.useMemo(function () {
@@ -3129,8 +3184,12 @@ window.__ModuleLoader__.load({
           bounds: { w: panel.width, h: panel.height },
           returnFocus: trigger,
           tree: typeTree,
+          // The expanded set outlives the popup: closing and reopening the panel should not
+          // collapse everything the reader had opened.
+          expanded: panelExpanded,
+          onToggleFamily: togglePanelFamily,
           families: typeFilter.families,
-          ext: String(typeFilter.ext || ""),
+          ext: typeFilter.ext === undefined ? null : typeFilter.ext,
           active: typeFilterActive(typeFilter)
         });
       };
@@ -3771,7 +3830,7 @@ window.__ModuleLoader__.load({
       var passesFilters = function (file) {
         if (deletedOnly === true && file.exists !== false) return false;
         if (typeSet !== null && typeSet[String(file.category || "other")] !== true) return false;
-        if (extFilter !== "" && extOf(file.name || file.path || "") !== extFilter) return false;
+        if (extFilter !== null && extOf(file.name || file.path || "") !== extFilter) return false;
         return matches(file, query);
       };
       var filterActive = query !== "" || typeFilterActive(typeFilter) || deletedOnly === true;
@@ -3877,8 +3936,12 @@ window.__ModuleLoader__.load({
       };
 
       /** Choose an extension inside the current family selection ("" clears it). */
-      var pickExtension = function (ext) {
-        var next = withExtensionChosen(typeFilter, ext);
+      var pickExtension = function (ext, family) {
+        // Ticking an extension selects its family too, so the choice cannot be dropped by the
+        // "no family, no extension" invariant.
+        var next = (family === undefined || family === null)
+          ? withExtensionChosen(typeFilter, ext)
+          : withExtensionInFamily(typeFilter, family, ext);
         setTypeFilter(next);
         persistTypeFilter(next);
         setMenu(function (previous) {
@@ -3889,7 +3952,7 @@ window.__ModuleLoader__.load({
 
       /** Clear both levels from inside the panel. */
       var clearTypes = function () {
-        var cleared = typeFilterOf(null, "");
+        var cleared = typeFilterOf(null, null);
         setTypeFilter(cleared);
         persistTypeFilter(cleared);
         setMenu(function (previous) {
@@ -4273,13 +4336,33 @@ window.__ModuleLoader__.load({
 
       // One row, one control: the type tree lives in a popup, so the toolbar never reflows no
       // matter how many families or extensions the ledger holds.
+      // Which families the type panel has expanded. Held here rather than inside the panel so it
+      // survives the popup being closed.
+      var panelExpandedState = react.useState({});
+      var panelExpanded = panelExpandedState[0];
+      var setPanelExpanded = panelExpandedState[1];
+      var togglePanelFamily = function (key) {
+        setPanelExpanded(function (previous) {
+          var next = Object.assign({}, previous);
+          next[key] = previous[key] !== true;
+          return next;
+        });
+        // Keep the open panel's snapshot in step with the new set.
+        setMenu(function (previous) {
+          if (previous === null || previous.kind !== "type") return previous;
+          var nextExpanded = Object.assign({}, previous.expanded || {});
+          nextExpanded[key] = nextExpanded[key] !== true;
+          return Object.assign({}, previous, { expanded: nextExpanded });
+        });
+      };
+
       var typeTriggerRef = react.useRef(null);
       var filterBar = h("div", { style: showFilterBar ? S.filterBar : Object.assign({}, S.filterBar, { display: "none" }) },
         h("span", { style: S.filterLabel }, t("sort.type")),
         h("button", {
           type: "button",
           ref: typeTriggerRef,
-          style: familyCount > 0 || extFilter !== "" ? S.filterChipOn : S.filterChip,
+          style: familyCount > 0 || extFilter !== null ? S.filterChipOn : S.filterChip,
           "aria-haspopup": "menu",
           "aria-expanded": menu !== null && menu.kind === "type",
           title: t("filter.typeTitle"),
@@ -4292,7 +4375,11 @@ window.__ModuleLoader__.load({
         },
           h("span", null, typeTriggerLabel),
           // Show the chosen extension on the trigger, so a level-2 filter is never invisible.
-          extFilter !== "" ? h("span", { style: S.chipCountOn }, (extFilter === "" ? "" : "." + extFilter)) : null,
+          // A separator keeps it from reading as part of the family name ("代码.yml").
+          extFilter !== null
+            ? h("span", { style: Object.assign({}, S.chipCountOn, { marginLeft: "4px" }) },
+                "\u00b7 " + (extFilter === "" ? t("filter.noExt") : extFilter))
+            : null,
           familyCount > 0 ? h("span", { style: S.chipCountOn }, String(families.length === 1 ? (typeTree.filter(function (f) { return f.key === families[0]; })[0] || {}).count || 0 : visible.files)) : null,
           h("span", { style: { opacity: 0.7 } }, "\u25be")
         ),
@@ -4319,7 +4406,7 @@ window.__ModuleLoader__.load({
           onFocus: ringOn,
           onBlur: ringOff,
           onClick: function () {
-            var cleared = typeFilterOf(null, "");
+            var cleared = typeFilterOf(null, null);
             setTypeFilter(cleared);
             persistTypeFilter(cleared);
             setDeletedOnly(false);

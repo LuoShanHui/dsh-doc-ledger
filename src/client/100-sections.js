@@ -319,11 +319,14 @@
       useStyles();
       var boxRef = react.useRef(null);
       var open = props.panel !== null && props.panel !== undefined;
-      // Which families are expanded. Kept here rather than in the parent so a re-render of the
-      // frame (a refresh tick, say) does not collapse what the reader just opened.
-      var treeState = react.useState({});
-      var expanded = treeState[0];
-      var setExpanded = treeState[1];
+      // Expanded families are owned by the frame, so closing and reopening the panel does not
+      // collapse what the reader had opened.
+      var expanded = props.panel && props.panel.expanded ? props.panel.expanded : {};
+      var toggleFamily = function (key) {
+        if (props.panel && typeof props.panel.onToggleFamily === "function") {
+          props.panel.onToggleFamily(key);
+        }
+      };
 
       react.useEffect(function () {
         if (open !== true) return undefined;
@@ -361,7 +364,9 @@
           onMouseLeave: function (event) { if (on !== true) event.currentTarget.style.background = "transparent"; },
           onClick: function (event) {
             event.stopPropagation();
-            props.onPickExt(on ? "" : entry.ext);
+            // null clears the choice; "" is the no-extension bucket and must survive as itself,
+            // otherwise this row could never be un-ticked (it re-selected its own key).
+            props.onPickExt(on ? null : entry.ext, family);
           }
         },
           h("span", { style: S.typeTwisty }, on ? "\u2713" : ""),
@@ -389,11 +394,7 @@
             event.stopPropagation();
             // The twisty has its own hit area, so expanding never changes the selection.
             if (nestable && event.target === event.currentTarget.firstChild) {
-              setExpanded(function (previous) {
-                var next = Object.assign({}, previous);
-                next[family.key] = previous[family.key] !== true;
-                return next;
-              });
+              toggleFamily(family.key);
               return;
             }
             props.onPickFamily(family.key);
@@ -404,13 +405,12 @@
             onClick: function (event) {
               if (!nestable) return;
               event.stopPropagation();
-              setExpanded(function (previous) {
-                var next = Object.assign({}, previous);
-                next[family.key] = previous[family.key] !== true;
-                return next;
-              });
+              toggleFamily(family.key);
             }
           }, nestable ? (isOpen ? "\u25be" : "\u25b8") : ""),
+          // A tick, not only a tinted background: the extension rows use a tick, and relying on
+          // colour alone made the family's state easy to misread.
+          h("span", { style: S.typeTick }, on ? "\u2713" : ""),
           h("span", { style: { flex: "1", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, categoryLabel(family.key)),
           h("span", { style: on ? S.typeCountOn : S.typeCount }, String(family.count))
         ));
@@ -435,7 +435,20 @@
             onClick: function (event) { event.stopPropagation(); props.onClear(); }
           }, t("filter.clear")) : null)
         ),
-        rows.length === 0 ? h("div", { style: S.typeEmpty }, t("filter.noTypes")) : rows
+        rows.length === 0 ? h("div", { style: S.typeEmpty }, t("filter.noTypes")) : rows,
+        // The chosen extension is pinned here so it stays visible even when its family is
+        // collapsed — the row it lives under can be folded away, the choice cannot be hidden.
+        panel.ext !== null && panel.ext !== undefined ? h("div", { style: S.typeFooter },
+          h("span", { style: { flex: "1" } }, t("filter.chosenExt")),
+          h("span", { style: S.typeFooterChip }, panel.ext === "" ? t("filter.noExt") : panel.ext),
+          h("button", {
+            type: "button",
+            style: S.typeFooterClear,
+            title: t("filter.clearExt"),
+            "aria-label": t("filter.clearExt"),
+            onClick: function (event) { event.stopPropagation(); props.onPickExt(null); }
+          }, "\u2715")
+        ) : null
       );
     }
 

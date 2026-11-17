@@ -57,7 +57,7 @@ for (const name of [
   "sortSpecOf", "rowModeOf", "rowsReachable", "rowLimitOf", "clampRowIndex",
   "isActiveRow", "hasActiveRow", "nextRowLimit", "extOf", "fileIconUrl",
   "extensionCensus", "extensionChips",
-  "typeFilterOf", "withFamilyToggled", "withExtensionChosen", "familiesOf", "typeFilterActive"
+  "typeFilterOf", "withFamilyToggled", "withExtensionChosen", "withExtensionInFamily", "familiesOf", "typeFilterActive"
 ]) {
   assert.equal(typeof f(name), "function", "missing function from fragments: " + name);
 }
@@ -429,68 +429,71 @@ check("clampRowIndex: 到边界停住，不环绕", () => {
   assert.equal(f("clampRowIndex")(0, 1, 0), 0, "an empty section has nowhere to move");
 });
 
-check("typeFilterOf: 没有家族时扩展名一定被清空（不变式）", () => {
-  // The whole point of the refactor: this relationship is applied in one place, so no caller can
-  // forget it. Before, the two levels were separate state and every writer had to remember.
-  const empty = f("typeFilterOf")(null, "");
-  assert.deepEqual(f("familiesOf")(empty), []);
-  assert.equal(empty.ext, "");
+check("typeFilterOf: null 是「无扩展名筛选」，\"\" 是「无扩展名文件」", () => {
+  // The empty string used to mean both "nothing chosen" and "the no-extension bucket", which made
+  // that row impossible to un-tick: the click passed "" to clear, but "" was the key being
+  // filtered on. They are now distinct values.
+  const none = f("typeFilterOf")({ code: true }, null);
+  assert.equal(none.ext, null, "null means no extension is chosen");
+  assert.equal(f("typeFilterActive")(none), true, "the family still counts as active");
+
+  const bucket = f("typeFilterOf")({ code: true }, "");
+  assert.equal(bucket.ext, "", "the empty string survives as the no-extension bucket");
+  assert.equal(f("typeFilterActive")(bucket), true);
+
+  // An extension without a family is still impossible.
+  assert.equal(f("typeFilterOf")({}, "java").ext, null);
+  assert.equal(f("typeFilterOf")(null, "").ext, null, "and the bucket is dropped too");
+  const empty = f("typeFilterOf")(null, null);
   assert.equal(f("typeFilterActive")(empty), false);
-
-  // An extension without a family is impossible, however it is passed in.
-  const orphan = f("typeFilterOf")({}, "java");
-  assert.equal(orphan.ext, "", "an extension cannot survive without a family");
-  assert.equal(f("typeFilterActive")(orphan), false);
-
-  // With a family it survives.
-  const kept = f("typeFilterOf")({ code: true }, "java");
-  assert.deepEqual(f("familiesOf")(kept), ["code"]);
-  assert.equal(kept.ext, "java");
-  assert.equal(f("typeFilterActive")(kept), true);
-
-  // Only true entries count.
-  const sparse = f("typeFilterOf")({ code: false, doc: true }, "");
-  assert.deepEqual(f("familiesOf")(sparse), ["doc"]);
+  assert.deepEqual(f("familiesOf")(f("typeFilterOf")({ doc: true }, "")), ["doc"]);
 });
 
 check("withFamilyToggled: 一级一变，二级必清", () => {
-  let state = f("typeFilterOf")(null, "");
+  let state = f("typeFilterOf")(null, null);
   state = f("withFamilyToggled")(state, "code");
   assert.deepEqual(f("familiesOf")(state), ["code"]);
 
   state = f("withExtensionChosen")(state, "java");
-  assert.equal(state.ext, "java", "an extension can be chosen inside a family");
+  assert.equal(state.ext, "java");
 
-  // Removing the last family must drop the extension with it.
   state = f("withFamilyToggled")(state, "code");
   assert.deepEqual(f("familiesOf")(state), []);
-  assert.equal(state.ext, "", "removing the last family clears the extension");
+  assert.equal(state.ext, null, "removing the last family clears the choice");
 
-  // Adding a second family also clears it: the extension belonged to the previous selection.
   let two = f("typeFilterOf")({ code: true }, "java");
   two = f("withFamilyToggled")(two, "doc");
+  assert.equal(two.ext, null, "changing the family set invalidates the choice");
   assert.deepEqual(f("familiesOf")(two), ["code", "doc"]);
-  assert.equal(two.ext, "", "changing the family set invalidates the extension");
-
-  // Toggling a family off while another remains still clears it.
-  let pair = f("typeFilterOf")({ code: true, doc: true }, "md");
-  pair = f("withFamilyToggled")(pair, "doc");
-  assert.deepEqual(f("familiesOf")(pair), ["code"]);
-  assert.equal(pair.ext, "");
 });
 
-check("withExtensionChosen: 不能凭空造出扩展名", () => {
-  // No family selected: choosing an extension is a no-op, not a hidden filter.
-  const none = f("withExtensionChosen")(f("typeFilterOf")(null, ""), "java");
-  assert.equal(none.ext, "");
-  assert.equal(f("typeFilterActive")(none), false);
-
-  // Clearing is always allowed.
-  const chosen = f("withExtensionChosen")(f("typeFilterOf")({ code: true }, ""), "java");
+check("withExtensionChosen / withExtensionInFamily", () => {
+  // Clearing is always allowed and never touches the families.
+  const chosen = f("withExtensionChosen")(f("typeFilterOf")({ code: true }, null), "java");
   assert.equal(chosen.ext, "java");
-  const cleared = f("withExtensionChosen")(chosen, "");
-  assert.equal(cleared.ext, "");
-  assert.deepEqual(f("familiesOf")(cleared), ["code"], "clearing the extension keeps the family");
+  const cleared = f("withExtensionChosen")(chosen, null);
+  assert.equal(cleared.ext, null);
+  assert.deepEqual(f("familiesOf")(cleared), ["code"], "clearing keeps the family");
+
+  // Choosing the bucket is a real choice, not a clear.
+  const bucket = f("withExtensionChosen")(f("typeFilterOf")({ code: true }, null), "");
+  assert.equal(bucket.ext, "", "the bucket can be chosen explicitly");
+
+  // Picking an extension under an un-ticked family selects that family: otherwise the invariant
+  // would silently discard the click.
+  const implied = f("withExtensionInFamily")(f("typeFilterOf")(null, null), "config", "yml");
+  assert.deepEqual(f("familiesOf")(implied), ["config"], "the family is selected implicitly");
+  assert.equal(implied.ext, "yml");
+
+  // Adding to an existing selection keeps the others.
+  const added = f("withExtensionInFamily")(f("typeFilterOf")({ doc: true }, null), "config", "");
+  assert.deepEqual(f("familiesOf")(added), ["config", "doc"]);
+  assert.equal(added.ext, "", "the bucket works here too");
+
+  // Clearing through this path must not select anything.
+  const noSelect = f("withExtensionInFamily")(f("typeFilterOf")(null, null), "config", null);
+  assert.deepEqual(f("familiesOf")(noSelect), [], "clearing never selects a family");
+  assert.equal(noSelect.ext, null);
 });
 
 check("extensionCensus: 按数据统计，不预设任何语言", () => {

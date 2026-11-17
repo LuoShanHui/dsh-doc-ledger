@@ -280,6 +280,13 @@
         typeExtRow: { display: "flex", alignItems: "center", gap: "6px", height: "24px", padding: "0 6px 0 26px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "11px", color: c.textDim },
         typeExtRowOn: { display: "flex", alignItems: "center", gap: "6px", height: "24px", padding: "0 6px 0 26px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "11px", color: c.accent, fontWeight: 600, background: c.accentSoft },
         typeEmpty: { padding: "10px 8px", color: c.textFaint, fontSize: "11px" },
+        // A fixed tick column so family names line up whether or not they are selected.
+        typeTick: { width: "12px", flex: "0 0 auto", color: "inherit", fontSize: "11px" },
+        // Pinned to the bottom of the panel: the chosen extension stays visible even when its
+        // family is collapsed, and carries its own clear button.
+        typeFooter: { display: "flex", alignItems: "center", gap: "6px", marginTop: "4px", padding: "6px 6px 2px", borderTop: "1px solid " + c.borderSoft, color: c.textDim, fontSize: "11px" },
+        typeFooterChip: { display: "inline-flex", alignItems: "center", gap: "4px", padding: "0 6px", height: "18px", borderRadius: "999px", background: c.accentSoft, color: c.accent, fontSize: "11px", fontWeight: 600 },
+        typeFooterClear: { border: "none", background: "transparent", color: c.textFaint, cursor: "pointer", fontSize: "11px", padding: "0 2px" },
         filterLabel: { color: c.textFaint, fontSize: "11px", marginRight: "1px" },
         filterChip: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: "transparent", color: c.textDim, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
         filterChipOn: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: c.accent, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },

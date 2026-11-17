@@ -86,7 +86,12 @@
         if (Array.isArray(savedFamilies)) {
           savedFamilies.forEach(function (key) { if (typeof key === "string" && key !== "") map[key] = true; });
         }
-        return typeFilterOf(map, String(loadPref("extFilter", "")));
+        // The stored value is "" both for "none" and for "the no-extension bucket", so it is
+        // resolved against the families: without a family there is no choice to restore.
+        var savedExt = loadPref("extFilter", "");
+        var hasExt = typeof savedExt === "string" && savedExt !== "";
+        var noExtBucket = savedExt === "" && loadPref("extFilterNoExt", false) === true;
+        return typeFilterOf(map, noExtBucket ? "" : (hasExt ? savedExt : null));
       });
       var typeFilter = typeFilterState[0];
       var setTypeFilter = typeFilterState[1];
@@ -95,11 +100,14 @@
       var familyKey = families.join(",");
       var typeKeys = families;
       var typeKey = familyKey;
-      var extFilter = String(typeFilter.ext || "");
+      // `null` = no extension chosen; `""` = the no-extension bucket (a real choice).
+      var extFilter = typeFilter.ext === undefined ? null : typeFilter.ext;
       // Persisted separately so a future version can read either without a migration step.
       var persistTypeFilter = function (next) {
         savePref("typeFilter", familiesOf(next));
-        savePref("extFilter", String(next.ext || ""));
+        savePref("extFilter", next.ext === null || next.ext === undefined ? "" : next.ext);
+        // Tells the two meanings of a stored "" apart on the next load.
+        savePref("extFilterNoExt", next.ext === "");
       };
       // One stable object per selection, so memoised cards are not invalidated by a re-render.
       var typeSet = react.useMemo(function () {
@@ -359,8 +367,12 @@
           bounds: { w: panel.width, h: panel.height },
           returnFocus: trigger,
           tree: typeTree,
+          // The expanded set outlives the popup: closing and reopening the panel should not
+          // collapse everything the reader had opened.
+          expanded: panelExpanded,
+          onToggleFamily: togglePanelFamily,
           families: typeFilter.families,
-          ext: String(typeFilter.ext || ""),
+          ext: typeFilter.ext === undefined ? null : typeFilter.ext,
           active: typeFilterActive(typeFilter)
         });
       };
@@ -1001,7 +1013,7 @@
       var passesFilters = function (file) {
         if (deletedOnly === true && file.exists !== false) return false;
         if (typeSet !== null && typeSet[String(file.category || "other")] !== true) return false;
-        if (extFilter !== "" && extOf(file.name || file.path || "") !== extFilter) return false;
+        if (extFilter !== null && extOf(file.name || file.path || "") !== extFilter) return false;
         return matches(file, query);
       };
       var filterActive = query !== "" || typeFilterActive(typeFilter) || deletedOnly === true;
@@ -1107,8 +1119,12 @@
       };
 
       /** Choose an extension inside the current family selection ("" clears it). */
-      var pickExtension = function (ext) {
-        var next = withExtensionChosen(typeFilter, ext);
+      var pickExtension = function (ext, family) {
+        // Ticking an extension selects its family too, so the choice cannot be dropped by the
+        // "no family, no extension" invariant.
+        var next = (family === undefined || family === null)
+          ? withExtensionChosen(typeFilter, ext)
+          : withExtensionInFamily(typeFilter, family, ext);
         setTypeFilter(next);
         persistTypeFilter(next);
         setMenu(function (previous) {
@@ -1119,7 +1135,7 @@
 
       /** Clear both levels from inside the panel. */
       var clearTypes = function () {
-        var cleared = typeFilterOf(null, "");
+        var cleared = typeFilterOf(null, null);
         setTypeFilter(cleared);
         persistTypeFilter(cleared);
         setMenu(function (previous) {
@@ -1503,13 +1519,33 @@
 
       // One row, one control: the type tree lives in a popup, so the toolbar never reflows no
       // matter how many families or extensions the ledger holds.
+      // Which families the type panel has expanded. Held here rather than inside the panel so it
+      // survives the popup being closed.
+      var panelExpandedState = react.useState({});
+      var panelExpanded = panelExpandedState[0];
+      var setPanelExpanded = panelExpandedState[1];
+      var togglePanelFamily = function (key) {
+        setPanelExpanded(function (previous) {
+          var next = Object.assign({}, previous);
+          next[key] = previous[key] !== true;
+          return next;
+        });
+        // Keep the open panel's snapshot in step with the new set.
+        setMenu(function (previous) {
+          if (previous === null || previous.kind !== "type") return previous;
+          var nextExpanded = Object.assign({}, previous.expanded || {});
+          nextExpanded[key] = nextExpanded[key] !== true;
+          return Object.assign({}, previous, { expanded: nextExpanded });
+        });
+      };
+
       var typeTriggerRef = react.useRef(null);
       var filterBar = h("div", { style: showFilterBar ? S.filterBar : Object.assign({}, S.filterBar, { display: "none" }) },
         h("span", { style: S.filterLabel }, t("sort.type")),
         h("button", {
           type: "button",
           ref: typeTriggerRef,
-          style: familyCount > 0 || extFilter !== "" ? S.filterChipOn : S.filterChip,
+          style: familyCount > 0 || extFilter !== null ? S.filterChipOn : S.filterChip,
           "aria-haspopup": "menu",
           "aria-expanded": menu !== null && menu.kind === "type",
           title: t("filter.typeTitle"),
@@ -1522,7 +1558,11 @@
         },
           h("span", null, typeTriggerLabel),
           // Show the chosen extension on the trigger, so a level-2 filter is never invisible.
-          extFilter !== "" ? h("span", { style: S.chipCountOn }, (extFilter === "" ? "" : "." + extFilter)) : null,
+          // A separator keeps it from reading as part of the family name ("代码.yml").
+          extFilter !== null
+            ? h("span", { style: Object.assign({}, S.chipCountOn, { marginLeft: "4px" }) },
+                "\u00b7 " + (extFilter === "" ? t("filter.noExt") : extFilter))
+            : null,
           familyCount > 0 ? h("span", { style: S.chipCountOn }, String(families.length === 1 ? (typeTree.filter(function (f) { return f.key === families[0]; })[0] || {}).count || 0 : visible.files)) : null,
           h("span", { style: { opacity: 0.7 } }, "\u25be")
         ),
@@ -1549,7 +1589,7 @@
           onFocus: ringOn,
           onBlur: ringOff,
           onClick: function () {
-            var cleared = typeFilterOf(null, "");
+            var cleared = typeFilterOf(null, null);
             setTypeFilter(cleared);
             persistTypeFilter(cleared);
             setDeletedOnly(false);

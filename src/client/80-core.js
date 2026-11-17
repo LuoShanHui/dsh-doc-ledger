@@ -67,12 +67,19 @@
      * object means the invariant cannot be omitted — it is applied by `typeFilterOf`, which every
      * state change goes through, and can be asserted on its own.
      *
-     * Shape: `{ families: { [family]: true }, ext: string }` where `ext === ""` means "all of them".
-     * The invariant: **if no family is selected, `ext` is always ""**. An extension is only
+     * Shape: `{ families: { [family]: true }, ext: string | null }`.
+     *
+     * `ext === null` means "no extension chosen"; `ext === ""` is a *real* value meaning "the files
+     * with no extension at all". Those two used to share the empty string, which made the
+     * "no extension" row impossible to un-tick: clicking it passed "" to clear the filter, but ""
+     * was also the key being filtered on, so the state never changed and the tick stayed on.
+     *
+     * The invariant: **if no family is selected, `ext` is always null**. An extension is only
      * meaningful inside a family, so it is dropped the moment the last family goes away.
      */
     function typeFilterOf(families, ext) {
-      var name = String(ext === null || ext === undefined ? "" : ext);
+      // Only null/undefined mean "none"; "" is kept as the no-extension bucket.
+      var name = ext === null || ext === undefined ? null : String(ext);
       var map = {};
       var any = false;
       var source = families === null || families === undefined ? null : families;
@@ -82,22 +89,38 @@
           if (source[keys[i]] === true && keys[i] !== "") { map[keys[i]] = true; any = true; }
         }
       }
-      return { families: map, ext: any === true ? name : "" };
+      return { families: map, ext: any === true ? name : null };
     }
 
     /** Toggle one family, keeping the extension only while a family remains selected. */
     function withFamilyToggled(state, family) {
-      var current = state === null || state === undefined ? typeFilterOf(null, "") : state;
+      var current = state === null || state === undefined ? typeFilterOf(null, null) : state;
       var next = Object.assign({}, current.families);
       if (next[family] === true) delete next[family]; else next[family] = true;
       // Any change to the family selection invalidates the extension that was chosen inside it.
-      return typeFilterOf(next, "");
+      return typeFilterOf(next, null);
     }
 
-    /** Choose (or clear, with "") the extension of the current family selection. */
+    /** Choose an extension ("" = the no-extension bucket), or pass null to clear the choice. */
     function withExtensionChosen(state, ext) {
-      var current = state === null || state === undefined ? typeFilterOf(null, "") : state;
+      var current = state === null || state === undefined ? typeFilterOf(null, null) : state;
       return typeFilterOf(current.families, ext);
+    }
+
+    /**
+     * Choose an extension *inside a family*, selecting that family if it was not already selected.
+     *
+     * Without this, ticking an extension under an un-ticked family did nothing at all: the
+     * invariant above drops an extension that has no family, so the click was silently discarded.
+     * Wanting `.yml` implies wanting the config family, and selecting it makes that visible.
+     * Passing `null` clears the choice and never touches the family selection.
+     */
+    function withExtensionInFamily(state, family, ext) {
+      var current = state === null || state === undefined ? typeFilterOf(null, null) : state;
+      if (ext === null || ext === undefined) return typeFilterOf(current.families, null);
+      var families = Object.assign({}, current.families);
+      families[family] = true;
+      return typeFilterOf(families, ext);
     }
 
     /** The selected family names, sorted, so a stable key can be derived from them. */
@@ -111,7 +134,7 @@
     /** True when anything in either level is narrowing the list. */
     function typeFilterActive(state) {
       if (state === null || state === undefined) return false;
-      return familiesOf(state).length > 0 || String(state.ext || "") !== "";
+      return familiesOf(state).length > 0 || state.ext !== null && state.ext !== undefined;
     }
 
     /**

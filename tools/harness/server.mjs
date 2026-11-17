@@ -127,6 +127,10 @@ const SESSIONS = [
       file("docs\\order-notes.md", "doc"),
       file("docs\\2026-11-06-订单服务重构说明.md", "doc"),
       file("config\\application.yml", "config"),
+  // No-extension files in the same family as a real extension: the "无扩展名" chip is the one
+  // bucket whose key is the empty string, which used to collide with "no extension chosen".
+  file("NOTES", "config", { reads: 2, writes: 0 }),
+  file("TODO", "config", { reads: 1, writes: 0 }),
       file("docs\\archive\\旧版设计稿.md", "doc", { exists: false, reads: 1, writes: 0, bytes: null })
     ]
   },
