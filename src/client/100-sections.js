@@ -98,10 +98,14 @@
         if (file.created === null) return false;
         return Boolean(file.createdAt) && (file.reads || 0) === 0;
       };
+      // The same predicate the frame uses, so the rows and the counts can never disagree.
       var matchesQuery = function (file) {
-        if (props.deletedOnly === true && file.exists !== false) return false;
-        if (props.typeSet !== null && props.typeSet !== undefined && props.typeSet[String(file.category || "other")] !== true) return false;
-        return matches(file, props.query);
+        return rowPasses(file, {
+          deletedOnly: props.deletedOnly,
+          typeSet: props.typeSet,
+          extFilter: props.extFilter,
+          query: props.query
+        });
       };
       // "Used" means a read happened. `|| file.firstUsedAt` looked equivalent and was not:
       // a merged row whose stamp had gone bad (Infinity) put a write-only file into this list.
@@ -285,6 +289,7 @@
         && prev.entered === next.entered
         && prev.headInert === next.headInert
         && prev.onToggleCard === next.onToggleCard
+        && prev.extFilter === next.extFilter
         && prev.query === next.query
         && prev.typeSet === next.typeSet
         && prev.deletedOnly === next.deletedOnly

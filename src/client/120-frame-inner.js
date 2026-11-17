@@ -1010,11 +1010,9 @@
       var summary = { sessions: sessions.length, used: 0, created: 0, reads: 0, writes: 0 };
       var byCategory = {};
       /** The one filter predicate: search + type chips + "only deleted" all narrow this. */
+      // Delegates to the one shared predicate so this copy cannot drift from the card's.
       var passesFilters = function (file) {
-        if (deletedOnly === true && file.exists !== false) return false;
-        if (typeSet !== null && typeSet[String(file.category || "other")] !== true) return false;
-        if (extFilter !== null && extOf(file.name || file.path || "") !== extFilter) return false;
-        return matches(file, query);
+        return rowPasses(file, { deletedOnly: deletedOnly, typeSet: typeSet, extFilter: extFilter, query: query });
       };
       var filterActive = query !== "" || typeFilterActive(typeFilter) || deletedOnly === true;
       var visible = { files: 0, sessions: 0, deleted: 0 };
@@ -1351,6 +1349,8 @@
           session: session,
           query: query,
           typeSet: typeSet,
+          // null = no extension chosen, "" = the no-extension bucket, otherwise the extension.
+          extFilter: extFilter,
           deletedOnly: deletedOnly,
           usedSort: usedSort,
           createdSort: createdSort,

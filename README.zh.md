@@ -720,7 +720,7 @@ tools/registry-check.mjs       市场条目：图标路径真实存在、awesome
 tools/report-check.mjs         静态报告生成 + zstd 与 engines 的契约
 ```
 
-`npm test` 依次跑十二支检查（引擎 14 + 解码 10 + 路由/安全 23 + 缓存 12 + 客户端 64 + 主题 9 + 行时间 6 + i18n 1 + 双语 README 一致性 11 + Release notes 一致性 13 + 市场条目 3 + 报告 2 = **168 项**，无外部依赖），CI 里三套 Node 各跑一遍。i18n 这一支是一整个用例，覆盖 199 个 key。
+`npm test` 依次跑十二支检查（引擎 14 + 解码 10 + 路由/安全 23 + 缓存 12 + 客户端 66 + 主题 9 + 行时间 6 + i18n 1 + 双语 README 一致性 11 + Release notes 一致性 13 + 市场条目 3 + 报告 2 = **170 项**，无外部依赖），CI 里三套 Node 各跑一遍。i18n 这一支是一整个用例，覆盖 199 个 key。
 CI 还会执行 `npm run check:client`，确保提交的 `client.js` 与 `src/client/*.js` 逐字节一致。
 
 面板本身的 UI 变更用 `npm run harness` 在浏览器里看：它会用真实的 `client.js` + 假 cordis 上下文 + 合成台账起一个本地页，

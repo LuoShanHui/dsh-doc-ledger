@@ -58,6 +58,28 @@
     }
 
     /**
+     * The one predicate a file must pass to be listed.
+     *
+     * It used to be written twice — once in the frame (for counts and which cards survive) and once
+     * inside SessionCard (for the rows themselves) — and the two drifted: the extension term was
+     * added to the frame's copy only, so choosing `.java` narrowed every count while the card went
+     * on listing `build.py` and `deploy.ps1`. One function, used by both, is the fix; the tests
+     * below cover the terms that drifted.
+     *
+     * `opts.extFilter`: `null`/`undefined` = no extension chosen, `""` = the no-extension bucket
+     * (compared as a value, not treated as "unset").
+     */
+    function rowPasses(file, opts) {
+      var options = opts || {};
+      if (options.deletedOnly === true && file.exists !== false) return false;
+      var typeSet = options.typeSet;
+      if (typeSet !== null && typeSet !== undefined && typeSet[String(file.category || "other")] !== true) return false;
+      var want = options.extFilter;
+      if (want !== null && want !== undefined && extOf(file.name || file.path || "") !== want) return false;
+      return matches(file, options.query);
+    }
+
+    /**
      * The type filter as one value instead of two independent ones.
      *
      * The two levels used to live in separate `useState` calls, so nothing enforced their

@@ -57,7 +57,7 @@ for (const name of [
   "sortSpecOf", "rowModeOf", "rowsReachable", "rowLimitOf", "clampRowIndex",
   "isActiveRow", "hasActiveRow", "nextRowLimit", "extOf", "fileIconUrl",
   "extensionCensus", "extensionChips",
-  "typeFilterOf", "withFamilyToggled", "withExtensionChosen", "withExtensionInFamily", "familiesOf", "typeFilterActive"
+  "typeFilterOf", "withFamilyToggled", "withExtensionChosen", "withExtensionInFamily", "familiesOf", "typeFilterActive", "rowPasses"
 ]) {
   assert.equal(typeof f(name), "function", "missing function from fragments: " + name);
 }
@@ -494,6 +494,52 @@ check("withExtensionChosen / withExtensionInFamily", () => {
   const noSelect = f("withExtensionInFamily")(f("typeFilterOf")(null, null), "config", null);
   assert.deepEqual(f("familiesOf")(noSelect), [], "clearing never selects a family");
   assert.equal(noSelect.ext, null);
+});
+
+check("rowPasses: 扩展名要真正参与行的筛选", () => {
+  // The reported bug: choosing `.java` narrowed the counts but the card still listed every file of
+  // the family, because the row predicate had no extension term. This is the assertion that was
+  // missing — the predicate lived inside the card component, where nothing could test it.
+  const java = file({ name: "A.java", path: "C:/w/A.java", category: "code" });
+  const py = file({ name: "b.py", path: "C:/w/b.py", category: "code" });
+  const opts = { typeSet: { code: true }, query: "" };
+
+  assert.equal(f("rowPasses")(java, Object.assign({}, opts, { extFilter: "java" })), true);
+  assert.equal(f("rowPasses")(py, Object.assign({}, opts, { extFilter: "java" })), false,
+    "a different extension must not pass");
+
+  // null is "no choice", so everything passes.
+  assert.equal(f("rowPasses")(py, Object.assign({}, opts, { extFilter: null })), true);
+  assert.equal(f("rowPasses")(py, Object.assign({}, opts, { extFilter: undefined })), true);
+
+  // "" is the no-extension bucket, compared as a value.
+  const bare = file({ name: "NOTES", path: "C:/w/NOTES", category: "config" });
+  const yml = file({ name: "a.yml", path: "C:/w/a.yml", category: "config" });
+  const cfg = { typeSet: { config: true }, query: "" };
+  assert.equal(f("rowPasses")(bare, Object.assign({}, cfg, { extFilter: "" })), true);
+  assert.equal(f("rowPasses")(yml, Object.assign({}, cfg, { extFilter: "" })), false);
+});
+
+check("rowPasses: 家族、删除、搜索三项与扩展名叠加", () => {
+  const opts = { typeSet: { code: true }, query: "order" };
+  // `rel` and `sessionTitle` must be set too: the fixture helper defaults them to values that
+  // contain "Order", which would make the negative case match through those fields instead.
+  const base = { rel: "", path: "", sessionTitle: "", sessionId: "" };
+  const hit = file(Object.assign({}, base, { name: "order-notes.java", path: "C:/w/order-notes.java", category: "code" }));
+  const miss = file(Object.assign({}, base, { name: "zeta.java", path: "C:/w/zeta.java", category: "code" }));
+
+  assert.equal(f("rowPasses")(hit, Object.assign({}, opts, { extFilter: "java" })), true);
+  assert.equal(f("rowPasses")(miss, Object.assign({}, opts, { extFilter: "java" })), false, "the query still applies");
+
+  // Deleting the extension from the options must not drop the other terms.
+  assert.equal(f("rowPasses")(miss, Object.assign({}, opts, { extFilter: null })), false, "query still narrows");
+  assert.equal(f("rowPasses")(file(Object.assign({}, base, { name: "order.md", path: "C:/w/order.md", category: "doc" })), Object.assign({}, opts, { extFilter: null })), false,
+    "the family still narrows");
+
+  // deletedOnly
+  const gone = file({ name: "g.java", path: "C:/w/g.java", category: "code", exists: false });
+  assert.equal(f("rowPasses")(gone, { typeSet: null, query: "", extFilter: null, deletedOnly: true }), true);
+  assert.equal(f("rowPasses")(hit, { typeSet: null, query: "", extFilter: null, deletedOnly: true }), false);
 });
 
 check("extensionCensus: 按数据统计，不预设任何语言", () => {

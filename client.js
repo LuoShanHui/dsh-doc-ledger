@@ -1576,6 +1576,28 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * The one predicate a file must pass to be listed.
+     *
+     * It used to be written twice — once in the frame (for counts and which cards survive) and once
+     * inside SessionCard (for the rows themselves) — and the two drifted: the extension term was
+     * added to the frame's copy only, so choosing `.java` narrowed every count while the card went
+     * on listing `build.py` and `deploy.ps1`. One function, used by both, is the fix; the tests
+     * below cover the terms that drifted.
+     *
+     * `opts.extFilter`: `null`/`undefined` = no extension chosen, `""` = the no-extension bucket
+     * (compared as a value, not treated as "unset").
+     */
+    function rowPasses(file, opts) {
+      var options = opts || {};
+      if (options.deletedOnly === true && file.exists !== false) return false;
+      var typeSet = options.typeSet;
+      if (typeSet !== null && typeSet !== undefined && typeSet[String(file.category || "other")] !== true) return false;
+      var want = options.extFilter;
+      if (want !== null && want !== undefined && extOf(file.name || file.path || "") !== want) return false;
+      return matches(file, options.query);
+    }
+
+    /**
      * The type filter as one value instead of two independent ones.
      *
      * The two levels used to live in separate `useState` calls, so nothing enforced their
@@ -2305,10 +2327,14 @@ window.__ModuleLoader__.load({
         if (file.created === null) return false;
         return Boolean(file.createdAt) && (file.reads || 0) === 0;
       };
+      // The same predicate the frame uses, so the rows and the counts can never disagree.
       var matchesQuery = function (file) {
-        if (props.deletedOnly === true && file.exists !== false) return false;
-        if (props.typeSet !== null && props.typeSet !== undefined && props.typeSet[String(file.category || "other")] !== true) return false;
-        return matches(file, props.query);
+        return rowPasses(file, {
+          deletedOnly: props.deletedOnly,
+          typeSet: props.typeSet,
+          extFilter: props.extFilter,
+          query: props.query
+        });
       };
       // "Used" means a read happened. `|| file.firstUsedAt` looked equivalent and was not:
       // a merged row whose stamp had gone bad (Infinity) put a write-only file into this list.
@@ -2492,6 +2518,7 @@ window.__ModuleLoader__.load({
         && prev.entered === next.entered
         && prev.headInert === next.headInert
         && prev.onToggleCard === next.onToggleCard
+        && prev.extFilter === next.extFilter
         && prev.query === next.query
         && prev.typeSet === next.typeSet
         && prev.deletedOnly === next.deletedOnly
@@ -2878,7 +2905,7 @@ window.__ModuleLoader__.load({
       // Visual theme: compact (original) / airy / table / card. Persisted like the
       // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
       /** Stamped by tools/build-client.mjs as an ISO minute so a stale bundle is obvious. */
-    var BUILD_TAG = "2026-11-17 10:10";
+    var BUILD_TAG = "2026-11-17 10:31";
 
     var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
@@ -3827,11 +3854,9 @@ window.__ModuleLoader__.load({
       var summary = { sessions: sessions.length, used: 0, created: 0, reads: 0, writes: 0 };
       var byCategory = {};
       /** The one filter predicate: search + type chips + "only deleted" all narrow this. */
+      // Delegates to the one shared predicate so this copy cannot drift from the card's.
       var passesFilters = function (file) {
-        if (deletedOnly === true && file.exists !== false) return false;
-        if (typeSet !== null && typeSet[String(file.category || "other")] !== true) return false;
-        if (extFilter !== null && extOf(file.name || file.path || "") !== extFilter) return false;
-        return matches(file, query);
+        return rowPasses(file, { deletedOnly: deletedOnly, typeSet: typeSet, extFilter: extFilter, query: query });
       };
       var filterActive = query !== "" || typeFilterActive(typeFilter) || deletedOnly === true;
       var visible = { files: 0, sessions: 0, deleted: 0 };
@@ -4168,6 +4193,8 @@ window.__ModuleLoader__.load({
           session: session,
           query: query,
           typeSet: typeSet,
+          // null = no extension chosen, "" = the no-extension bucket, otherwise the extension.
+          extFilter: extFilter,
           deletedOnly: deletedOnly,
           usedSort: usedSort,
           createdSort: createdSort,
