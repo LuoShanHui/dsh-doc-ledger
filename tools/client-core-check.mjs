@@ -57,7 +57,7 @@ for (const name of [
   "sortSpecOf", "rowModeOf", "rowsReachable", "rowLimitOf", "clampRowIndex",
   "isActiveRow", "hasActiveRow", "nextRowLimit", "extOf", "fileIconUrl",
   "extensionCensus", "extensionChips",
-  "typeFilterOf", "withFamilyToggled", "withExtensionChosen", "withExtensionInFamily", "familiesOf", "typeFilterActive", "rowPasses"
+  "typeFilterOf", "withFamilyToggled", "withExtensionChosen", "withExtensionInFamily", "familiesOf", "typeFilterActive", "rowPasses", "filterConditions", "filterIsActive", "filterSignature"
 ]) {
   assert.equal(typeof f(name), "function", "missing function from fragments: " + name);
 }
@@ -494,6 +494,57 @@ check("withExtensionChosen / withExtensionInFamily", () => {
   const noSelect = f("withExtensionInFamily")(f("typeFilterOf")(null, null), "config", null);
   assert.deepEqual(f("familiesOf")(noSelect), [], "clearing never selects a family");
   assert.equal(noSelect.ext, null);
+});
+
+check("filterConditions: 一组条件，各层共用", () => {
+  // Adding a term must be a one-file change. If a caller could still assemble the options itself,
+  // the next term would again have to be threaded through every call site — that is exactly how
+  // the extension filter ended up applied to the counts but not to the rows.
+  const c = f("filterConditions")({ query: "  order ", typeSet: { code: true }, extFilter: "java", deletedOnly: true });
+  assert.equal(c.query, "  order ", "the query is kept as given");
+  assert.equal(c.extFilter, "java");
+  assert.equal(c.deletedOnly, true);
+  assert.deepEqual(Object.keys(c.typeSet), ["code"]);
+  assert.equal(Object.isFrozen(c), true, "the set is immutable, so no layer can quietly add a term");
+
+  // Defaults: nothing filters.
+  const empty = f("filterConditions")(null);
+  assert.equal(empty.query, "");
+  assert.equal(empty.extFilter, null, "no choice is null, not the empty string");
+  assert.equal(empty.deletedOnly, false);
+  assert.equal(empty.typeSet, null);
+  assert.equal(f("filterIsActive")(empty), false);
+
+  // "" is a real extension choice and must count as active.
+  assert.equal(f("filterConditions")({ extFilter: "" }).extFilter, "");
+  assert.equal(f("filterIsActive")(f("filterConditions")({ extFilter: "" })), true);
+});
+
+check("filterSignature: 条件变了签名就变", () => {
+  const base = { query: "", typeSet: { code: true }, extFilter: null, deletedOnly: false };
+  const a = f("filterSignature")(f("filterConditions")(base));
+  const same = f("filterSignature")(f("filterConditions")(base));
+  assert.equal(a, same, "identical conditions give an identical signature");
+
+  // Each term must move the signature, or a memoised card would keep stale rows.
+  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "order", typeSet: { code: true }, extFilter: null, deletedOnly: false })));
+  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "", typeSet: { doc: true }, extFilter: null, deletedOnly: false })));
+  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "", typeSet: { code: true }, extFilter: "java", deletedOnly: false })));
+  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "", typeSet: { code: true }, extFilter: null, deletedOnly: true })));
+
+  // Family order must not matter.
+  const one = f("filterSignature")(f("filterConditions")({ typeSet: { code: true, doc: true }, query: "" }));
+  const two = f("filterSignature")(f("filterConditions")({ typeSet: { doc: true, code: true }, query: "" }));
+  assert.equal(one, two, "the signature sorts the families");
+});
+
+check("rowPasses 只接受条件集，不接受散装参数", () => {
+  // A structural guard: the predicate reads `query` / `typeSet` / `extFilter` / `deletedOnly` from
+  // the set. Passing a condition set is the only supported shape, and an empty one filters nothing.
+  const any = file({ name: "a.java", path: "C:/w/a.java", category: "code" });
+  assert.equal(f("rowPasses")(any, f("filterConditions")(null)), true);
+  const narrowed = f("filterConditions")({ extFilter: "md" });
+  assert.equal(f("rowPasses")(any, narrowed), false);
 });
 
 check("rowPasses: 扩展名要真正参与行的筛选", () => {

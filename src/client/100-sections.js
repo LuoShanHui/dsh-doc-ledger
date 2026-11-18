@@ -98,14 +98,10 @@
         if (file.created === null) return false;
         return Boolean(file.createdAt) && (file.reads || 0) === 0;
       };
-      // The same predicate the frame uses, so the rows and the counts can never disagree.
+      // The same condition object the frame used for its counts, so the rows and the numbers
+      // cannot disagree. `props.query` is still used for highlighting, which is a different job.
       var matchesQuery = function (file) {
-        return rowPasses(file, {
-          deletedOnly: props.deletedOnly,
-          typeSet: props.typeSet,
-          extFilter: props.extFilter,
-          query: props.query
-        });
+        return rowPasses(file, props.conditions);
       };
       // "Used" means a read happened. `|| file.firstUsedAt` looked equivalent and was not:
       // a merged row whose stamp had gone bad (Infinity) put a write-only file into this list.
@@ -289,7 +285,8 @@
         && prev.entered === next.entered
         && prev.headInert === next.headInert
         && prev.onToggleCard === next.onToggleCard
-        && prev.extFilter === next.extFilter
+        // The frame memoises the condition set, so identity is the right comparison here.
+        && prev.conditions === next.conditions
         && prev.query === next.query
         && prev.typeSet === next.typeSet
         && prev.deletedOnly === next.deletedOnly

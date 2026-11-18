@@ -1009,12 +1009,22 @@
 
       var summary = { sessions: sessions.length, used: 0, created: 0, reads: 0, writes: 0 };
       var byCategory = {};
-      /** The one filter predicate: search + type chips + "only deleted" all narrow this. */
-      // Delegates to the one shared predicate so this copy cannot drift from the card's.
+      /**
+       * One immutable value describing every active filter.
+       *
+       * Built once here and handed down whole: the counts, the card-visibility test and the rows
+       * inside each card all read the same object, so a term cannot be added to one viewer of the
+       * list and forgotten by another. Memoised on the signature so a re-render does not
+       * invalidate every card.
+       */
+      var filterSig = filterSignature({ query: query, typeSet: typeSet, extFilter: extFilter, deletedOnly: deletedOnly });
+      var conditions = react.useMemo(function () {
+        return filterConditions({ query: query, typeSet: typeSet, extFilter: extFilter, deletedOnly: deletedOnly });
+      }, [filterSig]);
       var passesFilters = function (file) {
-        return rowPasses(file, { deletedOnly: deletedOnly, typeSet: typeSet, extFilter: extFilter, query: query });
+        return rowPasses(file, conditions);
       };
-      var filterActive = query !== "" || typeFilterActive(typeFilter) || deletedOnly === true;
+      var filterActive = filterIsActive(conditions);
       var visible = { files: 0, sessions: 0, deleted: 0 };
       sessions.forEach(function (session) {
         var counts = session.counts || {};
@@ -1347,11 +1357,9 @@
           key: session.sessionId,
           sessionId: session.sessionId,
           session: session,
-          query: query,
-          typeSet: typeSet,
-          // null = no extension chosen, "" = the no-extension bucket, otherwise the extension.
-          extFilter: extFilter,
-          deletedOnly: deletedOnly,
+          // The whole condition set, not four loose fields: a new term reaches every card
+          // automatically.
+          conditions: conditions,
           usedSort: usedSort,
           createdSort: createdSort,
           modifiedSort: modifiedSort,

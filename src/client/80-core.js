@@ -58,25 +58,70 @@
     }
 
     /**
+     * The filter condition set: one immutable value that every layer passes around whole.
+     *
+     * Two rounds of the same bug came from wiring this by hand. First the extension term was added
+     * to the frame's copy of the predicate but not the card's, so a chosen extension narrowed the
+     * counts while the rows stayed put. Then, even after the predicate was shared, each caller still
+     * assembled `{ deletedOnly, typeSet, extFilter, query }` itself — so the next added term would
+     * again have to be threaded through every call site by hand, and any site that forgot it would
+     * silently filter differently from the others.
+     *
+     * A condition set removes that step: callers build it once (in the frame) and hand the whole
+     * object down, and `rowPasses` reads only from it. Adding a term means changing this file, not
+     * every caller — and `filterSignature` lets the UI detect a change without comparing fields.
+     */
+    function filterConditions(input) {
+      var source = input || {};
+      var query = String(source.query === null || source.query === undefined ? "" : source.query);
+      var typeSet = source.typeSet === null || source.typeSet === undefined ? null : source.typeSet;
+      // null = no extension chosen; "" = the no-extension bucket (a real value).
+      var extFilter = source.extFilter === null || source.extFilter === undefined ? null : String(source.extFilter);
+      return Object.freeze({
+        query: query,
+        typeSet: typeSet,
+        extFilter: extFilter,
+        deletedOnly: source.deletedOnly === true
+      });
+    }
+
+    /** True when nothing in the condition set narrows the list. */
+    function filterIsActive(conditions) {
+      if (conditions === null || conditions === undefined) return false;
+      return conditions.query !== ""
+        || conditions.extFilter !== null
+        || conditions.deletedOnly === true
+        || (conditions.typeSet !== null && conditions.typeSet !== undefined && Object.keys(conditions.typeSet).length > 0);
+    }
+
+    /**
+     * A stable string for one condition set.
+     *
+     * Memoised cards need to know whether the conditions changed. Comparing the object identity is
+     * not enough (a new object is built every render) and comparing fields by hand is exactly the
+     * maintenance this refactor is removing, so the comparison is derived here too.
+     */
+    function filterSignature(conditions) {
+      if (conditions === null || conditions === undefined) return "";
+      var families = conditions.typeSet === null || conditions.typeSet === undefined
+        ? []
+        : Object.keys(conditions.typeSet).filter(function (name) { return conditions.typeSet[name] === true; }).sort();
+      return JSON.stringify([conditions.query, families, conditions.extFilter, conditions.deletedOnly]);
+    }
+
+    /**
      * The one predicate a file must pass to be listed.
      *
-     * It used to be written twice — once in the frame (for counts and which cards survive) and once
-     * inside SessionCard (for the rows themselves) — and the two drifted: the extension term was
-     * added to the frame's copy only, so choosing `.java` narrowed every count while the card went
-     * on listing `build.py` and `deploy.ps1`. One function, used by both, is the fix; the tests
-     * below cover the terms that drifted.
-     *
-     * `opts.extFilter`: `null`/`undefined` = no extension chosen, `""` = the no-extension bucket
-     * (compared as a value, not treated as "unset").
+     * Callers pass the whole condition set; there are no per-term options to forget.
      */
-    function rowPasses(file, opts) {
-      var options = opts || {};
-      if (options.deletedOnly === true && file.exists !== false) return false;
-      var typeSet = options.typeSet;
+    function rowPasses(file, conditions) {
+      var c = conditions || {};
+      if (c.deletedOnly === true && file.exists !== false) return false;
+      var typeSet = c.typeSet;
       if (typeSet !== null && typeSet !== undefined && typeSet[String(file.category || "other")] !== true) return false;
-      var want = options.extFilter;
+      var want = c.extFilter;
       if (want !== null && want !== undefined && extOf(file.name || file.path || "") !== want) return false;
-      return matches(file, options.query);
+      return matches(file, c.query);
     }
 
     /**

@@ -1576,25 +1576,70 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * The filter condition set: one immutable value that every layer passes around whole.
+     *
+     * Two rounds of the same bug came from wiring this by hand. First the extension term was added
+     * to the frame's copy of the predicate but not the card's, so a chosen extension narrowed the
+     * counts while the rows stayed put. Then, even after the predicate was shared, each caller still
+     * assembled `{ deletedOnly, typeSet, extFilter, query }` itself — so the next added term would
+     * again have to be threaded through every call site by hand, and any site that forgot it would
+     * silently filter differently from the others.
+     *
+     * A condition set removes that step: callers build it once (in the frame) and hand the whole
+     * object down, and `rowPasses` reads only from it. Adding a term means changing this file, not
+     * every caller — and `filterSignature` lets the UI detect a change without comparing fields.
+     */
+    function filterConditions(input) {
+      var source = input || {};
+      var query = String(source.query === null || source.query === undefined ? "" : source.query);
+      var typeSet = source.typeSet === null || source.typeSet === undefined ? null : source.typeSet;
+      // null = no extension chosen; "" = the no-extension bucket (a real value).
+      var extFilter = source.extFilter === null || source.extFilter === undefined ? null : String(source.extFilter);
+      return Object.freeze({
+        query: query,
+        typeSet: typeSet,
+        extFilter: extFilter,
+        deletedOnly: source.deletedOnly === true
+      });
+    }
+
+    /** True when nothing in the condition set narrows the list. */
+    function filterIsActive(conditions) {
+      if (conditions === null || conditions === undefined) return false;
+      return conditions.query !== ""
+        || conditions.extFilter !== null
+        || conditions.deletedOnly === true
+        || (conditions.typeSet !== null && conditions.typeSet !== undefined && Object.keys(conditions.typeSet).length > 0);
+    }
+
+    /**
+     * A stable string for one condition set.
+     *
+     * Memoised cards need to know whether the conditions changed. Comparing the object identity is
+     * not enough (a new object is built every render) and comparing fields by hand is exactly the
+     * maintenance this refactor is removing, so the comparison is derived here too.
+     */
+    function filterSignature(conditions) {
+      if (conditions === null || conditions === undefined) return "";
+      var families = conditions.typeSet === null || conditions.typeSet === undefined
+        ? []
+        : Object.keys(conditions.typeSet).filter(function (name) { return conditions.typeSet[name] === true; }).sort();
+      return JSON.stringify([conditions.query, families, conditions.extFilter, conditions.deletedOnly]);
+    }
+
+    /**
      * The one predicate a file must pass to be listed.
      *
-     * It used to be written twice — once in the frame (for counts and which cards survive) and once
-     * inside SessionCard (for the rows themselves) — and the two drifted: the extension term was
-     * added to the frame's copy only, so choosing `.java` narrowed every count while the card went
-     * on listing `build.py` and `deploy.ps1`. One function, used by both, is the fix; the tests
-     * below cover the terms that drifted.
-     *
-     * `opts.extFilter`: `null`/`undefined` = no extension chosen, `""` = the no-extension bucket
-     * (compared as a value, not treated as "unset").
+     * Callers pass the whole condition set; there are no per-term options to forget.
      */
-    function rowPasses(file, opts) {
-      var options = opts || {};
-      if (options.deletedOnly === true && file.exists !== false) return false;
-      var typeSet = options.typeSet;
+    function rowPasses(file, conditions) {
+      var c = conditions || {};
+      if (c.deletedOnly === true && file.exists !== false) return false;
+      var typeSet = c.typeSet;
       if (typeSet !== null && typeSet !== undefined && typeSet[String(file.category || "other")] !== true) return false;
-      var want = options.extFilter;
+      var want = c.extFilter;
       if (want !== null && want !== undefined && extOf(file.name || file.path || "") !== want) return false;
-      return matches(file, options.query);
+      return matches(file, c.query);
     }
 
     /**
@@ -2327,14 +2372,10 @@ window.__ModuleLoader__.load({
         if (file.created === null) return false;
         return Boolean(file.createdAt) && (file.reads || 0) === 0;
       };
-      // The same predicate the frame uses, so the rows and the counts can never disagree.
+      // The same condition object the frame used for its counts, so the rows and the numbers
+      // cannot disagree. `props.query` is still used for highlighting, which is a different job.
       var matchesQuery = function (file) {
-        return rowPasses(file, {
-          deletedOnly: props.deletedOnly,
-          typeSet: props.typeSet,
-          extFilter: props.extFilter,
-          query: props.query
-        });
+        return rowPasses(file, props.conditions);
       };
       // "Used" means a read happened. `|| file.firstUsedAt` looked equivalent and was not:
       // a merged row whose stamp had gone bad (Infinity) put a write-only file into this list.
@@ -2518,7 +2559,8 @@ window.__ModuleLoader__.load({
         && prev.entered === next.entered
         && prev.headInert === next.headInert
         && prev.onToggleCard === next.onToggleCard
-        && prev.extFilter === next.extFilter
+        // The frame memoises the condition set, so identity is the right comparison here.
+        && prev.conditions === next.conditions
         && prev.query === next.query
         && prev.typeSet === next.typeSet
         && prev.deletedOnly === next.deletedOnly
@@ -2905,7 +2947,7 @@ window.__ModuleLoader__.load({
       // Visual theme: compact (original) / airy / table / card. Persisted like the
       // other preferences; setStyleTheme rebuilds S and re-renders via useStyles().
       /** Stamped by tools/build-client.mjs as an ISO minute so a stale bundle is obvious. */
-    var BUILD_TAG = "2026-11-17 10:31";
+    var BUILD_TAG = "2026-11-18 17:02";
 
     var themeState = react.useState(function () { return loadPref("styleTheme", "card"); });
       var theme = themeState[0];
@@ -3853,12 +3895,22 @@ window.__ModuleLoader__.load({
 
       var summary = { sessions: sessions.length, used: 0, created: 0, reads: 0, writes: 0 };
       var byCategory = {};
-      /** The one filter predicate: search + type chips + "only deleted" all narrow this. */
-      // Delegates to the one shared predicate so this copy cannot drift from the card's.
+      /**
+       * One immutable value describing every active filter.
+       *
+       * Built once here and handed down whole: the counts, the card-visibility test and the rows
+       * inside each card all read the same object, so a term cannot be added to one viewer of the
+       * list and forgotten by another. Memoised on the signature so a re-render does not
+       * invalidate every card.
+       */
+      var filterSig = filterSignature({ query: query, typeSet: typeSet, extFilter: extFilter, deletedOnly: deletedOnly });
+      var conditions = react.useMemo(function () {
+        return filterConditions({ query: query, typeSet: typeSet, extFilter: extFilter, deletedOnly: deletedOnly });
+      }, [filterSig]);
       var passesFilters = function (file) {
-        return rowPasses(file, { deletedOnly: deletedOnly, typeSet: typeSet, extFilter: extFilter, query: query });
+        return rowPasses(file, conditions);
       };
-      var filterActive = query !== "" || typeFilterActive(typeFilter) || deletedOnly === true;
+      var filterActive = filterIsActive(conditions);
       var visible = { files: 0, sessions: 0, deleted: 0 };
       sessions.forEach(function (session) {
         var counts = session.counts || {};
@@ -4191,11 +4243,9 @@ window.__ModuleLoader__.load({
           key: session.sessionId,
           sessionId: session.sessionId,
           session: session,
-          query: query,
-          typeSet: typeSet,
-          // null = no extension chosen, "" = the no-extension bucket, otherwise the extension.
-          extFilter: extFilter,
-          deletedOnly: deletedOnly,
+          // The whole condition set, not four loose fields: a new term reaches every card
+          // automatically.
+          conditions: conditions,
           usedSort: usedSort,
           createdSort: createdSort,
           modifiedSort: modifiedSort,
