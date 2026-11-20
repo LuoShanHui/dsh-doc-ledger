@@ -31,6 +31,14 @@ pnpm add react@18 react-dom@18 --dir <临时目录>
 
 先前的顺序把 vendor 排在最后，导致无网机器上 harness 直接白屏——而 harness 是验证 UI 的**唯一**手段。
 
+**vendor 只存在于 git，不进 npm 包。** `package.json` 的 `files` 逐个列出了 `tools` 下的内容而不是
+整个目录，正是为了排除这 1.2 MB 的 React——它占了打包体积的 80%，而装插件读台账的人从不跑
+harness。注意 `files` 白名单存在时 `.npmignore` 会被忽略，所以排除只能写在这里（实测过：
+加 `.npmignore` 后 `npm pack --dry-run` 里 vendor 依然在）。
+
+从 npm 装的用户想跑 harness，按上面第 2、3 档准备 React 即可（设 `DOC_LEDGER_REACT_DIR`
+或装 `react`/`react-dom` 到 `node_modules`）。
+
 ## 假的东西有哪些
 
 | 真实运行时 | harness 里 |
