@@ -59,12 +59,12 @@ Windows only, UI in Chinese and English.
 ```jsonc
 // ~/.dsh/profiles/<profile>/package.json
 "dependencies": {
-  "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.5.0"
+  "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.6.0"
 }
 ```
 
-1. Add the dependency line above (`#v0.5.0` pins the version; drop the tag to track the latest commit).
-   It is also published to npm, so `"dsh-doc-ledger": "0.5.0"` works too.
+1. Add the dependency line above (`#v0.6.0` pins the version; drop the tag to track the latest commit).
+   It is also published to npm, so `"dsh-doc-ledger": "0.6.0"` works too.
 2. Install with the pnpm bundled in your DSH runtime, reusing an existing store — the full command is under
    [Installation](#installation-as-a-plugin).
 3. Append one `doc-ledger` row to `cordis.patch.yml` (same section), reload the page, and the **Doc ledger**
@@ -117,10 +117,10 @@ start.
 
 1. Add one GitHub-hosted dependency to the `dependencies` of
    `~/.dsh/profiles/<profile>/package.json` (pnpm clones the repo itself, **no local clone needed**;
-   `#v0.5.0` pins the version, dropping the tag tracks the development head):
+   `#v0.6.0` pins the version, dropping the tag tracks the development head):
 
    ```json
-   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.5.0"
+   "dsh-doc-ledger": "github:LuoShanHui/dsh-doc-ledger#v0.6.0"
    ```
 
    To modify the code or work offline, point it at a local directory instead:
@@ -133,7 +133,7 @@ start.
    tag, without cloning — a private mirror may lag behind):
 
    ```json
-   "dsh-doc-ledger": "0.5.0"
+   "dsh-doc-ledger": "0.6.0"
    ```
 
 2. Install with the pnpm bundled in your runtime (`<runtime>` is your runtime directory; **reuse an existing

@@ -8,9 +8,9 @@
  *
  * Run: `node tools/harness/server.mjs` then open http://127.0.0.1:8899
  *
- * React: the page needs the UMD builds. The server looks for them in
- * `DOC_LEDGER_REACT_DIR`, then in `<repo>/node_modules/react/umd`, and otherwise redirects
- * to unpkg (dev machine with network). Nothing here runs in CI.
+ * React: the page needs the UMD builds. `vendor/` ships them, so this works offline; the
+ * `DOC_LEDGER_REACT_DIR` / `<repo>/node_modules` lookups and the unpkg redirect remain as
+ * fallbacks. Nothing here runs in CI.
  */
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
@@ -69,6 +69,10 @@ function glyphPng(/* label, tint are unused by the solid fill but kept for call-
 
 function reactDir() {
   const candidates = [
+    // Vendored copy first: the harness is the only way to verify UI work, and a machine with no
+    // network got a blank page (the /react.js redirect to unpkg never resolves). A checked-in
+    // UMD build makes this work offline and keeps CI independent of a CDN.
+    join(HERE, "vendor"),
     process.env.DOC_LEDGER_REACT_DIR,
     join(REPO, "node_modules")
   ].filter((dir) => typeof dir === "string" && dir !== "");

@@ -17,9 +17,19 @@ node tools/harness/server.mjs          # 或 npm run harness
 
 页面需要 React 18 的 UMD 构建，服务端按顺序找：
 
-1. `DOC_LEDGER_REACT_DIR` 指向的目录（形如 `…/node_modules`）；
-2. 仓库自己的 `node_modules`（`pnpm add -D react react-dom` 之后就有）；
-3. 都没有时 `/react.js` 会 **302 到 unpkg**（本地开发机联网即可，CI 不跑 harness）。
+1. **`tools/harness/vendor/`（已随仓库提供）**——离线可用，这是默认路径；
+2. `DOC_LEDGER_REACT_DIR` 指向的目录（形如 `…/node_modules`）；
+3. 仓库自己的 `node_modules`；
+4. 都没有时 `/react.js` 会 **302 到 unpkg**（最后兜底，需要联网）。
+
+vendor 里的两个文件是 React 18.3.1 的 UMD 开发版，附各自的 LICENSE，从这里来：
+
+```bash
+pnpm add react@18 react-dom@18 --dir <临时目录>
+# 取 node_modules/react/umd/react.development.js 与 react-dom/umd/react-dom.development.js
+```
+
+先前的顺序把 vendor 排在最后，导致无网机器上 harness 直接白屏——而 harness 是验证 UI 的**唯一**手段。
 
 ## 假的东西有哪些
 
