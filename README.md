@@ -101,7 +101,7 @@ language differs.
 | `docs/en-current.png` | Current-session view (folds only this session, so opening the panel never waits for a full replay) |
 | `docs/en-preview.png` | Quick-look dialog: file facts row, truncation/decode notice, body, full path, Esc to close |
 | `docs/en-menu.png` | Context menu: "Preview in sidebar" / "Quick look" first, then "Open with" listing the programs registered for the extension (real icons) |
-| `docs/en-filter.png` | A type filter in effect: the selected chip turns blue and `✕ Clear filters` plus "Expand all" appear on the right |
+| `docs/en-filter.png` | A type filter in effect: three flat rows (family / narrow / selected), the chosen chip turns blue, and `✕ Clear filters` sits at the end of the third row |
 | `docs/en-session.png` | Session-card context menu: copy session name / session ID, jump to this session |
 | `docs/en-sort.png` | Per-section sort menu: each section sorts independently, clicking again reverses direction |
 
@@ -203,7 +203,7 @@ rebinding matrix) in CI, so a refactor cannot silently drop one of them.
   focus them. Dragging the scrollbar to the far end shows a few frames of titles before the rows fill in; that
   is the price of "build on demand" against a full first frame for 43 expanded cards.
 - **`exists` is cached for 20 seconds**: a file deleted on disk shows as "Deleted" up to 20 seconds later.
-- **UI is bilingual (zh / en)**: the `locale` dictionary covers every string in the panel (198 keys) and
+- **UI is bilingual (zh / en)**: the `locale` dictionary covers every string in the panel (201 keys) and
   follows the host's UI language. A language we do not ship (Japanese, Korean, …) shows **English**, because
   every host `addLanguage` fallback chain ends at English. Data itself (session titles, file names, paths,
   program names) is shown as-is and not translated. See [`docs/i18n.md`](docs/i18n.md).
@@ -293,19 +293,33 @@ trimmed by `slimFile()`, because `uses` alone was 30% of the payload and the cli
   theme directly — the active one is ticked — and the choice is remembered across reloads. Light and dark
   follow the host's own scheme marker rather than the OS, and every colour comes from the host's token
   table, so a custom DSH theme carries over.
-- **Type filter**: a row of type chips under the summary (docs / sheets / slides / images / code / web /
-  config / data / archives / other) showing the actual counts in the current data. Click to filter to one
-  type, click again to clear; types with a count of 0 are not shown, and the selection is remembered.
-  Chips use a "label + small count" two-level layout (the count is `tabular-nums` and turns blue when
-  selected) with a background tint and a 120 ms transition, sharing one shape language with the sort pill
-  on the right of each section title.
-- **Deleted only**: the "Deleted N" chip on the same row keeps only files that no longer exist on disk
-  (123 rows across 23 sessions on this machine) and stacks with type and search. It is a temporary toggle
-  and is not persisted.
-- **Clear filters**: whenever a type or "deleted" condition is active, a hairline divider and `✕ Clear
-  filters` appear to the right of the chips. It is a **text action, not a pill** — visibly a different kind
-  of control from a filter chip, in neutral grey (a faint background appears on hover), with feedback for
-  both mouse and keyboard. It resets type and "deleted" and keeps the search text (the tooltip says so).
+- **Type filter, three rows**: row 1 lays out every family present in the data (docs, sheets, slides,
+  images, code, web, config, data, media, archives, binaries), wrapping and multi-select; row 2 lists the
+  extensions of the ticked families, also multi-select and **across families**; row 3 shows the ticks,
+  each with its own `×`. The rows are a two-column grid — the label owns one column and the chips wrap
+  inside the other — so every wrapped line keeps the same left edge.
+  **A family and its own extensions are exclusive**: ticking "code" clears `code/*`, ticking `code/java`
+  un-ticks "code". "All of it" and "part of it" are different questions, and holding both would be a
+  filter that cannot be explained. Other families are unaffected. Multi-select is a **union**: two ticked
+  families list both kinds, never an empty intersection.
+  The census is derived, never declared: a ledger that is 47% `.java` and one that is 90% `.md` both get a
+  useful second level, and a new extension appears without a code change. Past 8 extensions the row folds
+  into `+N`, expands in place and collapses again; **a ticked extension is always promoted**, never hidden
+  (an inline row has no natural ceiling — 43 extensions at 325px wide wrapped into 13 rows, 44% of the panel).
+- **Deleted only**: the "Deleted N" chip at the **end of the family row** keeps only files that no longer
+  exist on disk (123 rows across 23 sessions on this machine) and stacks with type and search. It is a
+  temporary toggle and is not persisted.
+  It is a **view switch, not a type**, so it reflects its own state rather than its count: with a type
+  selected that contains no missing files, it stays highlighted with a count of 0 and an explanatory
+  tooltip, instead of looking as though it switched itself off.
+  Its count and the list it opens share one condition set — checked across 20 filter combinations (18 of
+  them disagreed before the fix).
+- **Clear filters**: whenever a type or "deleted" condition is active, `✕ Clear filters` appears at the
+  end of the third row. It appears with that row — including the case where only "deleted" is on and no
+  type is ticked, since that is the only way back out of that toggle.
+  It is a **text action, not a pill** — visibly a different kind of control from a filter chip, in neutral
+  grey (a faint background appears on hover), with feedback for both mouse and keyboard. It resets type
+  and "deleted" and keeps the search text (the tooltip says so).
   The "▾ Expand all / ▴ Collapse all" control on the right uses the same action style, right-aligned.
 - **Filter feedback**: once search, type or deleted is active, the summary line gains
   "filtered X files / Y sessions", so the list and the summary no longer disagree.
@@ -688,10 +702,10 @@ Verified on this machine (Windows, DSH `>=0.2.0-rc.1 <0.3.0-0`, 64 sessions on d
 - the decoder: 10 encoding scenarios (BOM, UTF-8, per-line GB18030, truncated tail);
 - host routes and the security matrix: 23 assertions (loopback `Host`, the rebinding matrix, same-origin 403,
   ledger allowlist checked before any `stat`, POST-only, 400/404/405, unknown route 404);
-- cache decisions: 12 assertions (exact stamp, TTL fallback, live replay floor, engine fingerprint);
-- client pure functions: 69 assertions (AND search, sorting, cross-session merge, missing-timestamp handling,
+- cache decisions: 13 assertions (exact stamp, TTL fallback, live replay floor, engine fingerprint);
+- client pure functions: 75 assertions (AND search, sorting, cross-session merge, missing-timestamp handling,
   formatting across years, highlight range merging, plurals, host locale snapshot, `dsh-resource://` addresses);
-- i18n: 198 keys with matching zh/en sets, references and placeholders;
+- i18n: 201 keys with matching zh/en sets, references and placeholders;
 - the UI, in a browser via `npm run harness` in both languages;
 - the static report generator (it has its own suite now, on the real code path).
 
@@ -749,8 +763,8 @@ tools/ledger-scan-check.mjs    engine regression: 14 PTC scenarios
 tools/preview-decode-check.mjs decoder regression: 10 encoding scenarios
 tools/harness/                 UI verification: real client.js + fake ctx + synthetic ledger (npm run harness)
 tools/route-check.mjs          host route and security regression: 23 assertions (incl. DNS rebinding)
-tools/cache-check.mjs          cache decisions + engine fingerprint + page-slice guard: 12 assertions
-tools/client-core-check.mjs    client pure functions: 69 assertions (search, sort, merge, timestamps, format, plurals, locale, sections, glyph URLs)
+tools/cache-check.mjs          cache decisions + engine fingerprint + page-slice guard: 13 assertions
+tools/client-core-check.mjs    client pure functions: 75 assertions (search, sort, merge, timestamps, format, plurals, locale, sections, glyph URLs, filter state, dead-code guard)
 tools/theme-check.mjs          theme factory: 9 assertions (three themes, key parity, pairwise distinct)
 tools/row-time-check.mjs       one timestamp per row and the size suffix: 6 assertions
 tools/readme-check.mjs         bilingual README parity: sections, links, anchors, image files, language prefixes, npm `files`
@@ -759,7 +773,7 @@ tools/registry-check.mjs       marketplace entry: icon path exists, bitmap icon 
 tools/report-check.mjs         static report generation + the zstd/engines contract
 ```
 
-`npm test` runs twelve check scripts in order (engine 14 + decoder 10 + routes/security 23 + cache 12 + client 69 + theme 9 + row time 6 + i18n 1 + README parity 11 + release notes 13 + registry 3 + report 2 = **173 checks**, no external dependencies), and CI runs them on three Node versions. The i18n suite is one case covering 199 keys. CI also runs `npm run check:client` to
+`npm test` runs twelve check scripts in order (engine 16 + decoder 10 + routes/security 23 + cache 13 + client 75 + theme 9 + row time 6 + i18n 1 + README parity 11 + release notes 17 + registry 3 + report 3 = **187 checks**, no external dependencies), and CI runs them on three Node versions. The i18n suite is one case covering 201 keys. CI also runs `npm run check:client` to
 prove that the committed `client.js` matches `src/client/*.js` byte for byte.
 
 For UI changes, look at the panel in a browser with `npm run harness`: it serves the real `client.js` against
