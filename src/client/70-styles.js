@@ -266,28 +266,33 @@
         // row: a left rail plus an indent ties it to the family above it. Without that, two
         // wrapping rows look like two independent filter bars.
         extBar: { display: "flex", alignItems: "center", gap: "4px", padding: "4px 8px 4px 10px", flexWrap: "wrap", marginLeft: "8px", borderLeft: "2px solid " + c.accentSoft },
-        // The type picker is a tree, not a flat menu: a family row has a checkbox and, when it has
-        // more than one extension, a nested list of extensions under it. It stays open while rows
-        // are ticked, because choosing a type is usually a few clicks in a row.
-        typePanel: { position: "absolute", zIndex: 80, width: "260px", padding: "4px", borderRadius: c.radius.md, background: c.bg, border: "1px solid " + c.border, boxShadow: c.shadowMenu },
-        typePanelHead: { display: "flex", alignItems: "center", gap: "6px", padding: "4px 6px 6px", borderBottom: "1px solid " + c.borderSoft, color: c.textFaint, fontSize: "11px" },
-        typeRow: { display: "flex", alignItems: "center", gap: "6px", height: "26px", padding: "0 6px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "12px", color: c.text },
-        typeRowOn: { display: "flex", alignItems: "center", gap: "6px", height: "26px", padding: "0 6px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "12px", color: c.accent, fontWeight: 600, background: c.accentSoft },
-        typeCount: { color: c.textFaint, fontSize: "11px", fontVariantNumeric: "tabular-nums" },
-        typeCountOn: { color: c.accent, fontSize: "11px", fontVariantNumeric: "tabular-nums", opacity: 0.85 },
-        typeTwisty: { width: "12px", flex: "0 0 auto", color: c.textFaint, fontSize: "10px" },
-        // Extensions sit indented under their family, so the hierarchy is visible at a glance.
-        typeExtRow: { display: "flex", alignItems: "center", gap: "6px", height: "24px", padding: "0 6px 0 26px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "11px", color: c.textDim },
-        typeExtRowOn: { display: "flex", alignItems: "center", gap: "6px", height: "24px", padding: "0 6px 0 26px", borderRadius: c.radius.sm, cursor: "pointer", fontSize: "11px", color: c.accent, fontWeight: 600, background: c.accentSoft },
-        typeEmpty: { padding: "10px 8px", color: c.textFaint, fontSize: "11px" },
-        // A fixed tick column so family names line up whether or not they are selected.
-        typeTick: { width: "12px", flex: "0 0 auto", color: "inherit", fontSize: "11px" },
-        // Pinned to the bottom of the panel: the chosen extension stays visible even when its
-        // family is collapsed, and carries its own clear button.
-        typeFooter: { display: "flex", alignItems: "center", gap: "6px", marginTop: "4px", padding: "6px 6px 2px", borderTop: "1px solid " + c.borderSoft, color: c.textDim, fontSize: "11px" },
-        typeFooterChip: { display: "inline-flex", alignItems: "center", gap: "4px", padding: "0 6px", height: "18px", borderRadius: "999px", background: c.accentSoft, color: c.accent, fontSize: "11px", fontWeight: 600 },
-        typeFooterClear: { border: "none", background: "transparent", color: c.textFaint, cursor: "pointer", fontSize: "11px", padding: "0 2px" },
-        filterLabel: { color: c.textFaint, fontSize: "11px", marginRight: "1px" },
+        // Three inline rows replace the old pop-up tree: families, then the extensions that can
+        // still be narrowed, then the ticks themselves. Each row wraps, so a wide ledger and a
+        // narrow sidebar both stay readable without a scroll container of their own.
+        // A two-column grid, not flex-wrap: with flex the label only occupied the first line and
+        // every wrapped line started at x:0, so the chips below it were indented inconsistently
+        // and the "deleted" chip stuck out to the left of everything else. The label now owns a
+        // fixed column and the chips wrap inside the second one, so every line lines up.
+        typeRowWrap: { display: "grid", gridTemplateColumns: "auto 1fr", alignItems: "start", columnGap: "6px", rowGap: "4px", width: "100%" },
+        // The chips live in their own wrapping flex box inside column 2.
+        typeRowChips: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", rowGap: "4px", minWidth: 0 },
+        // Level 1: the family itself. A chip reads "label + count", the same shape as the sort pill.
+        typeChip: { display: "inline-flex", alignItems: "center", gap: "4px", height: "20px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: "transparent", color: c.textDim, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
+        typeChipOn: { display: "inline-flex", alignItems: "center", gap: "4px", height: "20px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: c.accent, fontWeight: 600, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
+        // Level 2: a narrower chip, prefixed with its family so the pairing survives a wrapped row.
+        typeExtChip: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 7px", borderRadius: "999px", border: "1px dashed " + c.borderSoft, background: "transparent", color: c.textFaint, fontSize: "10px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
+        typeExtChipOn: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 7px", borderRadius: "999px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: c.accent, fontWeight: 600, fontSize: "10px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
+        typeExtFamily: { color: "inherit", opacity: 0.7, fontSize: "10px" },
+        // The "+N" counter: same footprint as an extension chip so the row keeps one rhythm.
+        typeExtChipMore: { display: "inline-flex", alignItems: "center", height: "18px", padding: "0 7px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: "transparent", color: c.textDim, fontSize: "10px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", fontVariantNumeric: "tabular-nums" },
+        typeEmptyInline: { color: c.textFaint, fontSize: "11px" },
+        // Level 3: a tick, shown with its own remove control. Deliberately looks like a chip with a
+        // button inside rather than a chip that is a button, so "remove one" is an obvious target.
+        typeSelectedChip: { display: "inline-flex", alignItems: "center", gap: "2px", maxWidth: "160px", height: "18px", padding: "0 2px 0 7px", borderRadius: "999px", background: c.accentSoft, color: c.accent, fontSize: "10px", fontWeight: 600, border: "1px solid " + c.accentBorder },
+        typeSelectedClear: { border: "none", background: "transparent", color: c.accent, cursor: "pointer", fontSize: "12px", lineHeight: 1, padding: "0 4px", font: "inherit", opacity: 0.75 },
+        // Sits in the grid's first column. lineHeight matches the chip height so the label and the
+        // first row of chips share a baseline instead of the label floating above them.
+        filterLabel: { color: c.textFaint, fontSize: "11px", lineHeight: "18px", whiteSpace: "nowrap" },
         filterChip: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.borderSoft, background: "transparent", color: c.textDim, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
         filterChipOn: { display: "inline-flex", alignItems: "center", gap: "4px", height: "18px", padding: "0 8px", borderRadius: "999px", border: "1px solid " + c.accentBorder, background: c.accentSoft, color: c.accent, fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", font: "inherit", transition: "background 110ms ease, color 110ms ease" },
         chipCount: { color: c.textFaint, fontSize: "10px", fontVariantNumeric: "tabular-nums" },

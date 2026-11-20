@@ -79,35 +79,44 @@
       }, [theme]);
 
       // Both filter levels are one value, so their relationship cannot be forgotten: see
-      // `typeFilterOf` in 80-core. `ext` is always "" while no family is selected.
+      // `typeFilterOf` in 80-core. A family and its own extensions are mutually exclusive there.
       var typeFilterState = react.useState(function () {
         var savedFamilies = loadPref("typeFilter", []);
-        var map = {};
+        var families = {};
         if (Array.isArray(savedFamilies)) {
-          savedFamilies.forEach(function (key) { if (typeof key === "string" && key !== "") map[key] = true; });
+          savedFamilies.forEach(function (key) { if (typeof key === "string" && key !== "") families[key] = true; });
         }
-        // The stored value is "" both for "none" and for "the no-extension bucket", so it is
-        // resolved against the families: without a family there is no choice to restore.
-        var savedExt = loadPref("extFilter", "");
-        var hasExt = typeof savedExt === "string" && savedExt !== "";
-        var noExtBucket = savedExt === "" && loadPref("extFilterNoExt", false) === true;
-        return typeFilterOf(map, noExtBucket ? "" : (hasExt ? savedExt : null));
+        // Stored as `[{ family, ext }]`; "" survives because it is a real extension value.
+        var savedExts = loadPref("extFilterPairs", []);
+        var exts = {};
+        if (Array.isArray(savedExts)) {
+          savedExts.forEach(function (pair) {
+            if (pair === null || pair === undefined) return;
+            if (typeof pair.family !== "string" || pair.family === "") return;
+            if (typeof pair.ext !== "string") return;
+            exts[pair.family] = exts[pair.family] || {};
+            exts[pair.family][pair.ext] = true;
+          });
+        }
+        return typeFilterOf(families, exts);
       });
       var typeFilter = typeFilterState[0];
       var setTypeFilter = typeFilterState[1];
+      // Whether the extension row is showing everything. Transient on purpose: it answers "let me
+      // look at the rest", not "remember this view", so it resets with the panel.
+      var extExpandedState = react.useState(false);
+      var extExpanded = extExpandedState[0];
+      var setExtExpanded = extExpandedState[1];
 
       var families = familiesOf(typeFilter);
       var familyKey = families.join(",");
       var typeKeys = families;
       var typeKey = familyKey;
-      // `null` = no extension chosen; `""` = the no-extension bucket (a real choice).
-      var extFilter = typeFilter.ext === undefined ? null : typeFilter.ext;
-      // Persisted separately so a future version can read either without a migration step.
+      var selectedExts = extensionsOf(typeFilter);
+      var extKey = selectedExts.map(function (pair) { return pair.family + "/" + pair.ext; }).join(",");
       var persistTypeFilter = function (next) {
         savePref("typeFilter", familiesOf(next));
-        savePref("extFilter", next.ext === null || next.ext === undefined ? "" : next.ext);
-        // Tells the two meanings of a stored "" apart on the next load.
-        savePref("extFilterNoExt", next.ext === "");
+        savePref("extFilterPairs", extensionsOf(next));
       };
       // One stable object per selection, so memoised cards are not invalidated by a re-render.
       var typeSet = react.useMemo(function () {
@@ -116,6 +125,15 @@
         typeKeys.forEach(function (key) { set[key] = true; });
         return set;
       }, [typeKey]);
+      var extSet = react.useMemo(function () {
+        if (extKey === "") return null;
+        var set = {};
+        selectedExts.forEach(function (pair) {
+          set[pair.family] = set[pair.family] || {};
+          set[pair.family][pair.ext] = true;
+        });
+        return set;
+      }, [extKey]);
 
       // Which cards may build their rows: only those near the scroll position (plus
       // anything already built). Forty-three expanded cards would otherwise commit
@@ -348,32 +366,6 @@
               action: { kind: "setTheme", theme: id }
             };
           })
-        });
-      };
-
-      /**
-       * Open the type tree. `tree` is snapshotted at open time so the panel keeps rendering while
-       * the reader ticks rows (ticking re-renders the frame; a live reference would be fine, but a
-       * snapshot keeps the panel's own expand state coherent with the counts it shows).
-       */
-      var openTypePanel = function (trigger) {
-        if (menu !== null && menu !== undefined && menu.kind === "type") { setMenu(null); return; }
-        var rect = trigger.getBoundingClientRect();
-        var panel = panelRect(trigger);
-        setMenu({
-          kind: "type",
-          x: rect.left - panel.left,
-          y: rect.bottom - panel.top + 4,
-          bounds: { w: panel.width, h: panel.height },
-          returnFocus: trigger,
-          tree: typeTree,
-          // The expanded set outlives the popup: closing and reopening the panel should not
-          // collapse everything the reader had opened.
-          expanded: panelExpanded,
-          onToggleFamily: togglePanelFamily,
-          families: typeFilter.families,
-          ext: typeFilter.ext === undefined ? null : typeFilter.ext,
-          active: typeFilterActive(typeFilter)
         });
       };
 
@@ -1017,9 +1009,9 @@
        * list and forgotten by another. Memoised on the signature so a re-render does not
        * invalidate every card.
        */
-      var filterSig = filterSignature({ query: query, typeSet: typeSet, extFilter: extFilter, deletedOnly: deletedOnly });
+      var filterSig = filterSignature({ query: query, typeSet: typeSet, extSet: extSet, deletedOnly: deletedOnly });
       var conditions = react.useMemo(function () {
-        return filterConditions({ query: query, typeSet: typeSet, extFilter: extFilter, deletedOnly: deletedOnly });
+        return filterConditions({ query: query, typeSet: typeSet, extSet: extSet, deletedOnly: deletedOnly });
       }, [filterSig]);
       var passesFilters = function (file) {
         return rowPasses(file, conditions);
@@ -1036,12 +1028,15 @@
         (session.files || []).forEach(function (file) {
           var key = String(file.category || "other");
           byCategory[key] = (byCategory[key] || 0) + 1;
-          if (file.exists === false) visible.deleted += 1;
           if (filterActive && passesFilters(file)) matched += 1;
         });
         visible.files += matched;
         if (matched > 0) visible.sessions += 1;
       });
+      // Counted through the same condition set the rows use, so the chip and the list it opens
+      // can never disagree. It used to be incremented per `exists === false` row regardless of
+      // the other terms, which read "deleted 1" under a "code" filter that matched no rows.
+      visible.deleted = countDeleted(sessions, conditions);
       if (!filterActive) {
         visible.sessions = sessions.length;
         visible.files = Object.keys(byCategory).reduce(function (total, key) { return total + byCategory[key]; }, 0);
@@ -1114,48 +1109,32 @@
         setSplitWrites(function (previous) { return previous !== true; });
       }, []);
 
-      /** Tick a family in the panel. The extension is dropped by `withFamilyToggled`. */
+      /** Tick a family on the first row. Its own extensions are dropped by `withFamilyToggled`. */
       var pickFamily = function (key) {
         var next = withFamilyToggled(typeFilter, key);
         setTypeFilter(next);
         persistTypeFilter(next);
-        // Refresh the snapshot so the panel shows the new ticks and counts.
-        setMenu(function (previous) {
-          if (previous === null || previous.kind !== "type") return previous;
-          return Object.assign({}, previous, { families: next.families, ext: next.ext, active: typeFilterActive(next) });
-        });
       };
 
-      /** Choose an extension inside the current family selection ("" clears it). */
-      var pickExtension = function (ext, family) {
-        // Ticking an extension selects its family too, so the choice cannot be dropped by the
-        // "no family, no extension" invariant.
-        var next = (family === undefined || family === null)
-          ? withExtensionChosen(typeFilter, ext)
-          : withExtensionInFamily(typeFilter, family, ext);
+      /** Tick an extension on the second row; other families keep their ticks. */
+      var pickExtension = function (family, ext) {
+        var next = withExtensionToggled(typeFilter, family, ext);
         setTypeFilter(next);
         persistTypeFilter(next);
-        setMenu(function (previous) {
-          if (previous === null || previous.kind !== "type") return previous;
-          return Object.assign({}, previous, { families: next.families, ext: next.ext, active: typeFilterActive(next) });
-        });
       };
 
-      /** Clear both levels from inside the panel. */
+      /** The × on the "selected" row: remove exactly that one tick. */
+      var removeType = function (family, ext) {
+        var next = withoutType(typeFilter, family, ext);
+        setTypeFilter(next);
+        persistTypeFilter(next);
+      };
+
+      /** Clear both levels. Lives on the "selected" row, where the ticks are listed. */
       var clearTypes = function () {
         var cleared = typeFilterOf(null, null);
         setTypeFilter(cleared);
         persistTypeFilter(cleared);
-        setMenu(function (previous) {
-          if (previous === null || previous.kind !== "type") return previous;
-          return Object.assign({}, previous, { families: cleared.families, ext: cleared.ext, active: false });
-        });
-      };
-
-      var toggleType = function (key) {
-        var next = withFamilyToggled(typeFilter, key);
-        setTypeFilter(next);
-        persistTypeFilter(next);
       };
 
       /** Widen the all-sessions page and refetch it, keeping the current scroll target. */
@@ -1359,6 +1338,8 @@
           session: session,
           // The whole condition set, not four loose fields: a new term reaches every card
           // automatically.
+          // `conditions` carries the query too, so highlighting reads it from there instead of a
+          // second prop. The separate `query:` that used to sit here was the channel that broke.
           conditions: conditions,
           usedSort: usedSort,
           createdSort: createdSort,
@@ -1519,90 +1500,222 @@
       });
       typeTree.sort(function (left, right) { return right.count - left.count || left.key.localeCompare(right.key); });
 
-      // What the trigger says: how many families are ticked, so the current filter is never hidden.
-      var familyCount = families.length;
-      var typeTriggerLabel = familyCount === 0
-        ? t("filter.allTypes")
-        : (familyCount === 1 ? categoryLabel(families[0]) : t("filter.nFamilies", { n: familyCount }));
+      // --- three inline rows -------------------------------------------------
+      // Row 1: every family present in the data, wrapped, multi-select.
+      // Row 2: the extensions of the families that can still be narrowed, wrapped, multi-select.
+      // Row 3: the ticks themselves, each removable, with "clear" living here.
+      //
+      // This replaced a pop-up tree. The pop-up kept the toolbar still, but it also hid the
+      // second level behind a click and made the whole feature look like a single dropdown;
+      // three flat rows show the state continuously and cost no extra interaction.
+      var familyRow = [];
+      typeTree.forEach(function (family) {
+        var on = typeFilter.families[family.key] === true;
+        familyRow.push(h("button", {
+          key: "tf:" + family.key,
+          type: "button",
+          style: on ? S.typeChipOn : S.typeChip,
+          "aria-pressed": on,
+          title: categoryLabel(family.key) + " \u00b7 " + family.count,
+          onFocus: ringOn,
+          onBlur: ringOff,
+          onClick: function (event) { event.stopPropagation(); pickFamily(family.key); }
+        },
+          h("span", null, categoryLabel(family.key)),
+          h("span", { style: on ? S.chipCountOn : S.chipCount }, String(family.count))
+        ));
+      });
+      // "Deleted only" rides at the end of the family row: it is a view over the whole list rather
+      // than a type, but it belongs to the same "what am I looking at" question, and giving it a
+      // row of its own made the filter bar four rows tall for a single toggle.
+      // The toggle owns its own state: `aria-pressed` and the tinted background follow `deletedOnly`
+      // alone, never the count. The number is information — how many rows the filter would leave —
+      // so a count of 0 means "armed, but the rest of the filter excludes everything", not
+      // "switched off". Binding the look to the count made the toggle appear to switch itself off
+      // as soon as a type filter left no deleted rows.
+      var deletedArmed = deletedOnly === true;
+      var deletedCount = visible.deleted;
+      familyRow.push(h("button", {
+        key: "tf:deleted",
+        type: "button",
+        style: deletedArmed === true ? S.typeChipOn : S.typeChip,
+        "aria-pressed": deletedArmed,
+        // Only the armed-and-empty combination gets the longer wording; an armed toggle that
+        // does have matches keeps its normal label, or the tooltip would claim an empty result
+        // while rows are on screen.
+        "aria-label": deletedArmed === true && deletedCount === 0
+          ? t("filter.missingArmedEmpty")
+          : t("filter.missingTitle"),
+        title: deletedArmed === true && deletedCount === 0
+          ? t("filter.missingArmedEmpty")
+          : t("filter.missingTitle"),
+        onFocus: ringOn,
+        onBlur: ringOff,
+        onClick: function (event) {
+          event.stopPropagation();
+          setDeletedOnly(function (previous) { return previous !== true; });
+        }
+      },
+        h("span", null, t("row.missingTag")),
+        // Armed with nothing to show: keep the selected tint (it IS on) and let the number say 0.
+        h("span", { style: deletedArmed === true ? S.chipCountOn : S.chipCount }, String(deletedCount))
+      ));
 
-      // One row, one control: the type tree lives in a popup, so the toolbar never reflows no
-      // matter how many families or extensions the ledger holds.
-      // Which families the type panel has expanded. Held here rather than inside the panel so it
-      // survives the popup being closed.
-      var panelExpandedState = react.useState({});
-      var panelExpanded = panelExpandedState[0];
-      var setPanelExpanded = panelExpandedState[1];
-      var togglePanelFamily = function (key) {
-        setPanelExpanded(function (previous) {
-          var next = Object.assign({}, previous);
-          next[key] = previous[key] !== true;
-          return next;
+      // Row 2 shows the extensions of whichever families are ticked on row 1 — ticking a family is
+      // what asks for its breakdown. The two levels stay mutually exclusive, but that is enforced
+      // on click (`withExtensionToggled` un-ticks the family) rather than by hiding the row: hiding
+      // it made a selected family look like a dead end and put the extensions out of reach entirely.
+      // The row is capped. An inline row has no natural ceiling, and a polyglot ledger breaks the
+      // layout without one: 43 extensions at 325px wide wrapped into 13 rows and consumed 332px —
+      // 44% of the panel, leaving almost nothing for the list. Everything past the cap folds behind
+      // one counter, which expands in place.
+      var extCandidates = [];
+      typeTree.forEach(function (family) {
+        var familyOn = typeFilter.families[family.key] === true;
+        // A ticked family always lists its extensions; an unticked one only when it has a real
+        // choice to offer (one extension is not a choice).
+        if (familyOn !== true && (family.exts || []).length < 2) return;
+        family.exts.forEach(function (entry) {
+          extCandidates.push({ family: family.key, entry: entry });
         });
-        // Keep the open panel's snapshot in step with the new set.
-        setMenu(function (previous) {
-          if (previous === null || previous.kind !== "type") return previous;
-          var nextExpanded = Object.assign({}, previous.expanded || {});
-          nextExpanded[key] = nextExpanded[key] !== true;
-          return Object.assign({}, previous, { expanded: nextExpanded });
-        });
+      });
+      // A ticked extension must never be hidden by the cap, or the reader could lose sight of a
+      // filter that is narrowing the list: those are promoted to the front before the slice.
+      var isTicked = function (candidate) {
+        var bucket = typeFilter.exts[candidate.family] || {};
+        return bucket[candidate.entry.ext] === true;
+      };
+      // Order matters twice over. Ticked first (a live filter must stay visible), then by count
+      // descending: candidates arrive in family order, so without the count the visible 8 were all
+      // one-extension families while the largest family was folded away entirely — the chips most
+      // likely to be wanted were the ones you had to expand to reach.
+      extCandidates.sort(function (left, right) {
+        var l = isTicked(left) === true ? 0 : 1;
+        var r = isTicked(right) === true ? 0 : 1;
+        if (l !== r) return l - r;
+        return (right.entry.count || 0) - (left.entry.count || 0);
+      });
+      // Fold against the real cap always. Passing a larger limit while expanded made `hidden` 0,
+      // which silently killed the "collapse" branch below — expanding was a one-way door that only
+      // a page reload could undo.
+      var extFold = extensionChips(extCandidates.map(function (candidate, position) {
+        return { ext: candidate.entry.ext, count: candidate.entry.count, family: candidate.family, position: position };
+      }), EXT_CHIP_MAX);
+      var canFold = extFold.hidden > 0;
+      var shownExts = extExpanded === true ? extCandidates : extFold.shown.map(function (item) { return extCandidates[item.position]; });
+      var extRow = [];
+      shownExts.forEach(function (candidate) {
+        var family = candidate.family;
+        var entry = candidate.entry;
+        var bucket = typeFilter.exts[family] || {};
+        var on = bucket[entry.ext] === true;
+        var name = entry.ext === "" ? t("filter.noExt") : entry.ext;
+        extRow.push(h("button", {
+          key: "te:" + family + ":" + entry.ext,
+          type: "button",
+          style: on ? S.typeExtChipOn : S.typeExtChip,
+          "aria-pressed": on,
+          "aria-label": categoryLabel(family) + " " + name,
+          title: categoryLabel(family) + " \u00b7 " + name + " \u00b7 " + entry.count,
+          onFocus: ringOn,
+          onBlur: ringOff,
+          onClick: function (event) { event.stopPropagation(); pickExtension(family, entry.ext); }
+        },
+          h("span", { style: S.typeExtFamily }, categoryLabel(family)),
+          h("span", null, name),
+          h("span", { style: on ? S.chipCountOn : S.chipCount }, String(entry.count))
+        ));
+      });
+      if (extExpanded !== true && canFold === true) {
+        extRow.push(h("button", {
+          key: "te:more",
+          type: "button",
+          style: S.typeExtChipMore,
+          title: t("filter.moreExts", { n: extFold.hidden }),
+          "aria-label": t("filter.moreExts", { n: extFold.hidden }),
+          onFocus: ringOn,
+          onBlur: ringOff,
+          onClick: function (event) { event.stopPropagation(); setExtExpanded(true); }
+        }, "+" + extFold.hidden));
+      } else if (extExpanded === true && canFold === true) {
+        extRow.push(h("button", {
+          key: "te:less",
+          type: "button",
+          style: S.typeExtChipMore,
+          title: t("filter.fewerExts"),
+          "aria-label": t("filter.fewerExts"),
+          onFocus: ringOn,
+          onBlur: ringOff,
+          onClick: function (event) { event.stopPropagation(); setExtExpanded(false); }
+        }, t("filter.fewerExts")));
+      }
+
+      // Row 3: one chip per tick. A family chip shows no extension; an extension chip shows both.
+      var selections = typeSelections(typeFilter);
+      var selectedRow = [];
+      selections.forEach(function (item) {
+        var extName = item.ext === "" ? t("filter.noExt") : item.ext;
+        var label = item.ext === null
+          ? categoryLabel(item.family)
+          : categoryLabel(item.family) + "\u00b7" + extName;
+        var key = "ts:" + item.family + ":" + (item.ext === null ? "*" : item.ext);
+        selectedRow.push(h("span", { key: key, style: S.typeSelectedChip, title: label },
+          h("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, label),
+          h("button", {
+            type: "button",
+            style: S.typeSelectedClear,
+            "aria-label": t("filter.removeOne"),
+            title: t("filter.removeOne"),
+            onClick: function (event) { event.stopPropagation(); removeType(item.family, item.ext); }
+          }, "\u00d7")
+        ));
+      });
+
+      // Each row is a two-column grid: the label owns column 1, the chips wrap inside column 2.
+      // Wrapping them as one flex row put every continuation line at x:0, misaligned with the
+      // first line and leaving the "deleted" chip hanging out to the left.
+      // `visible` is the text a sighted reader sees; `aria` is the group's accessibility name.
+      // They differ on the first row: the label says "类型" while the group is announced as the
+      // fuller "类型" (typePick) — keeping both lets the visible label stay short without the
+      // region name degrading to a single ambiguous word.
+      var filterRow = function (key, visible, aria, chips) {
+        return h("div", { key: key, style: S.typeRowWrap, role: "group", "aria-label": aria },
+          h("span", { style: S.filterLabel }, visible),
+          h("div", { style: S.typeRowChips }, chips)
+        );
       };
 
-      var typeTriggerRef = react.useRef(null);
       var filterBar = h("div", { style: showFilterBar ? S.filterBar : Object.assign({}, S.filterBar, { display: "none" }) },
-        h("span", { style: S.filterLabel }, t("sort.type")),
-        h("button", {
-          type: "button",
-          ref: typeTriggerRef,
-          style: familyCount > 0 || extFilter !== null ? S.filterChipOn : S.filterChip,
-          "aria-haspopup": "menu",
-          "aria-expanded": menu !== null && menu.kind === "type",
-          title: t("filter.typeTitle"),
-          onFocus: ringOn,
-          onBlur: ringOff,
-          onClick: function (event) {
-            event.stopPropagation();
-            openTypePanel(event.currentTarget);
-          }
-        },
-          h("span", null, typeTriggerLabel),
-          // Show the chosen extension on the trigger, so a level-2 filter is never invisible.
-          // A separator keeps it from reading as part of the family name ("代码.yml").
-          extFilter !== null
-            ? h("span", { style: Object.assign({}, S.chipCountOn, { marginLeft: "4px" }) },
-                "\u00b7 " + (extFilter === "" ? t("filter.noExt") : extFilter))
-            : null,
-          familyCount > 0 ? h("span", { style: S.chipCountOn }, String(families.length === 1 ? (typeTree.filter(function (f) { return f.key === families[0]; })[0] || {}).count || 0 : visible.files)) : null,
-          h("span", { style: { opacity: 0.7 } }, "\u25be")
+        filterRow("type", t("sort.type"), t("filter.typePick"),
+          familyRow.length === 0
+            ? [h("span", { key: "none", style: S.typeEmptyInline }, t("filter.noTypes"))]
+            : familyRow
         ),
-        h("button", {
-          type: "button",
-          style: deletedOnly === true ? S.filterChipOn : S.filterChip,
-          "aria-pressed": deletedOnly === true,
-          title: t("filter.missingTitle"),
-          onFocus: ringOn,
-          onBlur: ringOff,
-          onClick: function () { setDeletedOnly(function (previous) { return previous !== true; }); }
-        },
-          h("span", null, t("row.missingTag")),
-          h("span", { style: deletedOnly === true ? S.chipCountOn : S.chipCount }, String(visible.deleted))
-        ),
-        anyFilter ? h("span", { style: S.filterDivider, "aria-hidden": "true" }) : null,
-        anyFilter ? h("button", {
-          type: "button",
-          style: S.filterAction,
-          title: t("filter.clearTitle"),
-          "aria-label": t("filter.clearAria"),
-          onMouseEnter: hoverOn,
-          onMouseLeave: hoverOff,
-          onFocus: ringOn,
-          onBlur: ringOff,
-          onClick: function () {
-            var cleared = typeFilterOf(null, null);
-            setTypeFilter(cleared);
-            persistTypeFilter(cleared);
-            setDeletedOnly(false);
-          }
-        }, h("span", { style: S.filterActionGlyph, "aria-hidden": "true" }, "\u2715"), t("filter.clear")) : null
+        extRow.length === 0 ? null : filterRow("ext", t("filter.extLevel"), t("filter.extPick"), extRow),
+        // The row appears whenever *any* filter is on, not only when a type is ticked: "clear"
+        // also switches off "deleted only", and hiding it in that state left the reader with no
+        // way back except re-ticking a type and then clearing.
+        selections.length === 0 && deletedOnly !== true
+          ? null
+          : filterRow("sel", t("filter.selected"), t("filter.selected"), selectedRow.concat([
+              h("button", {
+                key: "clear",
+                type: "button",
+                style: S.filterAction,
+                title: t("filter.clearTitle"),
+                "aria-label": t("filter.clearAria"),
+                onMouseEnter: hoverOn,
+                onMouseLeave: hoverOff,
+                onFocus: ringOn,
+                onBlur: ringOff,
+                onClick: function () {
+                  var cleared = typeFilterOf(null, null);
+                  setTypeFilter(cleared);
+                  persistTypeFilter(cleared);
+                  setDeletedOnly(false);
+                }
+              }, h("span", { style: S.filterActionGlyph, "aria-hidden": "true" }, "\u2715"), t("filter.clear"))
+            ]))
       );
 
       return h("div", { "data-doc-ledger-root": "1", style: S.root, onClick: function () { if (menu !== null) setMenu(null); } },
@@ -1612,15 +1725,7 @@
         filterBar,
         backBar,
         h("div", { ref: listRef, style: S.list, onScroll: onListScroll }, body),
-        // The shared Menu handles the flat popups; the type tree is its own component, so a
-        // "type" menu must not also produce an empty menu shell behind it.
-        h(Menu, { menu: menu !== null && menu.kind === "type" ? null : menu, onPick: act, onClose: function () { setMenu(null); } }),
-        h(TypePanel, {
-          panel: menu !== null && menu.kind === "type" ? menu : null,
-          onPickFamily: pickFamily,
-          onPickExt: pickExtension,
-          onClear: clearTypes
-        }),
+        h(Menu, { menu: menu, onPick: act, onClose: function () { setMenu(null); } }),
         renderModal(),
         toast === null ? null : h("div", {
           style: Object.assign({}, S.toast, toast.kind === "error" ? S.toastError : S.toastOk),

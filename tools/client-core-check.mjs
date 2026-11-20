@@ -56,8 +56,8 @@ for (const name of [
   "shortPath", "highlight", "hostFileAddress", "iconUrl", "pad",
   "sortSpecOf", "rowModeOf", "rowsReachable", "rowLimitOf", "clampRowIndex",
   "isActiveRow", "hasActiveRow", "nextRowLimit", "extOf", "fileIconUrl",
-  "extensionCensus", "extensionChips",
-  "typeFilterOf", "withFamilyToggled", "withExtensionChosen", "withExtensionInFamily", "familiesOf", "typeFilterActive", "rowPasses", "filterConditions", "filterIsActive", "filterSignature"
+  "extensionCensus", "extensionChips", "foldCase",
+  "typeFilterOf", "withFamilyToggled", "withExtensionToggled", "withoutType", "familiesOf", "extensionsOf", "typeSelections", "typeFilterActive", "passesTypeFilter", "rowPasses", "filterConditions", "filterIsActive", "filterSignature", "deletedPasses", "countDeleted"
 ]) {
   assert.equal(typeof f(name), "function", "missing function from fragments: " + name);
 }
@@ -307,6 +307,34 @@ check("highlight: 多词分别高亮", () => {
   assert.equal(parts.filter((p) => p && p.type === "mark").length, 2);
 });
 
+check("highlight: 大小写展开的字符不能让后续高亮错位", () => {
+  // `toLowerCase()` is not length-preserving: "İ" (U+0130) becomes "i" + U+0307. Searching the
+  // lowered copy and slicing the original with those offsets marked the wrong characters —
+  // measured: "doc-İstanbul-notes.md" searched for "notes" produced "otes." instead of "notes".
+  const cases = [
+    ["doc-İstanbul-notes.md", "notes"],
+    ["ẞ-strasse.md", "strasse"],
+    ["ΑΘΗΝΑ-notes.md", "notes"]
+  ];
+  for (const [value, query] of cases) {
+    const parts = f("highlight")(value, query);
+    const marks = parts.filter((p) => p && p.type === "mark");
+    assert.ok(marks.length > 0, value + " must produce a mark for " + query);
+    for (const mark of marks) {
+      const text = mark.children[0];
+      assert.equal(text.toLowerCase(), query.toLowerCase(),
+        "高亮片段必须正是被搜索的词（" + value + "）：切出的是 " + JSON.stringify(text));
+      assert.notEqual(value.toLowerCase().indexOf(text.toLowerCase()), -1,
+        "高亮片段必须真的出现在原文里，而不是错位后的片段");
+    }
+  }
+  // The plain-ASCII path is unchanged: an identity fold must still mark exactly one span.
+  const ascii = f("highlight")("OrderService.java", "order");
+  assert.equal(ascii.filter((p) => p && p.type === "mark")[0].children[0], "Order");
+  // Chinese is unaffected and must stay that way.
+  const zh = f("highlight")("订单服务重构说明.md", "重构");
+  assert.equal(zh.filter((p) => p && p.type === "mark")[0].children[0], "重构");
+});
 // --- host address / icon URL ------------------------------------------------
 check("hostFileAddress: 反斜杠归一 + 盘符冒号保留", () => {
   const addr = f("hostFileAddress")("sess-1", "C:\\work\\a b.txt");
@@ -429,113 +457,138 @@ check("clampRowIndex: 到边界停住，不环绕", () => {
   assert.equal(f("clampRowIndex")(0, 1, 0), 0, "an empty section has nowhere to move");
 });
 
-check("typeFilterOf: null 是「无扩展名筛选」，\"\" 是「无扩展名文件」", () => {
-  // The empty string used to mean both "nothing chosen" and "the no-extension bucket", which made
-  // that row impossible to un-tick: the click passed "" to clear, but "" was the key being
-  // filtered on. They are now distinct values.
-  const none = f("typeFilterOf")({ code: true }, null);
-  assert.equal(none.ext, null, "null means no extension is chosen");
-  assert.equal(f("typeFilterActive")(none), true, "the family still counts as active");
-
-  const bucket = f("typeFilterOf")({ code: true }, "");
-  assert.equal(bucket.ext, "", "the empty string survives as the no-extension bucket");
-  assert.equal(f("typeFilterActive")(bucket), true);
-
-  // An extension without a family is still impossible.
-  assert.equal(f("typeFilterOf")({}, "java").ext, null);
-  assert.equal(f("typeFilterOf")(null, "").ext, null, "and the bucket is dropped too");
+check("typeFilterOf: 一级与二级互斥，二级可跨家族多选", () => {
+  // The three rules the three-row UI depends on. They live in one constructor precisely so they
+  // cannot be forgotten by a caller: a family means "all of it", an extension means "part of it",
+  // and holding both for the same family would be a filter that cannot be explained.
   const empty = f("typeFilterOf")(null, null);
-  assert.equal(f("typeFilterActive")(empty), false);
-  assert.deepEqual(f("familiesOf")(f("typeFilterOf")({ doc: true }, "")), ["doc"]);
+  assert.equal(f("typeFilterActive")(empty), false, "什么都没有勾时不构成筛选");
+  assert.equal(JSON.stringify(f("familiesOf")(empty)), "[]");
+  assert.equal(JSON.stringify(f("extensionsOf")(empty)), "[]");
+
+  // Rule 1: a family owns no extensions.
+  const conflicting = f("typeFilterOf")({ code: true }, { code: { java: true } });
+  assert.equal(JSON.stringify(f("familiesOf")(conflicting)), JSON.stringify(["code"]));
+  assert.equal(JSON.stringify(f("extensionsOf")(conflicting)), "[]", "同一家族的一级与二级不能同时存在");
+
+  // Rule 2: extensions from *different* families coexist — this is what makes the second row a
+  // multi-select rather than one choice.
+  const cross = f("typeFilterOf")({}, { code: { java: true }, config: { yml: true } });
+  assert.equal(JSON.stringify(f("extensionsOf")(cross)),
+    JSON.stringify([{ family: "code", ext: "java" }, { family: "config", ext: "yml" }]),
+    "二级可以跨家族多选");
+  assert.equal(f("typeFilterActive")(cross), true);
+
+  // Rule 3: "" is the no-extension bucket and is a real value, not "nothing chosen".
+  const bucket = f("typeFilterOf")({}, { config: { "": true } });
+  assert.equal(JSON.stringify(f("extensionsOf")(bucket)), JSON.stringify([{ family: "config", ext: "" }]), "无扩展名要保留成空串");
+  assert.equal(f("typeFilterActive")(bucket), true);
+  assert.equal(JSON.stringify(f("familiesOf")(f("typeFilterOf")({ doc: true }, null))), JSON.stringify(["doc"]));
 });
 
-check("withFamilyToggled: 一级一变，二级必清", () => {
-  let state = f("typeFilterOf")(null, null);
+check("withFamilyToggled: 勾一级清掉它自己的二级，不碰别的家族", () => {
+  let state = f("typeFilterOf")({}, { code: { java: true }, doc: { md: true } });
   state = f("withFamilyToggled")(state, "code");
-  assert.deepEqual(f("familiesOf")(state), ["code"]);
+  assert.equal(JSON.stringify(f("familiesOf")(state)), JSON.stringify(["code"]), "一级被勾中");
+  assert.equal(JSON.stringify(f("extensionsOf")(state)), JSON.stringify([{ family: "doc", ext: "md" }]),
+    "只清掉 code 自己的二级，doc 的保持");
 
-  state = f("withExtensionChosen")(state, "java");
-  assert.equal(state.ext, "java");
-
+  // Un-ticking must not promote the narrower selection back.
   state = f("withFamilyToggled")(state, "code");
-  assert.deepEqual(f("familiesOf")(state), []);
-  assert.equal(state.ext, null, "removing the last family clears the choice");
+  assert.equal(JSON.stringify(f("familiesOf")(state)), "[]");
+  assert.equal(JSON.stringify(f("extensionsOf")(state)), JSON.stringify([{ family: "doc", ext: "md" }]));
 
-  let two = f("typeFilterOf")({ code: true }, "java");
+  // Multi-select on the first row.
+  let two = f("withFamilyToggled")(f("typeFilterOf")({}, {}), "code");
   two = f("withFamilyToggled")(two, "doc");
-  assert.equal(two.ext, null, "changing the family set invalidates the choice");
-  assert.deepEqual(f("familiesOf")(two), ["code", "doc"]);
+  assert.equal(JSON.stringify(f("familiesOf")(two)), JSON.stringify(["code", "doc"]));
 });
 
-check("withExtensionChosen / withExtensionInFamily", () => {
-  // Clearing is always allowed and never touches the families.
-  const chosen = f("withExtensionChosen")(f("typeFilterOf")({ code: true }, null), "java");
-  assert.equal(chosen.ext, "java");
-  const cleared = f("withExtensionChosen")(chosen, null);
-  assert.equal(cleared.ext, null);
-  assert.deepEqual(f("familiesOf")(cleared), ["code"], "clearing keeps the family");
+check("withExtensionToggled: 勾二级取消同家族的一级", () => {
+  // Ticking `code/java` un-ticks the `code` family — the mirror of the previous test.
+  let state = f("withFamilyToggled")(f("typeFilterOf")({}, {}), "code");
+  state = f("withExtensionToggled")(state, "code", "java");
+  assert.equal(JSON.stringify(f("familiesOf")(state)), "[]", "同家族的一级被取消");
+  assert.equal(JSON.stringify(f("extensionsOf")(state)), JSON.stringify([{ family: "code", ext: "java" }]));
 
-  // Choosing the bucket is a real choice, not a clear.
-  const bucket = f("withExtensionChosen")(f("typeFilterOf")({ code: true }, null), "");
-  assert.equal(bucket.ext, "", "the bucket can be chosen explicitly");
+  // Toggling the same extension again removes it.
+  state = f("withExtensionToggled")(state, "code", "java");
+  assert.equal(JSON.stringify(f("extensionsOf")(state)), "[]");
+  assert.equal(f("typeFilterActive")(state), false);
 
-  // Picking an extension under an un-ticked family selects that family: otherwise the invariant
-  // would silently discard the click.
-  const implied = f("withExtensionInFamily")(f("typeFilterOf")(null, null), "config", "yml");
-  assert.deepEqual(f("familiesOf")(implied), ["config"], "the family is selected implicitly");
-  assert.equal(implied.ext, "yml");
+  // A second family is untouched.
+  let mixed = f("typeFilterOf")({ doc: true }, null);
+  mixed = f("withExtensionToggled")(mixed, "config", "yml");
+  assert.equal(JSON.stringify(f("familiesOf")(mixed)), JSON.stringify(["doc"]));
+  assert.equal(JSON.stringify(f("extensionsOf")(mixed)), JSON.stringify([{ family: "config", ext: "yml" }]));
 
-  // Adding to an existing selection keeps the others.
-  const added = f("withExtensionInFamily")(f("typeFilterOf")({ doc: true }, null), "config", "");
-  assert.deepEqual(f("familiesOf")(added), ["config", "doc"]);
-  assert.equal(added.ext, "", "the bucket works here too");
+  // "" is a real choice here too.
+  const bare = f("withExtensionToggled")(f("typeFilterOf")({}, {}), "config", "");
+  assert.equal(JSON.stringify(f("extensionsOf")(bare)), JSON.stringify([{ family: "config", ext: "" }]));
+});
 
-  // Clearing through this path must not select anything.
-  const noSelect = f("withExtensionInFamily")(f("typeFilterOf")(null, null), "config", null);
-  assert.deepEqual(f("familiesOf")(noSelect), [], "clearing never selects a family");
-  assert.equal(noSelect.ext, null);
+check("withoutType / typeSelections: 第三行的 × 只移除那一项", () => {
+  let state = f("typeFilterOf")({ doc: true }, { code: { java: true } });
+  // A family tick has ext === null; an extension tick carries its own family.
+  state = f("withoutType")(state, "doc", null);
+  assert.equal(JSON.stringify(f("familiesOf")(state)), "[]", "移除一级");
+  assert.equal(JSON.stringify(f("extensionsOf")(state)), JSON.stringify([{ family: "code", ext: "java" }]), "别的项不受影响");
+
+  state = f("withoutType")(state, "code", "java");
+  assert.equal(f("typeFilterActive")(state), false, "移除二级");
+
+  // The third row's content: families first, then extensions, stable order.
+  const both = f("typeFilterOf")({ doc: true }, { code: { java: true }, config: { "": true } });
+  assert.equal(JSON.stringify(f("typeSelections")(both)),
+    JSON.stringify([{ family: "doc", ext: null }, { family: "code", ext: "java" }, { family: "config", ext: "" }]));
 });
 
 check("filterConditions: 一组条件，各层共用", () => {
   // Adding a term must be a one-file change. If a caller could still assemble the options itself,
   // the next term would again have to be threaded through every call site — that is exactly how
   // the extension filter ended up applied to the counts but not to the rows.
-  const c = f("filterConditions")({ query: "  order ", typeSet: { code: true }, extFilter: "java", deletedOnly: true });
+  const c = f("filterConditions")({ query: "  order ", typeSet: { code: true }, extSet: { doc: { md: true } }, deletedOnly: true });
   assert.equal(c.query, "  order ", "the query is kept as given");
-  assert.equal(c.extFilter, "java");
+  assert.equal(JSON.stringify(c.extSet), JSON.stringify({ doc: { md: true } }), "二级是一张家族到扩展名的表");
   assert.equal(c.deletedOnly, true);
-  assert.deepEqual(Object.keys(c.typeSet), ["code"]);
+  assert.equal(JSON.stringify(Object.keys(c.typeSet)), JSON.stringify(["code"]));
   assert.equal(Object.isFrozen(c), true, "the set is immutable, so no layer can quietly add a term");
 
   // Defaults: nothing filters.
   const empty = f("filterConditions")(null);
   assert.equal(empty.query, "");
-  assert.equal(empty.extFilter, null, "no choice is null, not the empty string");
+  assert.equal(empty.extSet, null, "没有二级筛选就是 null");
   assert.equal(empty.deletedOnly, false);
   assert.equal(empty.typeSet, null);
   assert.equal(f("filterIsActive")(empty), false);
 
   // "" is a real extension choice and must count as active.
-  assert.equal(f("filterConditions")({ extFilter: "" }).extFilter, "");
-  assert.equal(f("filterIsActive")(f("filterConditions")({ extFilter: "" })), true);
+  const bucket = f("filterConditions")({ extSet: { config: { "": true } } });
+  assert.equal(JSON.stringify(bucket.extSet), JSON.stringify({ config: { "": true } }), "无扩展名桶要保留成空串键");
+  assert.equal(f("filterIsActive")(bucket), true);
 });
 
 check("filterSignature: 条件变了签名就变", () => {
-  const base = { query: "", typeSet: { code: true }, extFilter: null, deletedOnly: false };
+  const base = { query: "", typeSet: { code: true }, extSet: null, deletedOnly: false };
   const a = f("filterSignature")(f("filterConditions")(base));
   const same = f("filterSignature")(f("filterConditions")(base));
   assert.equal(a, same, "identical conditions give an identical signature");
 
   // Each term must move the signature, or a memoised card would keep stale rows.
-  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "order", typeSet: { code: true }, extFilter: null, deletedOnly: false })));
-  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "", typeSet: { doc: true }, extFilter: null, deletedOnly: false })));
-  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "", typeSet: { code: true }, extFilter: "java", deletedOnly: false })));
-  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "", typeSet: { code: true }, extFilter: null, deletedOnly: true })));
+  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "order", typeSet: { code: true }, extSet: null, deletedOnly: false })));
+  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "", typeSet: { doc: true }, extSet: null, deletedOnly: false })));
+  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "", typeSet: { code: true }, extSet: { code: { java: true } }, deletedOnly: false })));
+  assert.notEqual(a, f("filterSignature")(f("filterConditions")({ query: "", typeSet: { code: true }, extSet: null, deletedOnly: true })));
 
   // Family order must not matter.
   const one = f("filterSignature")(f("filterConditions")({ typeSet: { code: true, doc: true }, query: "" }));
   const two = f("filterSignature")(f("filterConditions")({ typeSet: { doc: true, code: true }, query: "" }));
   assert.equal(one, two, "the signature sorts the families");
+
+  // Tick order must not change the signature either, or every second click would rebuild the list.
+  const extA = f("filterSignature")(f("filterConditions")({ query: "", typeSet: null, extSet: { code: { java: true, py: true } } }));
+  const extB = f("filterSignature")(f("filterConditions")({ query: "", typeSet: null, extSet: { code: { py: true, java: true } } }));
+  assert.equal(extA, extB, "the signature sorts the extensions");
 });
 
 check("rowPasses 只接受条件集，不接受散装参数", () => {
@@ -543,56 +596,112 @@ check("rowPasses 只接受条件集，不接受散装参数", () => {
   // the set. Passing a condition set is the only supported shape, and an empty one filters nothing.
   const any = file({ name: "a.java", path: "C:/w/a.java", category: "code" });
   assert.equal(f("rowPasses")(any, f("filterConditions")(null)), true);
-  const narrowed = f("filterConditions")({ extFilter: "md" });
+  const narrowed = f("filterConditions")({ extSet: { doc: { md: true } } });
   assert.equal(f("rowPasses")(any, narrowed), false);
 });
 
-check("rowPasses: 扩展名要真正参与行的筛选", () => {
-  // The reported bug: choosing `.java` narrowed the counts but the card still listed every file of
-  // the family, because the row predicate had no extension term. This is the assertion that was
-  // missing — the predicate lived inside the card component, where nothing could test it.
+check("rowPasses: 一级与二级是并集，命中任一即通过", () => {
+  // The rows are a union. An extension tick admits that extension, a family tick admits the whole
+  // family, and a file needs to match only one. An intersection would make multi-select useless:
+  // ticking two families would list nothing.
   const java = file({ name: "A.java", path: "C:/w/A.java", category: "code" });
   const py = file({ name: "b.py", path: "C:/w/b.py", category: "code" });
-  const opts = { typeSet: { code: true }, query: "" };
+  const md = file({ name: "c.md", path: "C:/w/c.md", category: "doc" });
 
-  assert.equal(f("rowPasses")(java, Object.assign({}, opts, { extFilter: "java" })), true);
-  assert.equal(f("rowPasses")(py, Object.assign({}, opts, { extFilter: "java" })), false,
-    "a different extension must not pass");
+  // One extension: only files with it.
+  const onlyJava = f("filterConditions")({ extSet: { code: { java: true } } });
+  assert.equal(f("rowPasses")(java, onlyJava), true);
+  assert.equal(f("rowPasses")(py, onlyJava), false, "另一个扩展名不该通过");
+  assert.equal(f("rowPasses")(md, onlyJava), false);
 
-  // null is "no choice", so everything passes.
-  assert.equal(f("rowPasses")(py, Object.assign({}, opts, { extFilter: null })), true);
-  assert.equal(f("rowPasses")(py, Object.assign({}, opts, { extFilter: undefined })), true);
+  // Two extensions in one family: both pass, the rest do not.
+  const javaOrPy = f("filterConditions")({ extSet: { code: { java: true, py: true } } });
+  assert.equal(f("rowPasses")(java, javaOrPy), true);
+  assert.equal(f("rowPasses")(py, javaOrPy), true);
+  assert.equal(f("rowPasses")(md, javaOrPy), false);
 
-  // "" is the no-extension bucket, compared as a value.
+  // Extensions from two different families: union across families.
+  const crossExt = f("filterConditions")({ extSet: { code: { java: true }, doc: { md: true } } });
+  assert.equal(f("rowPasses")(java, crossExt), true);
+  assert.equal(f("rowPasses")(md, crossExt), true, "二级跨家族也是并集");
+  assert.equal(f("rowPasses")(py, crossExt), false);
+
+  // Two families ticked: union, so both kinds are listed.
+  const twoFamilies = f("filterConditions")({ typeSet: { code: true, doc: true } });
+  assert.equal(f("rowPasses")(java, twoFamilies), true);
+  assert.equal(f("rowPasses")(md, twoFamilies), true, "勾两个一级得到并集，不是空集");
+
+  // "" is the no-extension bucket, keyed as a value.
   const bare = file({ name: "NOTES", path: "C:/w/NOTES", category: "config" });
   const yml = file({ name: "a.yml", path: "C:/w/a.yml", category: "config" });
-  const cfg = { typeSet: { config: true }, query: "" };
-  assert.equal(f("rowPasses")(bare, Object.assign({}, cfg, { extFilter: "" })), true);
-  assert.equal(f("rowPasses")(yml, Object.assign({}, cfg, { extFilter: "" })), false);
+  const noExt = f("filterConditions")({ extSet: { config: { "": true } } });
+  assert.equal(f("rowPasses")(bare, noExt), true);
+  assert.equal(f("rowPasses")(yml, noExt), false);
+
+  // No ticks at all means no type filter.
+  const none = f("filterConditions")(null);
+  assert.equal(f("rowPasses")(java, none), true);
+  assert.equal(f("rowPasses")(md, none), true);
 });
 
-check("rowPasses: 家族、删除、搜索三项与扩展名叠加", () => {
-  const opts = { typeSet: { code: true }, query: "order" };
-  // `rel` and `sessionTitle` must be set too: the fixture helper defaults them to values that
-  // contain "Order", which would make the negative case match through those fields instead.
+check("rowPasses: 删除与搜索两项仍与类型叠加", () => {
+  // rel/sessionTitle must be emptied: the fixture defaults them to values containing "Order",
+  // which would let the negative case match through those fields instead.
   const base = { rel: "", path: "", sessionTitle: "", sessionId: "" };
   const hit = file(Object.assign({}, base, { name: "order-notes.java", path: "C:/w/order-notes.java", category: "code" }));
   const miss = file(Object.assign({}, base, { name: "zeta.java", path: "C:/w/zeta.java", category: "code" }));
 
-  assert.equal(f("rowPasses")(hit, Object.assign({}, opts, { extFilter: "java" })), true);
-  assert.equal(f("rowPasses")(miss, Object.assign({}, opts, { extFilter: "java" })), false, "the query still applies");
+  assert.equal(f("rowPasses")(hit, f("filterConditions")({ typeSet: { code: true }, query: "order" })), true);
+  assert.equal(f("rowPasses")(miss, f("filterConditions")({ typeSet: { code: true }, query: "order" })), false, "搜索仍然生效");
+  assert.equal(f("rowPasses")(miss, f("filterConditions")({ query: "order" })), false, "去掉类型后搜索仍然收窄");
 
-  // Deleting the extension from the options must not drop the other terms.
-  assert.equal(f("rowPasses")(miss, Object.assign({}, opts, { extFilter: null })), false, "query still narrows");
-  assert.equal(f("rowPasses")(file(Object.assign({}, base, { name: "order.md", path: "C:/w/order.md", category: "doc" })), Object.assign({}, opts, { extFilter: null })), false,
-    "the family still narrows");
+  const docRow = file(Object.assign({}, base, { name: "order.md", path: "C:/w/order.md", category: "doc" }));
+  assert.equal(f("rowPasses")(docRow, f("filterConditions")({ typeSet: { code: true }, query: "" })), false, "家族仍然收窄");
 
-  // deletedOnly
+  // deletedOnly stacks with the type filter.
   const gone = file({ name: "g.java", path: "C:/w/g.java", category: "code", exists: false });
-  assert.equal(f("rowPasses")(gone, { typeSet: null, query: "", extFilter: null, deletedOnly: true }), true);
-  assert.equal(f("rowPasses")(hit, { typeSet: null, query: "", extFilter: null, deletedOnly: true }), false);
+  assert.equal(f("rowPasses")(gone, f("filterConditions")({ deletedOnly: true })), true);
+  assert.equal(f("rowPasses")(hit, f("filterConditions")({ deletedOnly: true })), false);
+  assert.equal(f("rowPasses")(hit, f("filterConditions")({ typeSet: { doc: true }, deletedOnly: true })), false, "类型与已删除叠加");
 });
+check("countDeleted: 「已删除」芯片的计数必须与它打开的行数一致", () => {
+  // The reported bug: with the "code" family ticked the chip still read "deleted 1" (it counted
+  // every `exists === false` row), while clicking it produced zero rows under "no documents".
+  // A count and the list it describes must share one predicate.
+  const goneJava = file({ name: "gone.java", path: "C:/w/gone.java", category: "code", exists: false });
+  const goneMd = file({ name: "gone.md", path: "C:/w/gone.md", category: "doc", exists: false });
+  const liveJava = file({ name: "live.java", path: "C:/w/live.java", category: "code", exists: true });
+  const sessions = [{ files: [goneJava, goneMd, liveJava] }];
 
+  // Nothing else narrowed: both deleted files are candidates.
+  assert.equal(f("countDeleted")(sessions, f("filterConditions")(null)), 2);
+
+  // The "code" family narrows the count, exactly as it narrows the rows.
+  const codeOnly = f("filterConditions")({ typeSet: { code: true } });
+  assert.equal(f("countDeleted")(sessions, codeOnly), 1, "只有 code 家族的已删除文件才算数");
+  const rowsUnderCode = [goneJava, goneMd, liveJava]
+    .filter((entry) => f("rowPasses")(entry, f("filterConditions")({ typeSet: { code: true }, deletedOnly: true })));
+  assert.equal(rowsUnderCode.length, 1, "同一组条件下行数必须与芯片计数相等");
+  assert.equal(rowsUnderCode[0].name, "gone.java");
+
+  // A query term narrows it too, through the same `matches` the rows use.
+  assert.equal(f("countDeleted")(sessions, f("filterConditions")({ query: "gone.java" })), 1);
+  assert.equal(f("countDeleted")(sessions, f("filterConditions")({ query: "zeta" })), 0);
+
+  // The extension level applies as well, and it is a union like the predicate.
+  assert.equal(f("countDeleted")(sessions, f("filterConditions")({ extSet: { code: { java: true } } })), 1);
+  assert.equal(f("countDeleted")(sessions, f("filterConditions")({ extSet: { code: { py: true } } })), 0);
+  assert.equal(f("countDeleted")(sessions, f("filterConditions")({ extSet: { code: { java: true }, doc: { md: true } } })), 2,
+    "跨家族二级筛选应当同时算上两边的已删除文件");
+
+  // The chip is the control that arms `deletedOnly`, so its own count must not depend on it.
+  assert.equal(f("countDeleted")(sessions, f("filterConditions")({ typeSet: { code: true }, deletedOnly: true })), 1,
+    "计数不能被它自己控制的那一项影响");
+
+  // An empty board is 0, not a crash.
+  assert.equal(f("countDeleted")([], f("filterConditions")(null)), 0);
+  assert.equal(f("countDeleted")(null, f("filterConditions")(null)), 0);
+});
 check("extensionCensus: 按数据统计，不预设任何语言", () => {
   // The point of deriving this instead of declaring it: a project that is 90% .java and one that
   // is 90% .md must both get a useful second level, with no code change.
@@ -623,18 +732,130 @@ check("extensionCensus: 按数据统计，不预设任何语言", () => {
     JSON.stringify([{ ext: "", count: 1 }]), "extension-less files bucket under \"\"");
 });
 
-check("extensionChips: 超出上限时折叠，且不丢计数", () => {
+check("extensionChips: 超出上限时折叠，且折叠项可展开", () => {
+  // The inline extension row has no natural ceiling. Measured on a real polyglot ledger: 43
+  // extensions at 325px wide wrapped into 13 rows and took 332px — 44% of the panel, leaving the
+  // list almost invisible. This cap is the only thing standing between the reader and that.
   const many = Array.from({ length: 12 }, (_, i) => ({ ext: "e" + i, count: 12 - i }));
   const split = f("extensionChips")(many, 8);
   assert.equal(split.shown.length, 8, "shows the cap");
   assert.equal(split.hidden, 4, "counts the rest");
   assert.equal(split.hiddenFiles, 4 + 3 + 2 + 1, "the hidden ones still carry their totals (counts 4,3,2,1)");
+  // The folded entries come back so "+N" can expand in place instead of only reporting a number.
+  assert.equal(split.rest.length, 4, "the folded entries are returned, not just counted");
+  assert.equal(split.rest[0].ext, "e8", "rest holds the entries past the cap, in order");
+
   // At or below the cap nothing is folded, so the row never shows a pointless "1 more".
   assert.equal(f("extensionChips")(many.slice(0, 8), 8).hidden, 0);
+  assert.equal(f("extensionChips")(many.slice(0, 9), 8).hidden, 0, "one over the cap is still not worth folding");
   assert.equal(f("extensionChips")([], 8).shown.length, 0);
   assert.equal(f("extensionChips")(null, 8).shown.length, 0);
+
+  // The real shape that broke the layout: 43 extensions must not all be rendered.
+  const fortyThree = Array.from({ length: 43 }, (_, i) => ({ ext: "x" + i, count: 1 }));
+  const capped = f("extensionChips")(fortyThree, 8);
+  assert.equal(capped.shown.length, 8, "43 extensions render 8 + one counter, not 43 chips");
+  assert.equal(capped.hidden, 35);
+  assert.equal(capped.shown.length + 1, 9, "the row grows by exactly one counter chip");
 });
 
+check("扩展名折叠：展开后可收起，且可见项按频次优先", () => {
+  // Two defects found by testing the fold itself:
+  //   1. expanding passed a limit of 9999, so `hidden` came back 0 and the collapse branch was
+  //      unreachable — expanding was a one-way door that only a reload could undo.
+  //   2. candidates arrive in family order and were sorted only by "is ticked", so the visible 8
+  //      were all one-file families while the largest family was folded away entirely.
+  const dir0 = join(dir, "120-frame-inner.js");
+  const source = readFileSync(dir0, "utf8");
+
+  // Guard 1: the fold must always be computed against the real cap, never a lifted one.
+  assert.ok(/\), EXT_CHIP_MAX\);/.test(source),
+    "折叠必须始终按真实上限计算，不能用放大后的上限（否则 hidden 恒为 0）");
+  assert.ok(source.indexOf("? 9999 :") === -1, "不得再出现 9999 这种伪上限");
+  // Both branches must key off the same capability flag.
+  assert.ok(/canFold = extFold\.hidden > 0/.test(source), "两个分支要共用同一个 canFold");
+  assert.ok(/extExpanded !== true && canFold === true/.test(source), "展开入口");
+  assert.ok(/extExpanded === true && canFold === true/.test(source), "收起入口必须可达");
+
+  // Guard 2: the sort must break ties by count, or the biggest family loses its chips.
+  assert.ok(/right\.entry\.count \|\| 0\) - \(left\.entry\.count \|\| 0\)/.test(source)
+      || /right\.entry\.count - left\.entry\.count/.test(source),
+    "可见项要按使用频次排序，不能只按家族顺序");
+
+  // Behavioural check of the same rule through the pure helper: capped input still reports hidden.
+  const many = Array.from({ length: 43 }, (_, i) => ({ ext: "e" + i, count: 43 - i }));
+  const fold = f("extensionChips")(many, 8);
+  assert.equal(fold.hidden, 35, "43 个扩展名折叠后仍有 35 个被隐藏，收起判断才成立");
+  assert.ok(fold.hidden > 0, "能折叠就必须能收起");
+});
+check("每个被测的纯函数在 client.js 里都至少有一个调用点", () => {
+  // The failure mode this catches: `extensionChips` had four green assertions while the UI never
+  // called it — a refactor turned it into dead code and the tests supplied false confidence. The
+  // same shape nearly happened to the highlight query, where the pure function was right and the
+  // wiring was missing.
+  //
+  // Testing a function proves it works, never that anything uses it. One grep per name is cheap
+  // and turns "green but unreachable" into a failure.
+  const bundle = readFileSync(join(dir, "..", "..", "client.js"), "utf8");
+
+  // Functions that are legitimately only called by the test file or are entry points.
+  const EXEMPT = new Set([
+    "apply", "applyInner", "TabTitle",            // host entry points, called by the loader
+    "extensionChips",                              // called indirectly via the render path below
+    "familiesOf", "extensionsOf", "typeSelections" // called from the frame and from each other
+  ]);
+
+  const names = [
+    "defaultDir", "sortFiles", "termsOf", "matches", "mergeSessions", "minStamp", "maxStamp",
+    "fmtTime", "fmtBytes", "encodingLabel", "categoryColor", "categoryLabel", "shortPath",
+    "highlight", "hostFileAddress", "iconUrl", "pad", "sortSpecOf", "rowModeOf", "rowsReachable",
+    "rowLimitOf", "clampRowIndex", "isActiveRow", "hasActiveRow", "nextRowLimit", "extOf",
+    "fileIconUrl", "typeFilterOf", "withFamilyToggled", "withExtensionToggled", "withoutType",
+    "typeFilterActive", "passesTypeFilter", "rowPasses", "filterConditions", "filterIsActive",
+    "filterSignature", "deletedPasses", "countDeleted", "foldCase"
+  ];
+
+  const unreferenced = names.filter((name) => {
+    if (EXEMPT.has(name) === true) return false;
+    // A definition alone is not a call: require the name to appear at least twice.
+    const hits = bundle.split(name).length - 1;
+    return hits < 2;
+  });
+  assert.deepEqual(unreferenced, [], "这些函数只有定义、没有任何调用点：" + unreferenced.join(", "));
+});
+check("渲染接线：高亮必须从 conditions 取查询词，不能有第二条通道", () => {
+  // The defect this guards lived for four rounds: `highlight()` was correct while `<mark>` never
+  // appeared, because `Section` read a `props.query` that `cardProps` never passed. Every other
+  // assertion here tests pure functions, so a broken prop is invisible to all of them.
+  //
+  // The first guard only grepped for `query:` in the props builder, which a rename or a spread
+  // would defeat or falsely satisfy. The fix that makes it structural is removing the second
+  // channel entirely: the term now lives in `conditions`, the object that already carries every
+  // other filter, so there is nothing left to forget to pass.
+  const sections = readFileSync(join(dir, "100-sections.js"), "utf8");
+  const frame = readFileSync(join(dir, "120-frame-inner.js"), "utf8");
+
+  // 1. The consumer reads the query out of the condition set.
+  assert.ok(/conditions\.query/.test(sections),
+    "Section 必须从 props.conditions.query 取查询词");
+  // 2. There is no second channel left to drift. A mention inside a comment is fine (the comment
+  //    explains what went wrong); a live read is not.
+  const codeOnly = sections
+    .split("\n")
+    .filter((line) => line.trim().startsWith("//") === false && line.trim().startsWith("*") === false)
+    .join("\n");
+  assert.equal(/props\.query\b/.test(codeOnly), false,
+    "不得再出现 props.query 这第二条通道——它正是断掉的那条");
+  assert.equal(/^\s*query:\s*query\b/m.test(frame), false,
+    "cardProps 不应再单独传 query，conditions 已经带着它");
+
+  // 3. The same object still reaches the card, or step 1 would read nothing.
+  const start = frame.indexOf("var cardProps = function");
+  assert.notEqual(start, -1, "cardProps is where a card's props are built");
+  const body = frame.slice(start, start + 3000);
+  assert.ok(/\bconditions:\s*conditions\b/.test(body),
+    "cardProps 必须把 conditions 原样交给卡片");
+});
 check("extOf: 从路径取小写扩展名，无扩展名返回空", () => {
   assert.equal(f("extOf")("C:\\w\\a\\notes.md"), "md");
   assert.equal(f("extOf")("/home/u/Doc.TXT"), "txt");

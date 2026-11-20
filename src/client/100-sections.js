@@ -99,9 +99,16 @@
         return Boolean(file.createdAt) && (file.reads || 0) === 0;
       };
       // The same condition object the frame used for its counts, so the rows and the numbers
-      // cannot disagree. `props.query` is still used for highlighting, which is a different job.
+      // cannot disagree.
       var matchesQuery = function (file) {
         return rowPasses(file, props.conditions);
+      };
+      // Highlighting reads the query from that same object rather than from a second prop.
+      // The two-channel version is what broke: `props.query` was never passed, so search hid rows
+      // without ever wrapping a match, and no pure-function test could see it. One object means one
+      // place for the term to live, which is the reason `filterConditions` exists at all.
+      var highlightQuery = function () {
+        return props.conditions ? props.conditions.query : "";
       };
       // "Used" means a read happened. `|| file.firstUsedAt` looked equivalent and was not:
       // a merged row whose stamp had gone bad (Infinity) put a write-only file into this list.
@@ -154,7 +161,7 @@
             // be a prop rather than a CSS class (there is no stylesheet to hang one on).
             parity: ordinal % 2,
             active: reachable === true && index === (activeRow === null ? 0 : activeRow),
-            query: props.query,
+            query: highlightQuery(),
             onOpen: props.onOpen,
             onQuick: props.onQuick,
             onMenu: props.onMenu,
@@ -303,156 +310,6 @@
         && prev.createdLabel === next.createdLabel
         && prev.modifiedLabel === next.modifiedLabel;
     });
-
-    /**
-     * The type picker: a two-level tree in one popup.
-     *
-     * Why a popup rather than rows of chips: on a real ledger one extension dominates (`.java` was
-     * 46% of 2262 files and 81% of its family), so an always-visible second row spent its width on
-     * one-to-three-file chips, and five of nine families had exactly one extension — a second level
-     * with nothing to choose. A tree shows the hierarchy once, expands only where there is a choice,
-     * and costs no height in the toolbar.
-     *
-     * It is a controlled multi-select: rows stay open while ticking, because narrowing by type is
-     * usually several clicks in a row, and closing after each one would force a re-open every time.
-     */
-    function TypePanel(props) {
-      var h = react.createElement;
-      useStyles();
-      var boxRef = react.useRef(null);
-      var open = props.panel !== null && props.panel !== undefined;
-      // Expanded families are owned by the frame, so closing and reopening the panel does not
-      // collapse what the reader had opened.
-      var expanded = props.panel && props.panel.expanded ? props.panel.expanded : {};
-      var toggleFamily = function (key) {
-        if (props.panel && typeof props.panel.onToggleFamily === "function") {
-          props.panel.onToggleFamily(key);
-        }
-      };
-
-      react.useEffect(function () {
-        if (open !== true) return undefined;
-        var box = boxRef.current;
-        if (box !== null) {
-          var first = box.querySelector("[data-type-row='1']");
-          (first !== null ? first : box).focus();
-        }
-        var trigger = props.panel && props.panel.returnFocus ? props.panel.returnFocus : null;
-        return function () {
-          if (trigger !== null && typeof trigger.focus === "function") {
-            try { trigger.focus(); } catch (error) { /* the trigger may be gone after a refresh */ }
-          }
-        };
-      }, [open]);
-
-      if (open !== true) return null;
-      var panel = props.panel;
-      var bounds = panel.bounds || { w: 420, h: 640 };
-      var top = Math.min(panel.y, Math.max(4, bounds.h - 260));
-      var maxHeight = Math.max(140, bounds.h - top - 8);
-      var tree = panel.tree || [];
-
-      var renderExt = function (family, entry) {
-        var on = panel.ext === entry.ext;
-        var label = entry.ext === "" ? t("filter.noExt") : entry.ext;
-        return h("div", {
-          key: "x:" + family + ":" + entry.ext,
-          style: on ? S.typeExtRowOn : S.typeExtRow,
-          role: "menuitemcheckbox",
-          "aria-checked": on,
-          tabIndex: -1,
-          "data-type-row": "1",
-          onMouseEnter: function (event) { if (on !== true) event.currentTarget.style.background = S.menuHover; },
-          onMouseLeave: function (event) { if (on !== true) event.currentTarget.style.background = "transparent"; },
-          onClick: function (event) {
-            event.stopPropagation();
-            // null clears the choice; "" is the no-extension bucket and must survive as itself,
-            // otherwise this row could never be un-ticked (it re-selected its own key).
-            props.onPickExt(on ? null : entry.ext, family);
-          }
-        },
-          h("span", { style: S.typeTwisty }, on ? "\u2713" : ""),
-          h("span", { style: { flex: "1", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, label),
-          h("span", { style: on ? S.typeCountOn : S.typeCount }, String(entry.count))
-        );
-      };
-
-      var rows = [];
-      tree.forEach(function (family) {
-        var on = panel.families[family.key] === true;
-        var isOpen = expanded[family.key] === true;
-        // Only offer a second level where there is an actual choice to make.
-        var nestable = (family.exts || []).length >= 2;
-        rows.push(h("div", {
-          key: "f:" + family.key,
-          style: on ? S.typeRowOn : S.typeRow,
-          role: "menuitemcheckbox",
-          "aria-checked": on,
-          tabIndex: -1,
-          "data-type-row": "1",
-          onMouseEnter: function (event) { if (on !== true) event.currentTarget.style.background = S.menuHover; },
-          onMouseLeave: function (event) { if (on !== true) event.currentTarget.style.background = "transparent"; },
-          onClick: function (event) {
-            event.stopPropagation();
-            // The twisty has its own hit area, so expanding never changes the selection.
-            if (nestable && event.target === event.currentTarget.firstChild) {
-              toggleFamily(family.key);
-              return;
-            }
-            props.onPickFamily(family.key);
-          }
-        },
-          h("span", {
-            style: Object.assign({}, S.typeTwisty, { cursor: nestable ? "pointer" : "default" }),
-            onClick: function (event) {
-              if (!nestable) return;
-              event.stopPropagation();
-              toggleFamily(family.key);
-            }
-          }, nestable ? (isOpen ? "\u25be" : "\u25b8") : ""),
-          // A tick, not only a tinted background: the extension rows use a tick, and relying on
-          // colour alone made the family's state easy to misread.
-          h("span", { style: S.typeTick }, on ? "\u2713" : ""),
-          h("span", { style: { flex: "1", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, categoryLabel(family.key)),
-          h("span", { style: on ? S.typeCountOn : S.typeCount }, String(family.count))
-        ));
-        if (nestable && isOpen) {
-          (family.exts || []).forEach(function (entry) { rows.push(renderExt(family.key, entry)); });
-        }
-      });
-
-      return h("div", {
-        ref: boxRef,
-        style: Object.assign({}, S.typePanel, { left: Math.max(4, Math.min(panel.x, bounds.w - 268)) + "px", top: top + "px", maxHeight: maxHeight + "px", overflowY: "auto" }),
-        role: "menu",
-        "aria-label": t("filter.typePick"),
-        tabIndex: -1,
-        onClick: function (event) { event.stopPropagation(); }
-      },
-        h("div", { style: S.typePanelHead },
-          h("span", { style: { flex: 1 } }, t("filter.typePick")),
-          (props.active === true ? h("button", {
-            type: "button",
-            style: S.filterAction,
-            onClick: function (event) { event.stopPropagation(); props.onClear(); }
-          }, t("filter.clear")) : null)
-        ),
-        rows.length === 0 ? h("div", { style: S.typeEmpty }, t("filter.noTypes")) : rows,
-        // The chosen extension is pinned here so it stays visible even when its family is
-        // collapsed — the row it lives under can be folded away, the choice cannot be hidden.
-        panel.ext !== null && panel.ext !== undefined ? h("div", { style: S.typeFooter },
-          h("span", { style: { flex: "1" } }, t("filter.chosenExt")),
-          h("span", { style: S.typeFooterChip }, panel.ext === "" ? t("filter.noExt") : panel.ext),
-          h("button", {
-            type: "button",
-            style: S.typeFooterClear,
-            title: t("filter.clearExt"),
-            "aria-label": t("filter.clearExt"),
-            onClick: function (event) { event.stopPropagation(); props.onPickExt(null); }
-          }, "\u2715")
-        ) : null
-      );
-    }
 
     /** One popup for both the row context menu and the sort picker. */
     function Menu(props) {

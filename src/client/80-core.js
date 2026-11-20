@@ -75,12 +75,13 @@
       var source = input || {};
       var query = String(source.query === null || source.query === undefined ? "" : source.query);
       var typeSet = source.typeSet === null || source.typeSet === undefined ? null : source.typeSet;
-      // null = no extension chosen; "" = the no-extension bucket (a real value).
-      var extFilter = source.extFilter === null || source.extFilter === undefined ? null : String(source.extFilter);
+      // `{ [family]: { [ext]: true } }`; an absent family means "no extension ticked in it".
+      // This replaced a single `extFilter` string when the second level became multi-select.
+      var extSet = source.extSet === null || source.extSet === undefined ? null : source.extSet;
       return Object.freeze({
         query: query,
         typeSet: typeSet,
-        extFilter: extFilter,
+        extSet: extSet,
         deletedOnly: source.deletedOnly === true
       });
     }
@@ -89,9 +90,9 @@
     function filterIsActive(conditions) {
       if (conditions === null || conditions === undefined) return false;
       return conditions.query !== ""
-        || conditions.extFilter !== null
         || conditions.deletedOnly === true
-        || (conditions.typeSet !== null && conditions.typeSet !== undefined && Object.keys(conditions.typeSet).length > 0);
+        || (conditions.typeSet !== null && conditions.typeSet !== undefined && Object.keys(conditions.typeSet).length > 0)
+        || (conditions.extSet !== null && conditions.extSet !== undefined && Object.keys(conditions.extSet).length > 0);
     }
 
     /**
@@ -106,7 +107,17 @@
       var families = conditions.typeSet === null || conditions.typeSet === undefined
         ? []
         : Object.keys(conditions.typeSet).filter(function (name) { return conditions.typeSet[name] === true; }).sort();
-      return JSON.stringify([conditions.query, families, conditions.extFilter, conditions.deletedOnly]);
+      // Extensions are flattened to `family/ext` strings and sorted, so two different insertion
+      // orders produce the same signature (a tick order difference must not invalidate the memo).
+      var extensions = [];
+      var extSet = conditions.extSet || {};
+      var owners = Object.keys(extSet).sort();
+      for (var i = 0; i < owners.length; i += 1) {
+        var bucket = extSet[owners[i]] || {};
+        var keys = Object.keys(bucket).filter(function (name) { return bucket[name] === true; }).sort();
+        for (var k = 0; k < keys.length; k += 1) extensions.push(owners[i] + "/" + keys[k]);
+      }
+      return JSON.stringify([conditions.query, families, extensions, conditions.deletedOnly]);
     }
 
     /**
@@ -114,80 +125,179 @@
      *
      * Callers pass the whole condition set; there are no per-term options to forget.
      */
+    /**
+     * Whether a file passes the type filter.
+     *
+     * The rows are a **union**: a ticked family admits every file of that family, a ticked
+     * extension admits the files with that extension, and a file needs to match only one of them.
+     * Tick "code" and "doc" and you get both, which is the only reading that makes multi-select
+     * useful — an intersection would be empty the moment two families were ticked.
+     *
+     * No ticks at all means "no type filter", so everything passes. A family and its own
+     * extensions cannot both be ticked (`typeFilterOf` enforces it), so the two levels never
+     * contradict each other, and they are checked independently here.
+     */
+    function passesTypeFilter(file, conditions) {
+      var c = conditions || {};
+      var category = String(file.category || "other");
+      var ext = extOf(file.name || file.path || "");
+      var typeSet = c.typeSet;
+      var familyWanted = typeSet !== null && typeSet !== undefined && typeSet[category] === true;
+      var bucket = (c.extSet || {})[category];
+      // "" is the no-extension bucket and is a real key, so this must test the key, not truthiness.
+      var extWanted = bucket !== null && bucket !== undefined && bucket[ext] === true;
+      var filtersTypes = (typeSet !== null && typeSet !== undefined && Object.keys(typeSet).length > 0)
+        || (c.extSet !== null && c.extSet !== undefined && Object.keys(c.extSet).length > 0);
+      if (filtersTypes === false) return true;
+      return familyWanted === true || extWanted === true;
+    }
+
     function rowPasses(file, conditions) {
       var c = conditions || {};
       if (c.deletedOnly === true && file.exists !== false) return false;
-      var typeSet = c.typeSet;
-      if (typeSet !== null && typeSet !== undefined && typeSet[String(file.category || "other")] !== true) return false;
-      var want = c.extFilter;
-      if (want !== null && want !== undefined && extOf(file.name || file.path || "") !== want) return false;
+      if (passesTypeFilter(file, c) === false) return false;
       return matches(file, c.query);
     }
 
     /**
-     * The type filter as one value instead of two independent ones.
+     * Whether a row is a candidate for the "only deleted" toggle: it must be gone from disk and
+     * survive the search and both levels of the type filter.
      *
-     * The two levels used to live in separate `useState` calls, so nothing enforced their
-     * relationship: every code path that changed the families had to remember to clear the
-     * extension, and the ones that forgot left an invisible filter narrowing the list (a board of
-     * zero cards reading "no documents", with no chip or button showing why). Keeping both in one
-     * object means the invariant cannot be omitted — it is applied by `typeFilterOf`, which every
-     * state change goes through, and can be asserted on its own.
-     *
-     * Shape: `{ families: { [family]: true }, ext: string | null }`.
-     *
-     * `ext === null` means "no extension chosen"; `ext === ""` is a *real* value meaning "the files
-     * with no extension at all". Those two used to share the empty string, which made the
-     * "no extension" row impossible to un-tick: clicking it passed "" to clear the filter, but ""
-     * was also the key being filtered on, so the state never changed and the tick stayed on.
-     *
-     * The invariant: **if no family is selected, `ext` is always null**. An extension is only
-     * meaningful inside a family, so it is dropped the moment the last family goes away.
+     * Deliberately ignores `deletedOnly` itself. The chip that calls this is the control that
+     * turns that term on and off, so letting the term narrow its own count would make the number
+     * read 0 while the toggle is armed — the count would answer "how many pass the filter I just
+     * applied" instead of "how many the filter would leave me".
      */
-    function typeFilterOf(families, ext) {
-      // Only null/undefined mean "none"; "" is kept as the no-extension bucket.
-      var name = ext === null || ext === undefined ? null : String(ext);
-      var map = {};
-      var any = false;
-      var source = families === null || families === undefined ? null : families;
-      if (source !== null && typeof source === "object") {
-        var keys = Object.keys(source);
-        for (var i = 0; i < keys.length; i += 1) {
-          if (source[keys[i]] === true && keys[i] !== "") { map[keys[i]] = true; any = true; }
-        }
-      }
-      return { families: map, ext: any === true ? name : null };
-    }
-
-    /** Toggle one family, keeping the extension only while a family remains selected. */
-    function withFamilyToggled(state, family) {
-      var current = state === null || state === undefined ? typeFilterOf(null, null) : state;
-      var next = Object.assign({}, current.families);
-      if (next[family] === true) delete next[family]; else next[family] = true;
-      // Any change to the family selection invalidates the extension that was chosen inside it.
-      return typeFilterOf(next, null);
-    }
-
-    /** Choose an extension ("" = the no-extension bucket), or pass null to clear the choice. */
-    function withExtensionChosen(state, ext) {
-      var current = state === null || state === undefined ? typeFilterOf(null, null) : state;
-      return typeFilterOf(current.families, ext);
+    function deletedPasses(file, conditions) {
+      if (file === null || file === undefined) return false;
+      if (file.exists !== false) return false;
+      var c = conditions || {};
+      if (passesTypeFilter(file, c) === false) return false;
+      return matches(file, c.query);
     }
 
     /**
-     * Choose an extension *inside a family*, selecting that family if it was not already selected.
+     * The number on the "only deleted" chip.
      *
-     * Without this, ticking an extension under an un-ticked family did nothing at all: the
-     * invariant above drops an extension that has no family, so the click was silently discarded.
-     * Wanting `.yml` implies wanting the config family, and selecting it makes that visible.
-     * Passing `null` clears the choice and never touches the family selection.
+     * This used to be incremented for every `exists === false` row while the list beside it was
+     * built through `rowPasses`, so the two disagreed the moment any other term was active: with
+     * the "code" family ticked the chip still read "deleted 1", and clicking it produced an empty
+     * list under "no documents". A counter and the list it describes must share one predicate, so
+     * both go through the condition set — this function is the single place that decides it.
+     *
+     * @param sessions    the sessions in scope, each with a `files` array
+     * @param conditions  the same condition set `rowPasses` takes
      */
-    function withExtensionInFamily(state, family, ext) {
+    function countDeleted(sessions, conditions) {
+      var total = 0;
+      (sessions || []).forEach(function (session) {
+        (session && session.files ? session.files : []).forEach(function (file) {
+          if (deletedPasses(file, conditions)) total += 1;
+        });
+      });
+      return total;
+    }
+    /**
+     * The type filter, as one value covering both levels.
+     *
+     * Shape: `{ families: { [family]: true }, exts: { [family]: { [ext]: true } } }`.
+     *
+     * Three rules have to hold at all times, and putting them in one constructor is what makes
+     * them impossible to forget (the two-level filter has already shipped twice with a state
+     * split across `useState` calls, leaving an invisible filter narrowing the list):
+     *
+     * 1. **A family and its own extensions are mutually exclusive.** Ticking `code` clears every
+     *    extension filed under `code`; ticking `code/java` un-ticks the `code` family. The two
+     *    levels mean different things — "all of it" and "part of it" — so holding both at once
+     *    would be a filter that can never be explained to the reader. Other families are
+     *    untouched: the exclusivity is per family, not global, which is what lets
+     *    `code/java` and `config/yml` be ticked together.
+     * 2. **Extensions are not nested under a selected family.** `exts` only ever has entries for
+     *    families that are *not* selected, so the second row can show a family's extensions
+     *    exactly when that family is a candidate for being narrowed.
+     * 3. **An extension belongs to a real family.** `""` is a legal extension value (files with
+     *    no extension at all) and is kept as itself, not treated as "nothing chosen".
+     *
+     * The rows are a union, not an intersection: any ticked family or extension lets a file in.
+     */
+    function typeFilterOf(families, exts) {
+      var familyMap = {};
+      var source = families === null || families === undefined ? null : families;
+      if (source !== null && typeof source === "object") {
+        var names = Object.keys(source);
+        for (var i = 0; i < names.length; i += 1) {
+          if (source[names[i]] === true && names[i] !== "") familyMap[names[i]] = true;
+        }
+      }
+      var extMap = {};
+      var from = exts === null || exts === undefined ? null : exts;
+      if (from !== null && typeof from === "object") {
+        var owners = Object.keys(from);
+        for (var j = 0; j < owners.length; j += 1) {
+          var family = owners[j];
+          // Rule 1: a selected family owns no extensions, so nothing can be filed under it.
+          if (familyMap[family] === true) continue;
+          var bucket = from[family];
+          if (bucket === null || bucket === undefined || typeof bucket !== "object") continue;
+          var kept = {};
+          var any = false;
+          var keys = Object.keys(bucket);
+          for (var k = 0; k < keys.length; k += 1) {
+            if (bucket[keys[k]] === true) { kept[keys[k]] = true; any = true; }
+          }
+          if (any === true) extMap[family] = kept;
+        }
+      }
+      return { families: familyMap, exts: extMap };
+    }
+
+    /**
+     * Tick or untick one family.
+     *
+     * Selecting a family is what "I want all of this kind" means, so it supersedes any extension
+     * already ticked inside it (rule 1). Un-ticking leaves the family with no extensions either:
+     * clearing a selection must not silently promote the narrower one back.
+     */
+    function withFamilyToggled(state, family) {
       var current = state === null || state === undefined ? typeFilterOf(null, null) : state;
-      if (ext === null || ext === undefined) return typeFilterOf(current.families, null);
       var families = Object.assign({}, current.families);
-      families[family] = true;
-      return typeFilterOf(families, ext);
+      var exts = Object.assign({}, current.exts);
+      if (families[family] === true) {
+        delete families[family];
+      } else {
+        families[family] = true;
+        delete exts[family];
+      }
+      return typeFilterOf(families, exts);
+    }
+
+    /**
+     * Tick or untick one extension inside one family.
+     *
+     * Ticking `code/java` un-ticks the `code` family (rule 1, the mirror of the previous
+     * function) and leaves every other family alone, so `code/java` + `config/yml` can coexist.
+     * `ext === ""` is the no-extension bucket and is a real choice, not a clear.
+     */
+    function withExtensionToggled(state, family, ext) {
+      var current = state === null || state === undefined ? typeFilterOf(null, null) : state;
+      var key = ext === null || ext === undefined ? "" : String(ext);
+      var families = Object.assign({}, current.families);
+      delete families[family];
+      var exts = {};
+      var owners = Object.keys(current.exts || {});
+      for (var i = 0; i < owners.length; i += 1) {
+        exts[owners[i]] = Object.assign({}, current.exts[owners[i]]);
+      }
+      var bucket = Object.assign({}, exts[family]);
+      if (bucket[key] === true) delete bucket[key]; else bucket[key] = true;
+      if (Object.keys(bucket).length === 0) delete exts[family]; else exts[family] = bucket;
+      return typeFilterOf(families, exts);
+    }
+
+    /** Remove one tick, whichever level it was on. Drives the × on the "selected" row. */
+    function withoutType(state, family, ext) {
+      if (ext === null || ext === undefined) return withFamilyToggled(state, family);
+      return withExtensionToggled(state, family, ext);
     }
 
     /** The selected family names, sorted, so a stable key can be derived from them. */
@@ -198,12 +308,45 @@
       }).sort();
     }
 
+    /**
+     * Every ticked extension as `[{ family, ext }]`, families then extensions sorted.
+     *
+     * `ext` may be "" (the no-extension bucket), which is why the array form is used instead of
+     * a joined string: an empty string must survive as itself.
+     */
+    function extensionsOf(state) {
+      if (state === null || state === undefined) return [];
+      var out = [];
+      var owners = Object.keys(state.exts || {}).sort();
+      for (var i = 0; i < owners.length; i += 1) {
+        var family = owners[i];
+        var bucket = state.exts[family] || {};
+        var keys = Object.keys(bucket).filter(function (name) { return bucket[name] === true; }).sort();
+        for (var k = 0; k < keys.length; k += 1) out.push({ family: family, ext: keys[k] });
+      }
+      return out;
+    }
+
     /** True when anything in either level is narrowing the list. */
     function typeFilterActive(state) {
       if (state === null || state === undefined) return false;
-      return familiesOf(state).length > 0 || state.ext !== null && state.ext !== undefined;
+      return familiesOf(state).length > 0 || extensionsOf(state).length > 0;
     }
 
+    /**
+     * The ticks as one flat list, for the "selected" row.
+     *
+     * A selected family is one entry with `ext: null`; a selected extension is one entry per
+     * extension. Kept here rather than in the component so the row and the state cannot drift.
+     */
+    function typeSelections(state) {
+      var out = [];
+      var families = familiesOf(state);
+      for (var i = 0; i < families.length; i += 1) out.push({ family: families[i], ext: null });
+      var extensions = extensionsOf(state);
+      for (var k = 0; k < extensions.length; k += 1) out.push(extensions[k]);
+      return out;
+    }
     /**
      * Extensions inside one family, counted from the live data.
      *
@@ -237,17 +380,28 @@
      */
     var EXT_CHIP_MAX = 8;
 
-    /** Split a census into the chips to show and the remainder's totals. */
+    /**
+     * Split a census into the chips to show and the remainder, folded behind one counter.
+     *
+     * This exists because the extension row is inline: a polyglot ledger is 43 extensions, and at
+     * 325px wide they wrapped into 13 rows and took 332px — 44% of the panel, leaving the list
+     * almost invisible. The row has to have a ceiling that does not depend on how many extensions
+     * the project happens to use.
+     *
+     * `rest` is returned alongside the totals so "N more" can expand in place and show the folded
+     * chips, rather than only reporting a number.
+     */
     function extensionChips(census, max) {
       var limit = max > 0 ? max : EXT_CHIP_MAX;
       var list = census || [];
-      if (list.length <= limit + 1) return { shown: list, hidden: 0, hiddenFiles: 0 };
+      if (list.length <= limit + 1) return { shown: list, hidden: 0, hiddenFiles: 0, rest: [] };
       var shown = list.slice(0, limit);
       var rest = list.slice(limit);
       return {
         shown: shown,
         hidden: rest.length,
-        hiddenFiles: rest.reduce(function (total, entry) { return total + entry.count; }, 0)
+        hiddenFiles: rest.reduce(function (total, entry) { return total + entry.count; }, 0),
+        rest: rest
       };
     }
 
