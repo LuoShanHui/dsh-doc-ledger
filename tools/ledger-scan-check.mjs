@@ -7,7 +7,7 @@
  *   node tools/ledger-scan-check.mjs
  */
 import assert from "node:assert/strict";
-import { buildLedger, scanProgram } from "../lib/ledger.js";
+import { buildLedger, resolvePath, scanProgram } from "../lib/ledger.js";
 
 const cwd = "E:\\work";
 const session = { type: "session", id: "s1", cwd, createdAt: 1_700_000_000_000 };
@@ -20,6 +20,40 @@ function ledgerOf(events) {
   return buildLedger([session, ...events]);
 }
 
+// --- path shapes ------------------------------------------------------------
+// resolvePath used to flatten every input to its segments and join them again, which threw the
+// prefix away: a UNC path lost its leading "\\\\" and a rooted "/x.md" lost its separator. The
+// result was a bare name like "abs\\x.md", and a bare name can collide with a real file in the
+// working directory — an unrelated document then looks like the one that was opened.
+{
+  const cwd = "D:\\work\\proj";
+  const shapes = [
+    ["\\\\server\\share\\x.md", "\\\\server\\share\\x.md", "UNC 保留前导双反斜杠"],
+    ["//server/share/x.md", "\\\\server\\share\\x.md", "UNC 正斜杠写法归一"],
+    ["/abs/x.md", "D:\\abs\\x.md", "根路径落在 cwd 所在盘符上，而不是退化为裸文件名"],
+    ["\\plan-notes.md", "D:\\plan-notes.md", "单反斜杠同样按盘符根解析"],
+    ["C:/a/b.md", "C:\\a\\b.md", "盘符 + 正斜杠归一"],
+    ["c:\\a\\b.md", "C:\\a\\b.md", "盘符统一大写"],
+    ["rel/x.md", "D:\\work\\proj\\rel\\x.md", "相对路径拼到 cwd"],
+    [".\\a\\b.md", "D:\\work\\proj\\a\\b.md", "点前缀被吃掉"]
+  ];
+  for (const [input, want, why] of shapes) {
+    assert.equal(resolvePath(input, cwd), want, why + "：" + input);
+  }
+  // ".." must not walk past the anchor: a drive is one segment, a UNC share is two.
+  assert.equal(resolvePath("..\\..\\escape.md", cwd), "D:\\escape.md", "不能越过盘符");
+  assert.equal(
+    resolvePath("\\\\server\\share\\a\\..\\..\\..\\escape.md", cwd),
+    "\\\\server\\share\\escape.md",
+    "不能越过 UNC 的 host\\share"
+  );
+  // A rooted path under a UNC cwd inherits the share, and the prefix has to survive the join.
+  assert.equal(resolvePath("/abs/x.md", "\\\\nas\\team"), "\\\\nas\\team\\abs\\x.md");
+  assert.equal(resolvePath("rel/a.md", "\\\\nas\\team"), "\\\\nas\\team\\rel\\a.md");
+  // No cwd at all must stay harmless rather than throwing.
+  assert.equal(resolvePath("", cwd), "");
+  assert.equal(resolvePath("docs/a.md", ""), "docs\\a.md");
+}
 /** Path bound to a variable, then written with fs: the reported OrderDraft.java case. */
 const CREATE_VIA_VARIABLE = `
 const target = "demo-app/src/main/java/com/example/demo/OrderDraft.java";
@@ -41,6 +75,7 @@ fs.writeFileSync("E:\\\\work\\\\demo-app\\\\src\\\\main\\\\java\\\\com\\\\exampl
 `;
 
 const cases = [];
+cases.push("路径前缀（UNC / 根路径 / 盘符）不被压平成裸文件名");
 
 {
   const found = scanProgram(CREATE_VIA_VARIABLE);
@@ -153,6 +188,24 @@ fs.readFileSync("E:\\\\work\\\\" + name);
 `);
   assert.deepEqual(found, [], "a concatenated literal must not become a document");
   cases.push("拼接路径不产生伪文档（目录前缀）");
+}
+
+{
+  // The other half of a join: the *right-hand* side of `base + "/x.md"` is a suffix, not a path.
+  //
+  // The check above only ever covered a concatenation inside a field (`file_path: "dir/" + f`),
+  // so the literal fallback stayed blind to `process.cwd() + "/lib/ledger.js"` and recorded the
+  // suffix as a document of its own. Measured on this machine: 55 of 717 literal-derived uses
+  // resolved to a non-absolute path, 16 unopenable phantom rows, and 63 rows supported only by a
+  // literal did not exist on disk at all.
+  for (const code of [
+    `const m = await import(pathToFileURL(process.cwd() + "/lib/ledger.js").href);`,
+    `const f = os.homedir() + "/.dsh/doc-ledger-ledgers.json.gz";`,
+    `const { buildReport } = await import(root + "/tools/report.mjs");`,
+  ]) {
+    assert.deepEqual(scanProgram(code), [], "拼接的右半截不是文档：" + code);
+  }
+  cases.push("拼接的右半截（base + \"/x.md\"）不产生伪文档");
 }
 
 {

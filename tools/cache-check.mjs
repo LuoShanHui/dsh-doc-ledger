@@ -8,10 +8,12 @@
  * hand on a live host.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ENGINE_FINGERPRINT, cleanObsoleteFiles, ledgerReusable, normalizeRecords } from "../index.js";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { ENGINE_FINGERPRINT, ENGINE_RULES, ENGINE_SOURCE_HASH, LEDGER_ENGINE, cleanObsoleteFiles, ledgerReusable, normalizeRecords } from "../index.js";
 import { categoryOf } from "../lib/ledger.js";
 
 const NOW = 1_000_000;
@@ -72,6 +74,27 @@ check("引擎指纹随分类规则变化（写死的规则表仍与 lib/ledger.j
   for (const [name, want] of Object.entries(EXPECTED)) {
     assert.equal(categoryOf(name), want, name + " 的分类必须与 ENGINE_RULES 里写的一致");
   }
+});
+
+check("指纹覆盖扫描规则，而不只是分类表", () => {
+  // The gap this closes, measured: fixing the concatenation-blind `scanLiterals` in
+  // lib/ledger.js left every cached ledger valid, so the 16 phantom rows it had produced
+  // stayed on screen until `LEDGER_ENGINE` was bumped by hand. A rule edit that does not move
+  // the fingerprint is exactly the "someone forgot to bump" incident again.
+  const enginePath = fileURLToPath(new URL("../lib/ledger.js", import.meta.url));
+  const engineBytes = readFileSync(enginePath);
+  assert.equal(
+    ENGINE_SOURCE_HASH,
+    createHash("sha1").update(engineBytes).digest("hex").slice(0, 12),
+    "ENGINE_SOURCE_HASH 必须就是 lib/ledger.js 的内容哈希"
+  );
+  // The digest is composed in, not merely exported: a classifier edit that changed
+  // ENGINE_RULES alone would still produce a different fingerprint than the source does.
+  const recomposed = createHash("sha1")
+    .update(String(LEDGER_ENGINE) + "\n" + ENGINE_RULES.join("\n") + "\n" + ENGINE_SOURCE_HASH)
+    .digest("hex")
+    .slice(0, 12);
+  assert.equal(ENGINE_FINGERPRINT, recomposed, "指纹必须由引擎号 + 规则表 + 源码哈希共同决定");
 });
 
 // --- obsolete-file cleanup -------------------------------------------------

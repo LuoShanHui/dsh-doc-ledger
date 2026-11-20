@@ -17,6 +17,7 @@
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
@@ -71,18 +72,17 @@ const LEDGER_VERSION = 3;
  * labels — `.sql` still under `data`, `.gitignore` still under `other`, 113 of 1 760 live rows
  * (6.4%) showing the wrong filter chip. `ENGINE_FINGERPRINT` below makes forgetting harmless.
  */
-const LEDGER_ENGINE = 3;
+export const LEDGER_ENGINE = 4;
 
 /**
- * Content hash of the rules that decide what a row means: the category tables in
- * `lib/ledger.js` plus the engine number.
+ * The classifier tables, as a readable literal rather than by importing `lib/ledger.js`.
  *
- * A ledger cached by older code is only reused when its fingerprint matches, so editing the
- * classifier invalidates every cached row even when nobody remembers to bump `LEDGER_ENGINE`.
- * Keeping it as a literal (rather than importing the tables) avoids a second source of truth
- * drifting from the first; `tools/cache-check.mjs` asserts this list still matches lib/ledger.js.
+ * This kept the fingerprint honest about the category table before the source digest below
+ * existed, and `tools/cache-check.mjs` still asserts every entry here agrees with what
+ * `categoryOf()` actually returns — so a drift between the two is a test failure, not a
+ * silently mislabelled row.
  */
-const ENGINE_RULES = [
+export const ENGINE_RULES = [
   "doc:md,markdown,mdx,txt,rst,pdf,doc,docx,odt,rtf,epub,tex,adoc,org",
   "sheet:xlsx,xls,csv,tsv,ods,numbers,xlsm,xlsb",
   "slide:pptx,ppt,odp,key,pps,ppsx",
@@ -96,8 +96,36 @@ const ENGINE_RULES = [
   "binary:exe,dll,so,dylib,bin,o,obj,lib,a,pdb,msi,app,deb,rpm,class,pyc,wasm",
   "filename:dockerfile=config,makefile=config,cmakelists.txt=config,procfile=config,vagrantfile=config,gemfile=config,rakefile=config,jenkinsfile=config,brewfile=config,license=doc,licence=doc,notice=doc,copying=doc,authors=doc,contributors=doc,changelog=doc,readme=doc"
 ];
+/**
+ * Source digest of the ledger engine, mixed into the fingerprint below.
+ *
+ * The list above covers the classifier, which is where the previous incident happened. It does
+ * **not** cover the scanner — `scanProgram`, `resolvePath`, the `created` rule — and that gap is
+ * live damage, not a hypothetical: fixing the concatenation-blind `scanLiterals` left every
+ * cached ledger untouched, so the 16 phantom rows it had produced stayed on screen until the
+ * engine number was bumped by hand.
+ *
+ * Reading the source closes the gap permanently. `lib/ledger.js` is a pure function module with
+ * no host imports (its own header says so), so hashing its bytes is a faithful stand-in for
+ * hashing its behaviour, and it costs one synchronous read at module-evaluate time. A change to
+ * any rule — a regex, a category, the `created` tri-state — moves the fingerprint, and every
+ * cached row is re-derived on the next start without anyone having to remember anything.
+ *
+ * Deliberately not hashed: this file (`index.js`), whose caching, routing and UI code is not part
+ * of what a row means. Editing the transport must not force a full replay.
+ */
+export const ENGINE_SOURCE_HASH = (() => {
+  try {
+    const source = readFileSync(fileURLToPath(new URL("./lib/ledger.js", import.meta.url)));
+    return createHash("sha1").update(source).digest("hex").slice(0, 12);
+  } catch {
+    // An unreadable engine only costs a stale cache; it must never stop the plugin from loading.
+    return "unreadable";
+  }
+})();
+
 export const ENGINE_FINGERPRINT = createHash("sha1")
-  .update(String(LEDGER_ENGINE) + "\n" + ENGINE_RULES.join("\n"))
+  .update(String(LEDGER_ENGINE) + "\n" + ENGINE_RULES.join("\n") + "\n" + ENGINE_SOURCE_HASH)
   .digest("hex")
   .slice(0, 12);
 const LEDGER_KEEP_MAX = 250;
